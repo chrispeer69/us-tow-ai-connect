@@ -1,0 +1,22 @@
+{
+  "name": "us-tow-ai-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "US Tow AI-Connect: Middleware connector bridging Thinkrr.ai voice agents with towing management software via headless browser automation.",
+  "author": "Blue Collar AI <chris@bluecollarai.online>",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev:api": "pnpm --filter @ustow/api dev",
+    "dev:web": "pnpm --filter @ustow/web dev",
+    "build:api": "pnpm --filter @ustow/api build",
+    "build:web": "pnpm --filter @ustow/web build",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "db:generate": "pnpm --filter @ustow/api db:generate",
+    "db:migrate": "pnpm --filter @ustow/api db:migrate"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
