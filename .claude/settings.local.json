@@ -2,7 +2,24 @@
   "permissions": {
     "allow": [
       "Bash(claude *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(grep -E \"\\(\\\\.ts|\\\\.json|\\\\.tsx\\)$\")",
+      "Bash(pnpm db:migrate)",
+      "Bash(docker exec *)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\(JSON.stringify\\(process.env.DATABASE_URL\\)\\); console.log\\('len=', process.env.DATABASE_URL?.length\\);\")",
+      "Bash(node -e \"const {Client}=require\\('pg'\\); const c=new Client\\({connectionString: 'postgresql://ustow:ustow_dev@localhost:5433/ustow'}\\); c.connect\\(\\).then\\(\\(\\)=>c.query\\('SELECT current_user'\\)\\).then\\(r=>{console.log\\('OK',r.rows\\);return c.end\\(\\);}\\).catch\\(e=>{console.error\\('FAIL', e.code, e.message\\); process.exit\\(1\\);}\\);\")",
+      "Bash(findstr /I \"password auth FATAL\")",
+      "Bash(grep -v \"^$\")",
+      "PowerShell(docker exec ustow-postgres *)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Stop-Service *)",
+      "PowerShell(Get-Service *)",
+      "Bash(docker restart *)",
+      "Bash(pnpm dev *)",
+      "Bash(curl -s -o /dev/null -w \"API_HTTP %{http_code}\\\\n\" http://localhost:3001/health)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(curl -s -o /dev/null -w \"WEB_HTTP %{http_code}\\\\n\" http://localhost:3000/admin/integrations)"
     ]
   }
 }

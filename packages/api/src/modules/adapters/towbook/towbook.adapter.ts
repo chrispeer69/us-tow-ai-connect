@@ -140,14 +140,19 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
   }
 
   private async extractRows(page: import('playwright').Page): Promise<ActiveJob[]> {
+    // Callback runs inside the Chromium page where DOM globals exist; the
+    // Node tsconfig doesn't include lib.dom, so we type the closure args as
+    // `any` to avoid pulling DOM types into the API build.
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     return page.evaluate((selectors: string) => {
-      const rows = document.querySelectorAll(selectors);
+      const doc: any = (globalThis as any).document;
+      const rows: any[] = Array.from(doc.querySelectorAll(selectors));
       const out: Array<Record<string, string>> = [];
-      const getText = (root: Element, sel: string) => {
+      const getText = (root: any, sel: string): string => {
         const el = root.querySelector(sel);
         return el ? (el.textContent ?? '').trim() : '';
       };
-      rows.forEach((row) => {
+      rows.forEach((row: any) => {
         out.push({
           jobId: row.getAttribute('data-callid') || '',
           customerName: getText(row, '.customer-name, .cust-name, td:nth-child(2)'),
@@ -162,6 +167,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       });
       return out as unknown as ActiveJob[];
     }, ROW_SELECTORS);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   }
 }
 

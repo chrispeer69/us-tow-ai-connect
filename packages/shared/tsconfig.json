@@ -3,8 +3,12 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "target": "ES2021",
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },

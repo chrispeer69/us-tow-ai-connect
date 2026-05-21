@@ -1,0 +1,26 @@
+﻿services:
+  postgres:
+    image: postgres:16
+    container_name: ustow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ustow
+      POSTGRES_PASSWORD: ustow_dev
+      POSTGRES_DB: ustow
+    ports:
+      - "5433:5432"
+    volumes:
+      - ustow_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: ustow-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - ustow_redisdata:/data
+
+volumes:
+  ustow_pgdata:
+  ustow_redisdata:
