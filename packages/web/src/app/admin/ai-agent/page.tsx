@@ -1,0 +1,295 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
+import { api } from '@/lib/utils';
+
+type Policy = 'AI_HANDLES' | 'TRANSFER' | 'NOT_OFFERED';
+type Service = {
+  enabled: boolean;
+  classes: Record<string, Policy>;
+};
+
+const SERVICES = [
+  'Towing',
+  'Jump Start',
+  'Tire Change',
+  'Fuel Delivery',
+  'Lockout Service',
+  'Winch Out & Recovery',
+];
+const VEHICLE_CLASSES = ['Light Duty', 'Medium Duty', 'Heavy Duty', 'Motorcycle'];
+
+interface AgentConfig {
+  greetingMessage: string;
+  defaultEtaMins: number;
+  impoundEnabled: boolean;
+  serviceToggles: Record<string, Service>;
+  assignedPhoneNumber?: string;
+}
+
+export default function AiAgentPage() {
+  const [greeting, setGreeting] = useState('');
+  const [defaultEta, setDefaultEta] = useState(45);
+  const [impoundEnabled, setImpoundEnabled] = useState(false);
+  const [serviceToggles, setServiceToggles] = useState<Record<string, Service>>({});
+  const [agentPhone, setAgentPhone] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetchConfig();
+  }, []);
+
+  async function fetchConfig() {
+    setLoading(true);
+    try {
+      const data = await api<AgentConfig>('/v1/admin/agent-config');
+      setGreeting(data.greetingMessage ?? '');
+      setDefaultEta(data.defaultEtaMins ?? 45);
+      setImpoundEnabled(Boolean(data.impoundEnabled));
+      setServiceToggles(normalizeToggles(data.serviceToggles ?? {}));
+      setAgentPhone(data.assignedPhoneNumber ?? '');
+      setHasChanges(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function mutate<T>(setter: (v: T) => void, value: T) {
+    setter(value);
+    setHasChanges(true);
+    setSavedMessage(null);
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await api('/v1/admin/agent-config', {
+        method: 'PUT',
+        json: {
+          greetingMessage: greeting,
+          defaultEtaMins: defaultEta,
+          impoundEnabled,
+          serviceToggles,
+        },
+      });
+      setHasChanges(false);
+      setSavedMessage('Saved');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div className="flex items-center justify-between">
+        <header>
+          <h1 className="text-3xl font-bold">AI Agent Configuration</h1>
+          <p className="text-zinc-400 mt-1">
+            Configure how the AI agent greets callers and what services it offers.
+          </p>
+        </header>
+        <div className="flex items-center gap-3">
+          {hasChanges && (
+            <span className="text-xs text-amber-400">Unsaved changes</span>
+          )}
+          {savedMessage && !hasChanges && (
+            <span className="text-xs text-emerald-400">{savedMessage}</span>
+          )}
+          <Button onClick={save} disabled={!hasChanges || saving}>
+            {saving ? <Spinner className="mr-2" /> : null}
+            Save Changes
+          </Button>
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-zinc-400">
+          <Spinner /> Loading config...
+        </div>
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent Phone Number</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="font-mono text-lg text-zinc-200">
+                {agentPhone || 'Not yet assigned'}
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">
+                System-assigned; contact support to change.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Greeting Message</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                rows={3}
+                maxLength={250}
+                value={greeting}
+                onChange={(e) => mutate(setGreeting, e.target.value)}
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                {greeting.length}/250 characters
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Default ETA (minutes)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Input
+                type="number"
+                min={0}
+                max={600}
+                value={defaultEta}
+                onChange={(e) => mutate(setDefaultEta, Number(e.target.value))}
+                className="max-w-xs"
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                Impound Inquiries
+                <Switch
+                  checked={impoundEnabled}
+                  onCheckedChange={(v) => mutate(setImpoundEnabled, v)}
+                />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-zinc-400">
+                Allow the AI agent to handle impound-related inquiries.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Service Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {SERVICES.map((service) => {
+                const cfg = serviceToggles[service] ?? defaultService();
+                return (
+                  <div
+                    key={service}
+                    className="rounded-md border border-zinc-800 bg-zinc-900/40 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{service}</span>
+                      <Switch
+                        checked={cfg.enabled}
+                        onCheckedChange={(v) =>
+                          mutate(setServiceToggles, {
+                            ...serviceToggles,
+                            [service]: { ...cfg, enabled: v },
+                          })
+                        }
+                      />
+                    </div>
+                    {cfg.enabled && (
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {VEHICLE_CLASSES.map((vc) => {
+                          const current = cfg.classes[vc] ?? 'AI_HANDLES';
+                          return (
+                            <label
+                              key={vc}
+                              className="flex items-center justify-between gap-3 text-sm text-zinc-300"
+                            >
+                              <span className="w-32">{vc}</span>
+                              <div className="flex-1">
+                                <Select
+                                  value={current}
+                                  onValueChange={(val) =>
+                                    mutate(setServiceToggles, {
+                                      ...serviceToggles,
+                                      [service]: {
+                                        ...cfg,
+                                        classes: { ...cfg.classes, [vc]: val as Policy },
+                                      },
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="AI_HANDLES">AI Handles</SelectItem>
+                                    <SelectItem value="TRANSFER">Transfer to Team</SelectItem>
+                                    <SelectItem value="NOT_OFFERED">Not Offered</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+function defaultService(): Service {
+  return {
+    enabled: false,
+    classes: {
+      'Light Duty': 'AI_HANDLES',
+      'Medium Duty': 'AI_HANDLES',
+      'Heavy Duty': 'AI_HANDLES',
+      Motorcycle: 'AI_HANDLES',
+    },
+  };
+}
+
+function normalizeToggles(
+  raw: Record<string, Service | Record<string, unknown> | undefined>,
+): Record<string, Service> {
+  const out: Record<string, Service> = {};
+  for (const svc of SERVICES) {
+    const candidate = (raw[svc] ?? {}) as Partial<Service> & { classes?: Record<string, string> };
+    out[svc] = {
+      enabled: Boolean(candidate.enabled),
+      classes: (candidate.classes as Record<string, Policy>) ?? defaultService().classes,
+    };
+  }
+  return out;
+}
