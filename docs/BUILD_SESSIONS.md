@@ -702,72 +702,264 @@ export class JobPollerCron {
 
 ---
 
-## SESSION 3: THINKRR.AI KNOWLEDGE PACK SYNC
+## SESSION 3: THINKRR INTEGRATION (PUBLIC URL ENDPOINT + WEBHOOK RECEIVER)
 
 ### Objective
-After the poller caches jobs in Redis, this service formats the data and pushes it to Thinkrr.ai so the voice agent can reference it during calls.
+Build a public-facing Markdown endpoint per tenant that Thinkrr's Knowledge Pack can scrape for static company data, AND build the webhook receiver that logs incoming call data from Thinkrr after each call completes.
+
+### Architecture Decision
+Thinkrr Knowledge Packs do NOT support programmatic API updates. They support:
+1. File uploads (.md, .csv, .pdf, .txt)
+2. Public URL scraping (auto-refreshes when content changes)
+
+Therefore, the integration is two-part:
+- **Data IN to Thinkrr:** A public URL per tenant serving a Markdown file with company profile, services, pricing, hours, and transfer numbers. Thinkrr's Knowledge Pack is configured to scrape this URL.
+- **Data OUT from Thinkrr:** A webhook endpoint on our API that receives POST requests from Thinkrr after every call, containing transcript, outcome, duration, and customer details.
+
+### Important Limitation (v1)
+Real-time ETA data (specific job lookups mid-call) is NOT possible in v1 with Thinkrr's current architecture. The AI agent will reference "typical" ETAs from the static profile (e.g., "Our typical response time is 30-45 minutes"). Real-time per-job ETAs require the $3-5K direct API build from G$D (v2).
 
 ### Files to Create
 
-**packages/api/src/modules/thinkrr-sync/thinkrr-sync.service.ts**
+**packages/api/src/modules/knowledge-endpoint/knowledge-endpoint.controller.ts**
 ```typescript
-import { Injectable, Logger } from '@nestjs/common';
-import { Redis } from 'ioredis';
-import { ActiveJob } from '../adapters/adapter.interface';
+import { Controller, Get, Param, Res, NotFoundException } from '@nestjs/common';
+import { Response } from 'express';
+import { KnowledgeEndpointService } from './knowledge-endpoint.service';
 
-@Injectable()
-export class ThinkrrSyncService {
-  private readonly logger = new Logger(ThinkrrSyncService.name);
+/**
+ * Public endpoint — NO auth guard.
+ * Thinkrr's Knowledge Pack scraper hits this URL to pull tenant profile data.
+ * URL format: https://api.ustowdispatch.com/public/knowledge/{tenantId}/profile.md
+ */
+@Controller('public/knowledge')
+export class KnowledgeEndpointController {
+  constructor(private readonly service: KnowledgeEndpointService) {}
 
-  constructor(private readonly redis: Redis) {}
+  @Get(':tenantId/profile.md')
+  async getTenantProfile(@Param('tenantId') tenantId: string, @Res() res: Response) {
+    const markdown = await this.service.generateTenantMarkdown(tenantId);
+    if (!markdown) throw new NotFoundException('Tenant not found');
 
-  /**
-   * Formats cached job data into a text block that Thinkrr's Knowledge Pack can parse.
-   * The format is designed so the LLM can search by phone number and return the ETA.
-   *
-   * Example output:
-   * PHONE: 6142904897 | CUSTOMER: Jazmine Genovese | VEHICLE: 2019 Honda Civic | STATUS: Enroute | DRIVER: Dustin DeLauder | ETA: 15 minutes
-   * PHONE: 6143069970 | CUSTOMER: Van Howells | VEHICLE: 2021 Toyota Camry | STATUS: Dispatched | DRIVER: Tim Moore | ETA: 25 minutes
-   */
-  async generateKnowledgePackContent(tenantId: string): Promise<string> {
-    const jobsJson = await this.redis.get(`jobs:towbook:${tenantId}`);
-    if (!jobsJson) return 'No active jobs at this time.';
-
-    const jobs: ActiveJob[] = JSON.parse(jobsJson);
-    if (jobs.length === 0) return 'No active jobs at this time.';
-
-    const lines = jobs.map((job) =>
-      `PHONE: ${job.customerPhone} | CUSTOMER: ${job.customerName} | VEHICLE: ${job.vehicle} | STATUS: ${job.status} | DRIVER: ${job.driverName} | ETA: ${job.eta} | DESTINATION: ${job.destination}`
-    );
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Push the formatted data to Thinkrr.ai.
-   * Implementation depends on Cody's confirmation of how Knowledge Packs accept data.
-   * Options:
-   * 1. Thinkrr API endpoint for Knowledge Pack updates
-   * 2. GHL Custom Values via GHL API
-   * 3. File upload to a URL that Thinkrr references
-   */
-  async pushToThinkrr(tenantId: string, content: string): Promise<void> {
-    // TODO: Implement based on Wednesday meeting with Cody
-    // Placeholder: log the content that would be pushed
-    this.logger.log(`Would push ${content.split('\n').length} job records to Thinkrr for tenant ${tenantId}`);
-
-    // Option 1: Direct API call (if available)
-    // await fetch(`https://api.thinkrr.ai/v1/knowledge-packs/${packId}`, {
-    //   method: 'PUT',
-    //   headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ content }),
-    // });
-
-    // Option 2: GHL Custom Values
-    // await this.ghlService.updateContactCustomField(tenantId, 'active_jobs', content);
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=60'); // Thinkrr re-scrapes periodically
+    res.send(markdown);
   }
 }
 ```
+
+**packages/api/src/modules/knowledge-endpoint/knowledge-endpoint.service.ts**
+```typescript
+import { Injectable } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { tenants, aiAgentConfigs, routingRules } from '../../db/schema';
+
+@Injectable()
+export class KnowledgeEndpointService {
+  constructor(private readonly db: any) {}
+
+  async generateTenantMarkdown(tenantId: string): Promise<string | null> {
+    const tenant = await this.db.query.tenants.findFirst({
+      where: eq(tenants.id, tenantId),
+      with: { agentConfig: true, routingRules: true },
+    });
+
+    if (!tenant || !tenant.isActive) return null;
+
+    const config = tenant.agentConfig;
+    const activeRule = tenant.routingRules?.find((r: any) => r.isActiveNow);
+
+    // Parse service toggles
+    const services = config?.serviceToggles || {};
+    const serviceLines = Object.entries(services)
+      .filter(([_, val]: [string, any]) => val.enabled)
+      .map(([name, val]: [string, any]) => {
+        const classes = Object.entries(val.classes || {})
+          .map(([cls, handling]) => `  - ${cls}: ${handling}`)
+          .join('\n');
+        return `- ${name}\n${classes}`;
+      })
+      .join('\n');
+
+    const markdown = `# ${tenant.companyName}
+
+## Company Information
+- Company: ${tenant.companyName}
+- Timezone: ${tenant.timezone}
+- Status: Active
+
+## Services Offered
+${serviceLines || '- Contact dispatch for service availability'}
+
+## Typical Response Times
+- Default estimated arrival: ${config?.defaultEtaMins || 45} minutes
+- Response times vary based on location, traffic, and driver availability
+
+## Call Transfer
+- When a caller requests to speak with a human, transfer to: ${activeRule?.phoneNumber || 'dispatch'}
+- Transfer label: ${activeRule?.ruleName || 'Dispatch'}
+
+## Impound Inquiries
+- Impound service: ${config?.impoundEnabled ? 'Available — ask for details' : 'Not available at this location'}
+
+## Important Notes
+- Always confirm the caller's name, phone number, vehicle details, and location
+- For new tow requests, collect: location, vehicle year/make/model/color, issue description, and desired destination
+- If you cannot help the caller, transfer them to the dispatch team
+`;
+
+    return markdown;
+  }
+}
+```
+
+**packages/api/src/modules/knowledge-endpoint/knowledge-endpoint.module.ts**
+```typescript
+import { Module } from '@nestjs/common';
+import { KnowledgeEndpointController } from './knowledge-endpoint.controller';
+import { KnowledgeEndpointService } from './knowledge-endpoint.service';
+
+@Module({
+  controllers: [KnowledgeEndpointController],
+  providers: [KnowledgeEndpointService],
+})
+export class KnowledgeEndpointModule {}
+```
+
+**packages/api/src/modules/webhook-receiver/webhook-receiver.controller.ts**
+```typescript
+import { Controller, Post, Body, Headers, Logger, HttpCode } from '@nestjs/common';
+import { WebhookReceiverService } from './webhook-receiver.service';
+
+/**
+ * Receives POST requests from Thinkrr.ai after each call completes.
+ * Thinkrr sends: recording URL, transcript, outcome, timestamps, customer details.
+ * This endpoint has NO auth guard — Thinkrr doesn't support custom auth headers on webhooks.
+ * Security: Validate by checking the payload structure and optionally a shared secret in the URL.
+ */
+@Controller('webhooks/thinkrr')
+export class WebhookReceiverController {
+  private readonly logger = new Logger(WebhookReceiverController.name);
+
+  constructor(private readonly service: WebhookReceiverService) {}
+
+  @Post('call-completed')
+  @HttpCode(200)
+  async handleCallCompleted(@Body() payload: any, @Headers() headers: any) {
+    this.logger.log(`Received Thinkrr webhook: ${JSON.stringify(payload).substring(0, 200)}`);
+
+    await this.service.processCallWebhook(payload);
+
+    return { received: true };
+  }
+}
+```
+
+**packages/api/src/modules/webhook-receiver/webhook-receiver.service.ts**
+```typescript
+import { Injectable, Logger } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { tenants, interactionLogs } from '../../db/schema';
+
+@Injectable()
+export class WebhookReceiverService {
+  private readonly logger = new Logger(WebhookReceiverService.name);
+
+  constructor(private readonly db: any) {}
+
+  async processCallWebhook(payload: any): Promise<void> {
+    // Thinkrr webhook payload structure (based on docs):
+    // - call_id: string
+    // - phone_number: string (caller)
+    // - duration: number (seconds)
+    // - status: string (completed, voicemail, failed)
+    // - transcript: string
+    // - summary: string
+    // - recording_url: string
+    // - sentiment: string
+    // - agent_name: string
+    // - timestamp: string
+
+    // Determine which tenant this call belongs to based on the agent or phone number
+    // For v1, we match by the Thinkrr agent ID or the assigned phone number
+    const tenant = await this.db.query.tenants.findFirst({
+      where: eq(tenants.assignedPhoneNumber, payload.to_number || payload.agent_phone),
+    });
+
+    if (!tenant) {
+      this.logger.warn(`Webhook received for unknown tenant. Payload phone: ${payload.to_number}`);
+      return;
+    }
+
+    // Categorize the call based on transcript keywords
+    const category = this.categorizeCall(payload.transcript || payload.summary || '');
+
+    await this.db.insert(interactionLogs).values({
+      tenantId: tenant.id,
+      thinkrrCallId: payload.call_id || payload.id || 'unknown',
+      callerPhone: payload.phone_number || payload.from_number || '',
+      category,
+      summary: payload.summary || payload.transcript?.substring(0, 500) || '',
+      outcome: payload.status || 'completed',
+      durationSeconds: payload.duration || 0,
+    });
+
+    this.logger.log(`Call logged for tenant ${tenant.id}: ${category}`);
+  }
+
+  private categorizeCall(text: string): string {
+    const lower = text.toLowerCase();
+    if (lower.includes('eta') || lower.includes('how long') || lower.includes('update') || lower.includes('where is')) {
+      return 'ETA_LOOKUP';
+    }
+    if (lower.includes('new tow') || lower.includes('need a tow') || lower.includes('broke down') || lower.includes('flat tire')) {
+      return 'NEW_TOW_REQUEST';
+    }
+    if (lower.includes('transfer') || lower.includes('speak to') || lower.includes('talk to someone') || lower.includes('human')) {
+      return 'TRANSFER_TO_HUMAN';
+    }
+    if (lower.includes('impound') || lower.includes('my car') || lower.includes('pick up my')) {
+      return 'IMPOUND_INQUIRY';
+    }
+    if (lower.includes('price') || lower.includes('cost') || lower.includes('how much')) {
+      return 'PRICING_QUOTE';
+    }
+    if (lower.includes('complaint') || lower.includes('unhappy') || lower.includes('terrible') || lower.includes('awful')) {
+      return 'COMPLAINT';
+    }
+    return 'GENERAL_INQUIRY';
+  }
+}
+```
+
+**packages/api/src/modules/webhook-receiver/webhook-receiver.module.ts**
+```typescript
+import { Module } from '@nestjs/common';
+import { WebhookReceiverController } from './webhook-receiver.controller';
+import { WebhookReceiverService } from './webhook-receiver.service';
+
+@Module({
+  controllers: [WebhookReceiverController],
+  providers: [WebhookReceiverService],
+})
+export class WebhookReceiverModule {}
+```
+
+### Setup Instructions for Thinkrr.ai Dashboard
+1. Go to Settings > Integrations > Webhook Integration > Configure
+2. Paste URL: `https://api.ustowdispatch.com/webhooks/thinkrr/call-completed`
+3. Save
+4. Go to Knowledge Packs > Create New Knowledge Pack
+5. Add URL source: `https://api.ustowdispatch.com/public/knowledge/{tenantId}/profile.md`
+6. Attach the Knowledge Pack to the inbound agent (Marissa)
+
+### Acceptance Tests
+- GET `https://api.ustowdispatch.com/public/knowledge/{tenantId}/profile.md` returns valid Markdown with company info
+- POST to `/webhooks/thinkrr/call-completed` with a sample Thinkrr payload creates a record in `interaction_logs`
+- Call categorization correctly identifies ETA_LOOKUP, NEW_TOW_REQUEST, TRANSFER_TO_HUMAN from transcript text
+- Invalid/unknown tenant webhooks are logged but don't crash the system
+
+---
 
 ---
 
@@ -1467,18 +1659,129 @@ export default function CallLogsPage() {
 
 ---
 
-## SESSION 9: OUTBOUND ENGINE (GOOGLE PLACES & FLIP LOGIC)
+## SESSION 9:OUTBOUND ENGINE (TWILIO + GOOGLE PLACES + FLIP LOGIC)
 
 ### Objective
-Build the outbound call trigger system that detects new motor club jobs, classifies the destination via Google Places API, and triggers Thinkrr.ai outbound calls with the appropriate script.
+Build the outbound call system using Twilio (NOT Thinkrr — Thinkrr cannot be triggered programmatically for outbound calls). When a new motor club job is detected in Towbook, the system classifies the destination via Google Places, decides on the call script, and initiates an outbound call via Twilio with TTS (text-to-speech) or a Twilio Studio flow.
+
+### Architecture Decision
+Thinkrr.ai does not support programmatic outbound call triggering. Therefore, outbound confirmation and flip calls are handled by Twilio directly. Twilio provides:
+- Programmable Voice API (initiate calls)
+- TTS (text-to-speech) for dynamic scripts
+- Studio Flows for complex IVR trees
+- Call recording for logging
+- Webhook callbacks for call status updates
+
+For v2, if G$D builds the direct API ($3-5K), outbound calls can migrate to Thinkrr for a more natural AI voice. For v1, Twilio TTS handles the outbound scripts.
 
 ### Files to Create
+
+**packages/api/src/modules/outbound/outbound.module.ts**
+```typescript
+import { Module } from '@nestjs/common';
+import { OutboundPollerCron } from './outbound-poller.cron';
+import { GooglePlacesService } from './google-places.service';
+import { FlipLogicService } from './flip-logic.service';
+import { TwilioOutboundService } from './twilio-outbound.service';
+import { NotificationModule } from '../notifications/notification.module';
+
+@Module({
+  imports: [NotificationModule],
+  providers: [OutboundPollerCron, GooglePlacesService, FlipLogicService, TwilioOutboundService],
+})
+export class OutboundModule {}
+```
+
+**packages/api/src/modules/outbound/twilio-outbound.service.ts**
+```typescript
+import { Injectable, Logger } from '@nestjs/common';
+import * as twilio from 'twilio';
+
+interface OutboundCallParams {
+  customerPhone: string;
+  customerName: string;
+  vehicle: string;
+  pickupLocation: string;
+  destination: string;
+  destinationType: 'AUTO_REPAIR' | 'AUTO_BODY' | 'RESIDENTIAL' | 'UNKNOWN';
+  flipEligible: boolean;
+  nearestOurShop: string | null;
+  tenantId: string;
+}
+
+@Injectable()
+export class TwilioOutboundService {
+  private readonly logger = new Logger(TwilioOutboundService.name);
+  private readonly client: twilio.Twilio;
+  private readonly fromNumber: string;
+
+  constructor() {
+    this.client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    this.fromNumber = process.env.TWILIO_PHONE_NUMBER!;
+  }
+
+  async initiateConfirmationCall(params: OutboundCallParams): Promise<string> {
+    const twiml = this.buildTwiml(params);
+
+    const call = await this.client.calls.create({
+      to: params.customerPhone,
+      from: this.fromNumber,
+      twiml,
+      statusCallback: `${process.env.API_BASE_URL}/webhooks/twilio/call-status`,
+      statusCallbackEvent: ['completed'],
+      record: true,
+    });
+
+    this.logger.log(`Outbound call initiated: ${call.sid} to ${params.customerPhone}`);
+    return call.sid;
+  }
+
+  private buildTwiml(params: OutboundCallParams): string {
+    // Build the TwiML script based on destination type
+    let script = '';
+
+    // Phase 1: Opening & Confirmation
+    script += `<Say voice="Polly.Joanna">Hi, this is Sarah calling from Roadside Towing on behalf of Triple A. Am I speaking with ${params.customerName}?</Say>`;
+    script += `<Pause length="2"/>`;
+    script += `<Say voice="Polly.Joanna">I'm calling to confirm the details of your tow request. I have your vehicle as a ${params.vehicle}, being picked up at ${params.pickupLocation}, and towed to ${params.destination}. Is all of that correct?</Say>`;
+    script += `<Pause length="3"/>`;
+
+    // Phase 2: Based on destination type
+    if (params.flipEligible && params.nearestOurShop) {
+      // Auto repair — attempt flip
+      script += `<Say voice="Polly.Joanna">I want to let you know, we have a certified repair facility nearby called ${params.nearestOurShop}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a free diagnostic and 10 percent off your repair. Would you like me to make that switch? Press 1 for yes, or 2 to keep your current destination.</Say>`;
+      script += `<Gather numDigits="1" action="${process.env.API_BASE_URL}/webhooks/twilio/flip-response?tenantId=${params.tenantId}&phone=${params.customerPhone}" method="POST">`;
+      script += `<Pause length="5"/>`;
+      script += `</Gather>`;
+    } else if (params.destinationType === 'AUTO_BODY') {
+      // Auto body — soft mention
+      script += `<Say voice="Polly.Joanna">Just so you know, we also own two independent body shops in the area that offer VIP services. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you.</Say>`;
+    }
+
+    // Phase 3: CONVINI offer (all calls)
+    const conviniIntensity = params.destinationType === 'UNKNOWN' || params.destinationType === 'RESIDENTIAL' ? 'hard' : 'soft';
+    if (conviniIntensity === 'hard') {
+      script += `<Say voice="Polly.Joanna">Before I let you go, I want to tell you about our free app called Convini Car. It puts roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place on your phone. It's completely free. Press 1 if you'd like me to text you the download link.</Say>`;
+    } else {
+      script += `<Say voice="Polly.Joanna">One quick thing. We have a free app called Convini Car for roadside assistance and repair scheduling. Press 1 if you'd like me to text you the link.</Say>`;
+    }
+    script += `<Gather numDigits="1" action="${process.env.API_BASE_URL}/webhooks/twilio/convini-response?phone=${params.customerPhone}" method="POST">`;
+    script += `<Pause length="3"/>`;
+    script += `</Gather>`;
+
+    // Close
+    script += `<Say voice="Polly.Joanna">Your driver is on the way. Have a great day!</Say>`;
+
+    return `<Response>${script}</Response>`;
+  }
+}
+```
 
 **packages/api/src/modules/outbound/google-places.service.ts**
 ```typescript
 import { Injectable, Logger } from '@nestjs/common';
 
-interface PlaceClassification {
+export interface PlaceClassification {
   businessName: string;
   type: 'AUTO_REPAIR' | 'AUTO_BODY' | 'RESIDENTIAL' | 'UNKNOWN';
   placeId: string;
@@ -1490,28 +1793,32 @@ export class GooglePlacesService {
   private readonly apiKey = process.env.GOOGLE_PLACES_API_KEY;
 
   async classifyAddress(address: string): Promise<PlaceClassification> {
-    const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(address)}&inputtype=textquery&fields=name,types,place_id&key=${this.apiKey}`;
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(address)}&inputtype=textquery&fields=name,types,place_id&key=${this.apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
 
-    const res = await fetch(url);
-    const data = await res.json();
+      if (!data.candidates || data.candidates.length === 0) {
+        return { businessName: '', type: 'UNKNOWN', placeId: '' };
+      }
 
-    if (!data.candidates || data.candidates.length === 0) {
+      const place = data.candidates[0];
+      const types: string[] = place.types || [];
+
+      let type: PlaceClassification['type'] = 'UNKNOWN';
+      if (types.includes('car_repair') || types.includes('mechanic')) {
+        type = 'AUTO_REPAIR';
+      } else if (types.includes('auto_body_shop') || types.includes('car_body_repair')) {
+        type = 'AUTO_BODY';
+      } else if (types.includes('premise') || types.includes('street_address') || types.includes('subpremise')) {
+        type = 'RESIDENTIAL';
+      }
+
+      return { businessName: place.name || '', type, placeId: place.place_id || '' };
+    } catch (error) {
+      this.logger.error(`Google Places API error: ${error.message}`);
       return { businessName: '', type: 'UNKNOWN', placeId: '' };
     }
-
-    const place = data.candidates[0];
-    const types: string[] = place.types || [];
-
-    let type: PlaceClassification['type'] = 'UNKNOWN';
-    if (types.includes('car_repair') || types.includes('mechanic')) {
-      type = 'AUTO_REPAIR';
-    } else if (types.includes('auto_body_shop') || types.includes('car_body_repair')) {
-      type = 'AUTO_BODY';
-    } else if (types.includes('premise') || types.includes('street_address') || types.includes('residential')) {
-      type = 'RESIDENTIAL';
-    }
-
-    return { businessName: place.name || '', type, placeId: place.place_id || '' };
   }
 }
 ```
@@ -1520,32 +1827,47 @@ export class GooglePlacesService {
 ```typescript
 import { Injectable } from '@nestjs/common';
 
-interface FlipDecision {
+export interface FlipDecision {
   flipEligible: boolean;
   conviniSellType: 'SOFT' | 'MEDIUM' | 'HARD';
   nearestShop: string | null;
 }
 
-const OUR_SHOPS = [
+const OUR_REPAIR_SHOPS = [
   { name: 'Excite Collision & Repair of Westerville', address: '123 State St, Westerville OH' },
-  { name: 'T&C Auto Body', address: '456 Main St, Columbus OH' },
-  // Add all 7 repair shops and 2 body shops here
+  { name: 'Shop 2', address: '' },
+  { name: 'Shop 3', address: '' },
+  { name: 'Shop 4', address: '' },
+  { name: 'Shop 5', address: '' },
+  { name: 'Shop 6', address: '' },
+  { name: 'Shop 7', address: '' },
+];
+
+const OUR_BODY_SHOPS = [
+  { name: 'T&C Auto Body', address: '' },
+  { name: 'Body Shop 2', address: '' },
 ];
 
 @Injectable()
 export class FlipLogicService {
   decide(destinationType: string, destinationAddress: string): FlipDecision {
-    // Check if destination is one of our shops
-    const isOurs = OUR_SHOPS.some((shop) => destinationAddress.toLowerCase().includes(shop.address.toLowerCase()));
+    // Check if destination is already one of our shops
+    const allOurShops = [...OUR_REPAIR_SHOPS, ...OUR_BODY_SHOPS];
+    const isOurs = allOurShops.some((shop) =>
+      destinationAddress.toLowerCase().includes(shop.name.toLowerCase())
+    );
+
     if (isOurs) {
       return { flipEligible: false, conviniSellType: 'SOFT', nearestShop: null };
     }
 
     switch (destinationType) {
       case 'AUTO_REPAIR':
-        return { flipEligible: true, conviniSellType: 'SOFT', nearestShop: OUR_SHOPS[0].name };
+        return { flipEligible: true, conviniSellType: 'SOFT', nearestShop: OUR_REPAIR_SHOPS[0].name };
       case 'AUTO_BODY':
         return { flipEligible: false, conviniSellType: 'MEDIUM', nearestShop: null };
+      case 'RESIDENTIAL':
+      case 'UNKNOWN':
       default:
         return { flipEligible: false, conviniSellType: 'HARD', nearestShop: null };
     }
@@ -1560,25 +1882,27 @@ import { Cron } from '@nestjs/schedule';
 import { Redis } from 'ioredis';
 import { GooglePlacesService } from './google-places.service';
 import { FlipLogicService } from './flip-logic.service';
+import { TwilioOutboundService } from './twilio-outbound.service';
 import { NotificationService } from '../notifications/notification.service';
 import { ActiveJob } from '../adapters/adapter.interface';
+import { outboundCallLogs } from '../../db/schema';
 
 @Injectable()
 export class OutboundPollerCron {
   private readonly logger = new Logger(OutboundPollerCron.name);
-  private processedJobs = new Set<string>(); // Track already-processed job IDs
+  private processedJobIds = new Set<string>();
 
   constructor(
     private readonly redis: Redis,
     private readonly googlePlaces: GooglePlacesService,
     private readonly flipLogic: FlipLogicService,
+    private readonly twilioOutbound: TwilioOutboundService,
     private readonly notifications: NotificationService,
     private readonly db: any,
   ) {}
 
-  @Cron('*/60 * * * * *')
+  @Cron('*/60 * * * * *') // Every 60 seconds
   async checkForNewJobs(): Promise<void> {
-    // Get all cached jobs across all tenants
     const keys = await this.redis.keys('jobs:*');
 
     for (const key of keys) {
@@ -1589,25 +1913,141 @@ export class OutboundPollerCron {
       const tenantId = key.split(':')[2];
 
       for (const job of jobs) {
-        if (this.processedJobs.has(job.jobId)) continue;
+        // Only process new jobs we haven't seen before
+        if (this.processedJobIds.has(job.jobId)) continue;
+        // Only process jobs in early stages (just dispatched)
         if (job.status !== 'Waiting' && job.status !== 'Dispatched') continue;
 
-        this.processedJobs.add(job.jobId);
+        this.processedJobIds.add(job.jobId);
+        this.logger.log(`New job detected: ${job.jobId} - ${job.customerName}`);
 
         // Classify destination
         const classification = await this.googlePlaces.classifyAddress(job.destination);
         const decision = this.flipLogic.decide(classification.type, job.destination);
 
-        // Trigger outbound call via Thinkrr
-        this.logger.log(`New job ${job.jobId}: ${job.customerName} -> ${classification.businessName} (${classification.type}). Flip eligible: ${decision.flipEligible}`);
+        // Initiate outbound call via Twilio
+        try {
+          const callSid = await this.twilioOutbound.initiateConfirmationCall({
+            customerPhone: job.customerPhone.startsWith('+') ? job.customerPhone : `+1${job.customerPhone}`,
+            customerName: job.customerName,
+            vehicle: job.vehicle,
+            pickupLocation: 'your current location', // Simplified for TTS
+            destination: classification.businessName || job.destination,
+            destinationType: classification.type,
+            flipEligible: decision.flipEligible,
+            nearestOurShop: decision.nearestShop,
+            tenantId,
+          });
 
-        // TODO: Trigger Thinkrr outbound call API with job context and flip decision
-        // await this.thinkrrOutbound.triggerCall(tenantId, job, classification, decision);
+          // Log the outbound call
+          await this.db.insert(outboundCallLogs).values({
+            tenantId,
+            customerName: job.customerName,
+            customerPhone: job.customerPhone,
+            vehicle: job.vehicle,
+            originalDestination: job.destination,
+            destinationBusinessName: classification.businessName,
+            destinationType: classification.type,
+            flipEligible: decision.flipEligible,
+            nearestOurShop: decision.nearestShop,
+            conviniSellType: decision.conviniSellType,
+          });
+        } catch (error) {
+          this.logger.error(`Failed to initiate outbound call for job ${job.jobId}: ${error.message}`);
+        }
       }
+    }
+
+    // Prevent memory leak: clear processed IDs older than 24 hours
+    if (this.processedJobIds.size > 10000) {
+      this.processedJobIds.clear();
     }
   }
 }
 ```
+
+**packages/api/src/modules/outbound/webhooks/twilio-webhook.controller.ts**
+```typescript
+import { Controller, Post, Body, Query, Logger, HttpCode } from '@nestjs/common';
+import { NotificationService } from '../../notifications/notification.service';
+
+@Controller('webhooks/twilio')
+export class TwilioWebhookController {
+  private readonly logger = new Logger(TwilioWebhookController.name);
+
+  constructor(
+    private readonly db: any,
+    private readonly notifications: NotificationService,
+  ) {}
+
+  @Post('flip-response')
+  @HttpCode(200)
+  async handleFlipResponse(@Body() body: any, @Query('tenantId') tenantId: string, @Query('phone') phone: string) {
+    const digit = body.Digits;
+
+    if (digit === '1') {
+      // Customer accepted the flip
+      this.logger.log(`FLIP ACCEPTED by ${phone}`);
+
+      // TODO: Update Towbook destination via Playwright
+      // TODO: Update outbound_call_logs with flip_outcome = 'SUCCESS'
+
+      // Notify management
+      await this.notifications.sendFlipNotification(tenantId, phone, 'SUCCESS');
+
+      // Return TwiML confirmation
+      return '<Response><Say voice="Polly.Joanna">Wonderful! I\'ve updated your destination. Your driver has been notified. Have a great day!</Say></Response>';
+    } else {
+      // Customer declined
+      return '<Response><Say voice="Polly.Joanna">No problem at all. Your driver is headed to your original destination.</Say></Response>';
+    }
+  }
+
+  @Post('convini-response')
+  @HttpCode(200)
+  async handleConviniResponse(@Body() body: any, @Query('phone') phone: string) {
+    const digit = body.Digits;
+
+    if (digit === '1') {
+      // Send CONVINI SMS
+      // TODO: Send SMS via Twilio with CONVINI app download link
+      this.logger.log(`CONVINI link requested by ${phone}`);
+      return '<Response><Say voice="Polly.Joanna">Done! You\'ll receive a text with the download link in just a moment. Have a great day!</Say></Response>';
+    }
+
+    return '<Response><Say voice="Polly.Joanna">No problem. Your driver is on the way. Have a great day!</Say></Response>';
+  }
+
+  @Post('call-status')
+  @HttpCode(200)
+  async handleCallStatus(@Body() body: any) {
+    // Twilio sends call status updates (completed, no-answer, busy, failed)
+    this.logger.log(`Call ${body.CallSid} status: ${body.CallStatus}, duration: ${body.CallDuration}s`);
+
+    // TODO: Update outbound_call_logs with duration and recording URL
+    return { received: true };
+  }
+}
+```
+
+### Additional Environment Variables Required
+```
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_PHONE_NUMBER=+16145551234
+API_BASE_URL=https://api.ustowdispatch.com
+```
+
+### Acceptance Tests
+- New job detected in Redis triggers a Twilio outbound call
+- Google Places correctly classifies "Midas Auto Repair" as AUTO_REPAIR
+- Google Places correctly classifies "Caliber Collision" as AUTO_BODY
+- Google Places returns UNKNOWN for residential addresses
+- Flip-eligible calls include the offer TwiML
+- Non-flip calls skip directly to CONVINI offer
+- Twilio webhook for flip response (digit=1) triggers management notification
+- Outbound call log is created in database with all fields populated
+- System does not re-call a job it has already processed
 
 ---
 
