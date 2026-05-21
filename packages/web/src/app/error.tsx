@@ -1,4 +1,4 @@
-'use ' + 'client'; // Prevent client directive issues
+'use client';
 
 import { useEffect } from 'react';
 
