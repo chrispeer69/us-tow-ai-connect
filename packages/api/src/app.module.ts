@@ -7,6 +7,9 @@ import { AdaptersModule } from './modules/adapters/adapters.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SessionManagerModule } from './modules/session-manager/session-manager.module';
 import { JobPollerModule } from './modules/job-poller/job-poller.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
+import { AiConnectModule } from './modules/ai-connect/ai-connect.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -19,6 +22,9 @@ import { HealthController } from './modules/health/health.controller';
     NotificationsModule,
     SessionManagerModule,
     JobPollerModule,
+    TenantsModule,
+    AiConnectModule,
+    AdminModule,
   ],
   controllers: [HealthController],
 })
