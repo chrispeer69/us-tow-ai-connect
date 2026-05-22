@@ -15,12 +15,14 @@ import {
 import type { Response } from 'express';
 import {
   AgentConfigUpdateSchema,
+  ApiKeyCreateSchema,
   CompanyUpdateSchema,
   MemberCreateSchema,
   MemberUpdateSchema,
   RoutingRuleCreateSchema,
   SaveCredentialsSchema,
   type AgentConfigUpdateBody,
+  type ApiKeyCreateBody,
   type CompanyUpdateBody,
   type MemberCreateBody,
   type MemberUpdateBody,
@@ -127,6 +129,28 @@ export class AdminController {
   @Delete('members/:id')
   removeMember(@Req() req: AdminRequest, @Param('id') memberId: string) {
     return this.service.removeMember(req.tenantId, memberId);
+  }
+
+  // --- API keys ---
+  @Get('api-keys')
+  listApiKeys(@Req() req: AdminRequest) {
+    return this.service.listApiKeys(req.tenantId);
+  }
+
+  @Post('api-keys')
+  @UsePipes(new ZodValidationPipe(ApiKeyCreateSchema))
+  createApiKey(@Req() req: AdminRequest, @Body() body: ApiKeyCreateBody) {
+    return this.service.createApiKey(req.tenantId, body);
+  }
+
+  @Post('api-keys/:id/revoke')
+  revokeApiKey(@Req() req: AdminRequest, @Param('id') keyId: string) {
+    return this.service.revokeApiKey(req.tenantId, keyId);
+  }
+
+  @Delete('api-keys/:id')
+  deleteApiKey(@Req() req: AdminRequest, @Param('id') keyId: string) {
+    return this.service.deleteApiKey(req.tenantId, keyId);
   }
 
   // --- Agent config ---

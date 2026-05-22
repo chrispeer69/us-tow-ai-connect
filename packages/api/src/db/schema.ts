@@ -88,6 +88,22 @@ export const aiAgentConfigs = pgTable('ai_agent_configs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ============ TENANT API KEYS ============
+// Per-tenant API tokens issued from the admin dashboard. The plaintext key is
+// returned exactly once at creation; only its bcrypt-style hash is stored.
+export const tenantApiKeys = pgTable('tenant_api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  keyHash: varchar('key_hash', { length: 255 }).notNull().unique(),
+  keyPrefix: varchar('key_prefix', { length: 16 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
 // ============ TENANT MEMBERS ============
 export const tenantMembers = pgTable('tenant_members', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -172,9 +188,14 @@ export const tenantMembersRelations = relations(tenantMembers, ({ one }) => ({
   tenant: one(tenants, { fields: [tenantMembers.tenantId], references: [tenants.id] }),
 }));
 
+export const tenantApiKeysRelations = relations(tenantApiKeys, ({ one }) => ({
+  tenant: one(tenants, { fields: [tenantApiKeys.tenantId], references: [tenants.id] }),
+}));
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type TenantCredentialsRow = typeof tenantCredentials.$inferSelect;
 export type RoutingRuleRow = typeof routingRules.$inferSelect;
 export type InteractionLogRow = typeof interactionLogs.$inferSelect;
 export type AgentConfigRow = typeof aiAgentConfigs.$inferSelect;
 export type TenantMemberRow = typeof tenantMembers.$inferSelect;
+export type TenantApiKeyRow = typeof tenantApiKeys.$inferSelect;

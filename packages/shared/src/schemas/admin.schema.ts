@@ -39,6 +39,11 @@ export const MemberUpdateSchema = z.object({
 });
 export type MemberUpdateBody = z.infer<typeof MemberUpdateSchema>;
 
+export const ApiKeyCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+});
+export type ApiKeyCreateBody = z.infer<typeof ApiKeyCreateSchema>;
+
 const VehicleClassPolicy = z.enum(['AI_HANDLES', 'TRANSFER', 'NOT_OFFERED']);
 
 export const AgentConfigUpdateSchema = z.object({

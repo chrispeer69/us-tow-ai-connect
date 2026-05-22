@@ -5,11 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, desc, asc, like, gte, lte, SQL, sql } from 'drizzle-orm';
+import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   aiAgentConfigs,
   interactionLogs,
   routingRules,
+  tenantApiKeys,
   tenantCredentials,
   tenantMembers,
   tenants,
@@ -18,6 +21,7 @@ import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { AdapterFactory } from '../adapters/adapter.factory';
 import type {
   AgentConfigUpdateBody,
+  ApiKeyCreateBody,
   CompanyUpdateBody,
   MemberCreateBody,
   MemberUpdateBody,
@@ -509,6 +513,97 @@ export class AdminService {
       }
     }
     await this.db.delete(tenantMembers).where(eq(tenantMembers.id, memberId));
+    return { status: 'success' };
+  }
+
+  // ─── api keys ───────────────────────────────────────────────────────
+  async listApiKeys(tenantId: string) {
+    await this.ensureTenant(tenantId);
+    const rows = await this.db
+      .select({
+        id: tenantApiKeys.id,
+        name: tenantApiKeys.name,
+        keyPrefix: tenantApiKeys.keyPrefix,
+        createdAt: tenantApiKeys.createdAt,
+        lastUsedAt: tenantApiKeys.lastUsedAt,
+        revokedAt: tenantApiKeys.revokedAt,
+      })
+      .from(tenantApiKeys)
+      .where(eq(tenantApiKeys.tenantId, tenantId))
+      .orderBy(desc(tenantApiKeys.createdAt));
+    return rows;
+  }
+
+  async createApiKey(tenantId: string, body: ApiKeyCreateBody) {
+    await this.ensureTenant(tenantId);
+    const secret = randomBytes(24).toString('hex');
+    const plaintext = `usk_${secret}`;
+    const keyPrefix = plaintext.slice(0, 12);
+    const keyHash = await bcrypt.hash(plaintext, 10);
+    const inserted = await this.db
+      .insert(tenantApiKeys)
+      .values({
+        tenantId,
+        name: body.name,
+        keyHash,
+        keyPrefix,
+      })
+      .returning({
+        id: tenantApiKeys.id,
+        name: tenantApiKeys.name,
+        keyPrefix: tenantApiKeys.keyPrefix,
+        createdAt: tenantApiKeys.createdAt,
+        lastUsedAt: tenantApiKeys.lastUsedAt,
+        revokedAt: tenantApiKeys.revokedAt,
+      });
+    return { ...inserted[0], plaintext };
+  }
+
+  async revokeApiKey(tenantId: string, keyId: string) {
+    const target = (
+      await this.db
+        .select()
+        .from(tenantApiKeys)
+        .where(
+          and(eq(tenantApiKeys.id, keyId), eq(tenantApiKeys.tenantId, tenantId)),
+        )
+        .limit(1)
+    )[0];
+    if (!target) {
+      throw new NotFoundException({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'API key not found',
+      });
+    }
+    if (target.revokedAt) {
+      return { status: 'success' };
+    }
+    await this.db
+      .update(tenantApiKeys)
+      .set({ revokedAt: new Date() })
+      .where(eq(tenantApiKeys.id, keyId));
+    return { status: 'success' };
+  }
+
+  async deleteApiKey(tenantId: string, keyId: string) {
+    const target = (
+      await this.db
+        .select()
+        .from(tenantApiKeys)
+        .where(
+          and(eq(tenantApiKeys.id, keyId), eq(tenantApiKeys.tenantId, tenantId)),
+        )
+        .limit(1)
+    )[0];
+    if (!target) {
+      throw new NotFoundException({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'API key not found',
+      });
+    }
+    await this.db.delete(tenantApiKeys).where(eq(tenantApiKeys.id, keyId));
     return { status: 'success' };
   }
 
