@@ -15,9 +15,11 @@ import {
 import type { Response } from 'express';
 import {
   AgentConfigUpdateSchema,
+  CompanyUpdateSchema,
   RoutingRuleCreateSchema,
   SaveCredentialsSchema,
   type AgentConfigUpdateBody,
+  type CompanyUpdateBody,
   type RoutingRuleCreateBody,
   type SaveCredentialsBody,
 } from '@ustow/shared';
@@ -83,6 +85,18 @@ export class AdminController {
       return toCsv(result.items as unknown as Array<Record<string, unknown>>);
     }
     return result;
+  }
+
+  // --- Company ---
+  @Get('company')
+  getCompany(@Req() req: AdminRequest) {
+    return this.service.getCompany(req.tenantId);
+  }
+
+  @Put('company')
+  @UsePipes(new ZodValidationPipe(CompanyUpdateSchema))
+  updateCompany(@Req() req: AdminRequest, @Body() body: CompanyUpdateBody) {
+    return this.service.updateCompany(req.tenantId, body);
   }
 
   // --- Agent config ---

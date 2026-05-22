@@ -12,6 +12,7 @@ import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { AdapterFactory } from '../adapters/adapter.factory';
 import type {
   AgentConfigUpdateBody,
+  CompanyUpdateBody,
   RoutingRuleCreateBody,
   SaveCredentialsBody,
 } from '@ustow/shared';
@@ -319,6 +320,52 @@ export class AdminService {
       });
     }
     return this.getAgentConfig(tenantId);
+  }
+
+  // ─── company ────────────────────────────────────────────────────────
+  async getCompany(tenantId: string) {
+    await this.ensureTenant(tenantId);
+    const row = (
+      await this.db
+        .select({
+          id: tenants.id,
+          companyName: tenants.companyName,
+          ownerEmail: tenants.ownerEmail,
+          timezone: tenants.timezone,
+          targetSoftwareType: tenants.targetSoftwareType,
+          assignedPhoneNumber: tenants.assignedPhoneNumber,
+          thinkrrAgentId: tenants.thinkrrAgentId,
+          apiKeyPrefix: tenants.apiKeyPrefix,
+          isActive: tenants.isActive,
+          createdAt: tenants.createdAt,
+          updatedAt: tenants.updatedAt,
+        })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1)
+    )[0];
+    if (!row) {
+      throw new NotFoundException({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'Tenant not found',
+      });
+    }
+    return row;
+  }
+
+  async updateCompany(tenantId: string, body: CompanyUpdateBody) {
+    await this.ensureTenant(tenantId);
+    await this.db
+      .update(tenants)
+      .set({
+        companyName: body.companyName,
+        ownerEmail: body.ownerEmail,
+        timezone: body.timezone,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, tenantId));
+    return this.getCompany(tenantId);
   }
 
   // ─── helpers ────────────────────────────────────────────────────────

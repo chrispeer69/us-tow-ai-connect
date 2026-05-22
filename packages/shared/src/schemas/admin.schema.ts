@@ -15,6 +15,13 @@ export const RoutingRuleCreateSchema = z.object({
 });
 export type RoutingRuleCreateBody = z.infer<typeof RoutingRuleCreateSchema>;
 
+export const CompanyUpdateSchema = z.object({
+  companyName: z.string().min(1).max(255),
+  ownerEmail: z.string().email().max(255),
+  timezone: z.string().min(1).max(50),
+});
+export type CompanyUpdateBody = z.infer<typeof CompanyUpdateSchema>;
+
 const VehicleClassPolicy = z.enum(['AI_HANDLES', 'TRANSFER', 'NOT_OFFERED']);
 
 export const AgentConfigUpdateSchema = z.object({
