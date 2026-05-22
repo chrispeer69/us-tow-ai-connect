@@ -24,11 +24,13 @@ export function Select({ value, onValueChange, children }: SelectProps) {
     if (child.type === SelectTrigger) {
       trigger = child;
     } else if (child.type === SelectContent) {
-      React.Children.forEach(child.props.children, (item) => {
+      const contentProps = child.props as { children?: React.ReactNode };
+      React.Children.forEach(contentProps.children, (item) => {
         if (React.isValidElement(item) && item.type === SelectItem) {
+          const itemProps = item.props as { value: string | number; children?: React.ReactNode };
           items.push({
-            value: String(item.props.value),
-            label: typeof item.props.children === 'string' ? item.props.children : String(item.props.value),
+            value: String(itemProps.value),
+            label: typeof itemProps.children === 'string' ? itemProps.children : String(itemProps.value),
           });
         }
       });
