@@ -22,6 +22,23 @@ export const CompanyUpdateSchema = z.object({
 });
 export type CompanyUpdateBody = z.infer<typeof CompanyUpdateSchema>;
 
+export const MemberRole = z.enum(['OWNER', 'ADMIN', 'MEMBER', 'VIEWER']);
+export type MemberRoleType = z.infer<typeof MemberRole>;
+
+export const MemberCreateSchema = z.object({
+  email: z.string().email().max(255),
+  name: z.string().max(255).optional(),
+  role: MemberRole.default('MEMBER'),
+});
+export type MemberCreateBody = z.infer<typeof MemberCreateSchema>;
+
+export const MemberUpdateSchema = z.object({
+  name: z.string().max(255).optional(),
+  role: MemberRole.optional(),
+  status: z.enum(['ACTIVE', 'INVITED', 'SUSPENDED']).optional(),
+});
+export type MemberUpdateBody = z.infer<typeof MemberUpdateSchema>;
+
 const VehicleClassPolicy = z.enum(['AI_HANDLES', 'TRANSFER', 'NOT_OFFERED']);
 
 export const AgentConfigUpdateSchema = z.object({

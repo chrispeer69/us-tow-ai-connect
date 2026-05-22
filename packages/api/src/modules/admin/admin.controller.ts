@@ -16,10 +16,14 @@ import type { Response } from 'express';
 import {
   AgentConfigUpdateSchema,
   CompanyUpdateSchema,
+  MemberCreateSchema,
+  MemberUpdateSchema,
   RoutingRuleCreateSchema,
   SaveCredentialsSchema,
   type AgentConfigUpdateBody,
   type CompanyUpdateBody,
+  type MemberCreateBody,
+  type MemberUpdateBody,
   type RoutingRuleCreateBody,
   type SaveCredentialsBody,
 } from '@ustow/shared';
@@ -97,6 +101,32 @@ export class AdminController {
   @UsePipes(new ZodValidationPipe(CompanyUpdateSchema))
   updateCompany(@Req() req: AdminRequest, @Body() body: CompanyUpdateBody) {
     return this.service.updateCompany(req.tenantId, body);
+  }
+
+  // --- Members ---
+  @Get('members')
+  listMembers(@Req() req: AdminRequest) {
+    return this.service.listMembers(req.tenantId);
+  }
+
+  @Post('members')
+  @UsePipes(new ZodValidationPipe(MemberCreateSchema))
+  inviteMember(@Req() req: AdminRequest, @Body() body: MemberCreateBody) {
+    return this.service.inviteMember(req.tenantId, body);
+  }
+
+  @Put('members/:id')
+  updateMember(
+    @Req() req: AdminRequest,
+    @Param('id') memberId: string,
+    @Body(new ZodValidationPipe(MemberUpdateSchema)) body: MemberUpdateBody,
+  ) {
+    return this.service.updateMember(req.tenantId, memberId, body);
+  }
+
+  @Delete('members/:id')
+  removeMember(@Req() req: AdminRequest, @Param('id') memberId: string) {
+    return this.service.removeMember(req.tenantId, memberId);
   }
 
   // --- Agent config ---

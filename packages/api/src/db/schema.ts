@@ -88,6 +88,20 @@ export const aiAgentConfigs = pgTable('ai_agent_configs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ============ TENANT MEMBERS ============
+export const tenantMembers = pgTable('tenant_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  email: varchar('email', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }),
+  role: varchar('role', { length: 20 }).notNull().default('MEMBER'),
+  status: varchar('status', { length: 20 }).notNull().default('INVITED'),
+  invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
+});
+
 // ============ OUTBOUND CALL LOGS (Session 9 — included for schema completeness) ============
 export const outboundCallLogs = pgTable('outbound_call_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -154,8 +168,13 @@ export const aiAgentConfigsRelations = relations(aiAgentConfigs, ({ one }) => ({
   tenant: one(tenants, { fields: [aiAgentConfigs.tenantId], references: [tenants.id] }),
 }));
 
+export const tenantMembersRelations = relations(tenantMembers, ({ one }) => ({
+  tenant: one(tenants, { fields: [tenantMembers.tenantId], references: [tenants.id] }),
+}));
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type TenantCredentialsRow = typeof tenantCredentials.$inferSelect;
 export type RoutingRuleRow = typeof routingRules.$inferSelect;
 export type InteractionLogRow = typeof interactionLogs.$inferSelect;
 export type AgentConfigRow = typeof aiAgentConfigs.$inferSelect;
+export type TenantMemberRow = typeof tenantMembers.$inferSelect;

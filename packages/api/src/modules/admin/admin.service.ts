@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, eq, desc, asc, like, gte, lte, SQL, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
@@ -6,6 +11,7 @@ import {
   interactionLogs,
   routingRules,
   tenantCredentials,
+  tenantMembers,
   tenants,
 } from '../../db/schema';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
@@ -13,6 +19,8 @@ import { AdapterFactory } from '../adapters/adapter.factory';
 import type {
   AgentConfigUpdateBody,
   CompanyUpdateBody,
+  MemberCreateBody,
+  MemberUpdateBody,
   RoutingRuleCreateBody,
   SaveCredentialsBody,
 } from '@ustow/shared';
@@ -366,6 +374,142 @@ export class AdminService {
       })
       .where(eq(tenants.id, tenantId));
     return this.getCompany(tenantId);
+  }
+
+  // ─── members ────────────────────────────────────────────────────────
+  async listMembers(tenantId: string) {
+    await this.ensureTenant(tenantId);
+    return this.db
+      .select()
+      .from(tenantMembers)
+      .where(eq(tenantMembers.tenantId, tenantId))
+      .orderBy(asc(tenantMembers.invitedAt));
+  }
+
+  async inviteMember(tenantId: string, body: MemberCreateBody) {
+    await this.ensureTenant(tenantId);
+    const normalizedEmail = body.email.trim().toLowerCase();
+    const dup = (
+      await this.db
+        .select({ id: tenantMembers.id })
+        .from(tenantMembers)
+        .where(
+          and(
+            eq(tenantMembers.tenantId, tenantId),
+            sql`lower(${tenantMembers.email}) = ${normalizedEmail}`,
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (dup) {
+      throw new ConflictException({
+        status: 'error',
+        code: 'MEMBER_EXISTS',
+        message: 'A member with that email already exists',
+      });
+    }
+    const inserted = await this.db
+      .insert(tenantMembers)
+      .values({
+        tenantId,
+        email: normalizedEmail,
+        name: body.name ?? null,
+        role: body.role,
+        status: 'INVITED',
+      })
+      .returning();
+    return inserted[0];
+  }
+
+  async updateMember(tenantId: string, memberId: string, body: MemberUpdateBody) {
+    const target = (
+      await this.db
+        .select()
+        .from(tenantMembers)
+        .where(
+          and(eq(tenantMembers.id, memberId), eq(tenantMembers.tenantId, tenantId)),
+        )
+        .limit(1)
+    )[0];
+    if (!target) {
+      throw new NotFoundException({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+    if (target.role === 'OWNER' && body.role && body.role !== 'OWNER') {
+      const otherOwners = (
+        await this.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(tenantMembers)
+          .where(
+            and(
+              eq(tenantMembers.tenantId, tenantId),
+              eq(tenantMembers.role, 'OWNER'),
+            ),
+          )
+      )[0]?.count ?? 0;
+      if (otherOwners <= 1) {
+        throw new ConflictException({
+          status: 'error',
+          code: 'LAST_OWNER',
+          message: 'Cannot demote the last owner',
+        });
+      }
+    }
+    const patch: Record<string, unknown> = {};
+    if (body.name !== undefined) patch.name = body.name;
+    if (body.role !== undefined) patch.role = body.role;
+    if (body.status !== undefined) patch.status = body.status;
+    if (Object.keys(patch).length === 0) return target;
+    const updated = await this.db
+      .update(tenantMembers)
+      .set(patch)
+      .where(eq(tenantMembers.id, memberId))
+      .returning();
+    return updated[0];
+  }
+
+  async removeMember(tenantId: string, memberId: string) {
+    const target = (
+      await this.db
+        .select()
+        .from(tenantMembers)
+        .where(
+          and(eq(tenantMembers.id, memberId), eq(tenantMembers.tenantId, tenantId)),
+        )
+        .limit(1)
+    )[0];
+    if (!target) {
+      throw new NotFoundException({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'Member not found',
+      });
+    }
+    if (target.role === 'OWNER') {
+      const otherOwners = (
+        await this.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(tenantMembers)
+          .where(
+            and(
+              eq(tenantMembers.tenantId, tenantId),
+              eq(tenantMembers.role, 'OWNER'),
+            ),
+          )
+      )[0]?.count ?? 0;
+      if (otherOwners <= 1) {
+        throw new ConflictException({
+          status: 'error',
+          code: 'LAST_OWNER',
+          message: 'Cannot remove the last owner',
+        });
+      }
+    }
+    await this.db.delete(tenantMembers).where(eq(tenantMembers.id, memberId));
+    return { status: 'success' };
   }
 
   // ─── helpers ────────────────────────────────────────────────────────
