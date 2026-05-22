@@ -19,7 +19,8 @@
       "Bash(pnpm dev *)",
       "Bash(curl -s -o /dev/null -w \"API_HTTP %{http_code}\\\\n\" http://localhost:3001/health)",
       "Bash(curl -s http://localhost:3001/health)",
-      "Bash(curl -s -o /dev/null -w \"WEB_HTTP %{http_code}\\\\n\" http://localhost:3000/admin/integrations)"
+      "Bash(curl -s -o /dev/null -w \"WEB_HTTP %{http_code}\\\\n\" http://localhost:3000/admin/integrations)",
+      "Bash(node *)"
     ]
   }
 }
