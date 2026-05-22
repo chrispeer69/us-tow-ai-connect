@@ -88,6 +88,26 @@ export const aiAgentConfigs = pgTable('ai_agent_configs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ============ TENANT BILLING ============
+// One row per tenant. Tracks the current plan + period and a stripe customer
+// pointer if/when the Stripe integration is wired up. The Billing screen
+// reads usage by joining against interaction_logs.
+export const tenantBilling = pgTable('tenant_billing', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  plan: varchar('plan', { length: 20 }).notNull().default('TRIAL'),
+  status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
+  currentPeriodStart: timestamp('current_period_start', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }).notNull(),
+  stripeCustomerId: varchar('stripe_customer_id', { length: 100 }),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ============ TENANT API KEYS ============
 // Per-tenant API tokens issued from the admin dashboard. The plaintext key is
 // returned exactly once at creation; only its bcrypt-style hash is stored.
@@ -192,6 +212,10 @@ export const tenantApiKeysRelations = relations(tenantApiKeys, ({ one }) => ({
   tenant: one(tenants, { fields: [tenantApiKeys.tenantId], references: [tenants.id] }),
 }));
 
+export const tenantBillingRelations = relations(tenantBilling, ({ one }) => ({
+  tenant: one(tenants, { fields: [tenantBilling.tenantId], references: [tenants.id] }),
+}));
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type TenantCredentialsRow = typeof tenantCredentials.$inferSelect;
 export type RoutingRuleRow = typeof routingRules.$inferSelect;
@@ -199,3 +223,4 @@ export type InteractionLogRow = typeof interactionLogs.$inferSelect;
 export type AgentConfigRow = typeof aiAgentConfigs.$inferSelect;
 export type TenantMemberRow = typeof tenantMembers.$inferSelect;
 export type TenantApiKeyRow = typeof tenantApiKeys.$inferSelect;
+export type TenantBillingRow = typeof tenantBilling.$inferSelect;

@@ -16,6 +16,7 @@ import type { Response } from 'express';
 import {
   AgentConfigUpdateSchema,
   ApiKeyCreateSchema,
+  BillingPlanUpdateSchema,
   CompanyUpdateSchema,
   MemberCreateSchema,
   MemberUpdateSchema,
@@ -23,6 +24,7 @@ import {
   SaveCredentialsSchema,
   type AgentConfigUpdateBody,
   type ApiKeyCreateBody,
+  type BillingPlanUpdateBody,
   type CompanyUpdateBody,
   type MemberCreateBody,
   type MemberUpdateBody,
@@ -151,6 +153,18 @@ export class AdminController {
   @Delete('api-keys/:id')
   deleteApiKey(@Req() req: AdminRequest, @Param('id') keyId: string) {
     return this.service.deleteApiKey(req.tenantId, keyId);
+  }
+
+  // --- Billing ---
+  @Get('billing')
+  getBilling(@Req() req: AdminRequest) {
+    return this.service.getBilling(req.tenantId);
+  }
+
+  @Put('billing/plan')
+  @UsePipes(new ZodValidationPipe(BillingPlanUpdateSchema))
+  updateBillingPlan(@Req() req: AdminRequest, @Body() body: BillingPlanUpdateBody) {
+    return this.service.updateBillingPlan(req.tenantId, body);
   }
 
   // --- Agent config ---

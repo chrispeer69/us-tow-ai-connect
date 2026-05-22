@@ -44,6 +44,14 @@ export const ApiKeyCreateSchema = z.object({
 });
 export type ApiKeyCreateBody = z.infer<typeof ApiKeyCreateSchema>;
 
+export const BillingPlan = z.enum(['TRIAL', 'STARTER', 'PRO', 'ENTERPRISE']);
+export type BillingPlanType = z.infer<typeof BillingPlan>;
+
+export const BillingPlanUpdateSchema = z.object({
+  plan: BillingPlan,
+});
+export type BillingPlanUpdateBody = z.infer<typeof BillingPlanUpdateSchema>;
+
 const VehicleClassPolicy = z.enum(['AI_HANDLES', 'TRANSFER', 'NOT_OFFERED']);
 
 export const AgentConfigUpdateSchema = z.object({

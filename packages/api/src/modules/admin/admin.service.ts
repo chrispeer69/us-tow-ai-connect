@@ -13,6 +13,7 @@ import {
   interactionLogs,
   routingRules,
   tenantApiKeys,
+  tenantBilling,
   tenantCredentials,
   tenantMembers,
   tenants,
@@ -22,6 +23,8 @@ import { AdapterFactory } from '../adapters/adapter.factory';
 import type {
   AgentConfigUpdateBody,
   ApiKeyCreateBody,
+  BillingPlanType,
+  BillingPlanUpdateBody,
   CompanyUpdateBody,
   MemberCreateBody,
   MemberUpdateBody,
@@ -34,6 +37,65 @@ const DEFAULT_TENANT_FALLBACK = {
   companyName: 'Default Tenant',
   ownerEmail: 'owner@example.com',
   timezone: 'America/New_York',
+};
+
+const PLAN_DETAILS: Record<
+  BillingPlanType,
+  {
+    label: string;
+    monthlyPriceCents: number;
+    includedCalls: number;
+    overageCentsPerCall: number;
+    features: string[];
+  }
+> = {
+  TRIAL: {
+    label: 'Trial',
+    monthlyPriceCents: 0,
+    includedCalls: 200,
+    overageCentsPerCall: 0,
+    features: [
+      '200 AI-handled calls / month',
+      'Single integration',
+      'Email support',
+    ],
+  },
+  STARTER: {
+    label: 'Starter',
+    monthlyPriceCents: 19900,
+    includedCalls: 1000,
+    overageCentsPerCall: 25,
+    features: [
+      '1,000 AI-handled calls / month',
+      'Up to 3 integrations',
+      'Standard routing rules',
+      'Email support',
+    ],
+  },
+  PRO: {
+    label: 'Pro',
+    monthlyPriceCents: 49900,
+    includedCalls: 5000,
+    overageCentsPerCall: 18,
+    features: [
+      '5,000 AI-handled calls / month',
+      'Unlimited integrations',
+      'Advanced routing & flip logic',
+      'Priority support',
+    ],
+  },
+  ENTERPRISE: {
+    label: 'Enterprise',
+    monthlyPriceCents: 0,
+    includedCalls: 0,
+    overageCentsPerCall: 0,
+    features: [
+      'Custom call volume',
+      'Dedicated success engineer',
+      'SLA & SSO',
+      'Custom contract',
+    ],
+  },
 };
 
 @Injectable()
@@ -605,6 +667,89 @@ export class AdminService {
     }
     await this.db.delete(tenantApiKeys).where(eq(tenantApiKeys.id, keyId));
     return { status: 'success' };
+  }
+
+  // ─── billing ────────────────────────────────────────────────────────
+  async getBilling(tenantId: string) {
+    await this.ensureTenant(tenantId);
+    const billing = await this.ensureBilling(tenantId);
+
+    const totalRow = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(interactionLogs)
+      .where(
+        and(
+          eq(interactionLogs.tenantId, tenantId),
+          gte(interactionLogs.interactionTime, billing.currentPeriodStart),
+          lte(interactionLogs.interactionTime, billing.currentPeriodEnd),
+        ),
+      );
+    const periodCalls = totalRow[0]?.count ?? 0;
+
+    const minutesRow = await this.db
+      .select({
+        seconds: sql<number>`coalesce(sum(${interactionLogs.durationSeconds}), 0)::int`,
+      })
+      .from(interactionLogs)
+      .where(
+        and(
+          eq(interactionLogs.tenantId, tenantId),
+          gte(interactionLogs.interactionTime, billing.currentPeriodStart),
+          lte(interactionLogs.interactionTime, billing.currentPeriodEnd),
+        ),
+      );
+    const periodSeconds = minutesRow[0]?.seconds ?? 0;
+
+    return {
+      plan: billing.plan as BillingPlanType,
+      status: billing.status,
+      currentPeriodStart: billing.currentPeriodStart,
+      currentPeriodEnd: billing.currentPeriodEnd,
+      cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+      stripeCustomerId: billing.stripeCustomerId,
+      planDetails: PLAN_DETAILS[billing.plan as BillingPlanType] ?? PLAN_DETAILS.TRIAL,
+      usage: {
+        calls: periodCalls,
+        minutes: Math.round(periodSeconds / 60),
+        seconds: periodSeconds,
+      },
+    };
+  }
+
+  async updateBillingPlan(tenantId: string, body: BillingPlanUpdateBody) {
+    await this.ensureTenant(tenantId);
+    await this.ensureBilling(tenantId);
+    await this.db
+      .update(tenantBilling)
+      .set({ plan: body.plan, updatedAt: new Date() })
+      .where(eq(tenantBilling.tenantId, tenantId));
+    return this.getBilling(tenantId);
+  }
+
+  private async ensureBilling(tenantId: string) {
+    const existing = (
+      await this.db
+        .select()
+        .from(tenantBilling)
+        .where(eq(tenantBilling.tenantId, tenantId))
+        .limit(1)
+    )[0];
+    if (existing) return existing;
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
+    const inserted = await this.db
+      .insert(tenantBilling)
+      .values({
+        tenantId,
+        plan: 'TRIAL',
+        status: 'ACTIVE',
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+      })
+      .returning();
+    return inserted[0];
   }
 
   // ─── helpers ────────────────────────────────────────────────────────
