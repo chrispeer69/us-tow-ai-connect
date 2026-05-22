@@ -19,6 +19,10 @@ export default function AdminLayout({
           <Link href="/admin/routing" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Routing</Link>
           <Link href="/admin/calls" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Calls</Link>
           <Link href="/admin/ai-agent" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">AI Agent</Link>
+          <Link href="/admin/company" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Company</Link>
+          <Link href="/admin/members" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Members</Link>
+          <Link href="/admin/api-keys" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">API Keys</Link>
+          <Link href="/admin/billing" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Billing</Link>
         </nav>
       </aside>
 
