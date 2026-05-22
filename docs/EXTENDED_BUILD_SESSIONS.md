@@ -322,3 +322,426 @@ After completing the core 10 sessions in `BUILD_SESSIONS.md`, build the extended
 10. Session 20 (Billing) — Final piece to monetize
 
 Total: 20 sessions to fully match and exceed TowPilot AI's feature set.
+## SESSION 21: COMMAND CENTER (DISPATCH BOARD)
+
+### Objective
+Build the main Command Center page — the primary view users land on after login. It mirrors and exceeds TowPilot AI's Command Center, displaying all dispatch jobs in tabbed views (Waiting / Active / Completed / Cancelled) with real-time updates from the cached job data in Redis.
+
+### Files to Create
+
+**packages/api/src/modules/command-center/command-center.controller.ts**
+```typescript
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CommandCenterService } from './command-center.service';
+
+@Controller('v1/admin/command-center')
+@UseGuards(JwtAuthGuard)
+export class CommandCenterController {
+  constructor(private readonly service: CommandCenterService) {}
+
+  @Get('jobs')
+  async getJobs(
+    @Req() req: any,
+    @Query('status') status: string,
+    @Query('search') search: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '50',
+  ) {
+    return this.service.getJobsByStatus(req.tenantId, {
+      status,
+      search,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  }
+
+  @Get('summary')
+  async getSummary(@Req() req: any) {
+    return this.service.getStatusSummary(req.tenantId);
+  }
+}
+```
+
+**packages/api/src/modules/command-center/command-center.service.ts**
+```typescript
+import { Injectable } from '@nestjs/common';
+import { Redis } from 'ioredis';
+import { ActiveJob } from '../adapters/adapter.interface';
+
+@Injectable()
+export class CommandCenterService {
+  constructor(private readonly redis: Redis) {}
+
+  async getJobsByStatus(tenantId: string, opts: { status: string; search: string; page: number; limit: number }) {
+    const jobsJson = await this.redis.get(`jobs:towbook:${tenantId}`);
+    if (!jobsJson) return { items: [], total: 0, totalPages: 0 };
+
+    let jobs: ActiveJob[] = JSON.parse(jobsJson);
+
+    // Filter by status tab
+    if (opts.status && opts.status !== 'ALL') {
+      const statusMap: Record<string, string[]> = {
+        WAITING: ['Waiting'],
+        ACTIVE: ['Dispatched', 'Enroute', 'On Scene', 'Being Towed'],
+        COMPLETED: ['Destination Arrival', 'Completed'],
+        CANCELLED: ['Cancelled'],
+      };
+      const allowedStatuses = statusMap[opts.status] || [];
+      jobs = jobs.filter((j) => allowedStatuses.includes(j.status));
+    }
+
+    // Search
+    if (opts.search) {
+      const q = opts.search.toLowerCase();
+      jobs = jobs.filter((j) =>
+        j.jobId.includes(q) ||
+        j.customerName.toLowerCase().includes(q) ||
+        j.customerPhone.includes(q) ||
+        j.vehicle.toLowerCase().includes(q)
+      );
+    }
+
+    const total = jobs.length;
+    const totalPages = Math.ceil(total / opts.limit);
+    const start = (opts.page - 1) * opts.limit;
+    const items = jobs.slice(start, start + opts.limit);
+
+    return { items, total, totalPages };
+  }
+
+  async getStatusSummary(tenantId: string) {
+    const jobsJson = await this.redis.get(`jobs:towbook:${tenantId}`);
+    if (!jobsJson) return { waiting: 0, active: 0, completed: 0, cancelled: 0 };
+
+    const jobs: ActiveJob[] = JSON.parse(jobsJson);
+    return {
+      waiting: jobs.filter((j) => j.status === 'Waiting').length,
+      active: jobs.filter((j) => ['Dispatched', 'Enroute', 'On Scene', 'Being Towed'].includes(j.status)).length,
+      completed: jobs.filter((j) => ['Destination Arrival', 'Completed'].includes(j.status)).length,
+      cancelled: jobs.filter((j) => j.status === 'Cancelled').length,
+    };
+  }
+}
+```
+
+**packages/web/src/app/admin/command-center/page.tsx**
+```typescript
+'use client';
+import { useState, useEffect } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Search, MapPin, User, Truck } from 'lucide-react';
+
+const STATUS_BADGES: Record<string, string> = {
+  Waiting: 'bg-amber-500/15 text-amber-400 border-amber-500/40',
+  Dispatched: 'bg-blue-500/15 text-blue-400 border-blue-500/40',
+  Enroute: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/40',
+  'On Scene': 'bg-violet-500/15 text-violet-400 border-violet-500/40',
+  'Being Towed': 'bg-indigo-500/15 text-indigo-400 border-indigo-500/40',
+  'Destination Arrival': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40',
+  Completed: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40',
+  Cancelled: 'bg-red-500/15 text-red-400 border-red-500/40',
+};
+
+export default function CommandCenterPage() {
+  const [activeTab, setActiveTab] = useState('ACTIVE');
+  const [search, setSearch] = useState('');
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>({});
+
+  useEffect(() => {
+    fetchJobs();
+    fetchSummary();
+    const interval = setInterval(() => {
+      fetchJobs();
+      fetchSummary();
+    }, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, [activeTab, search]);
+
+  const fetchJobs = async () => {
+    const params = new URLSearchParams({ status: activeTab, search });
+    const res = await fetch(`/api/v1/admin/command-center/jobs?${params}`);
+    const data = await res.json();
+    setJobs(data.items);
+  };
+
+  const fetchSummary = async () => {
+    const res = await fetch('/api/v1/admin/command-center/summary');
+    const data = await res.json();
+    setSummary(data);
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Command Center</h1>
+        <p className="text-muted-foreground">Real-time view of all dispatch jobs.</p>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by job ID, customer, phone, vehicle"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="WAITING">
+            Waiting <Badge className="ml-2">{summary.waiting || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="ACTIVE">
+            Active <Badge className="ml-2">{summary.active || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="COMPLETED">
+            Completed <Badge className="ml-2">{summary.completed || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="CANCELLED">
+            Cancelled <Badge className="ml-2">{summary.cancelled || 0}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeTab} className="space-y-3 mt-6">
+          {jobs.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center text-muted-foreground">
+                No jobs found in this view.
+              </CardContent>
+            </Card>
+          ) : (
+            jobs.map((job) => (
+              <Card key={job.jobId} className="hover:border-blue-500/40 transition-all">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono text-muted-foreground">#{job.jobId}</span>
+                      <Badge className={`${STATUS_BADGES[job.status] || ''} border text-xs`}>
+                        {job.status}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{job.eta}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-medium">{job.customerName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-muted-foreground" />
+                      <span>{job.vehicle}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-muted-foreground" />
+                      <span className="truncate">{job.destination}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">Driver</div>
+                      <div className="font-medium">{job.driverName || 'Unassigned'}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+```
+
+### Acceptance Tests
+- Loads instantly (under 500ms) since data comes from Redis cache
+- Tab counts update in real-time (refresh every 30s)
+- Search filters across job ID, customer, phone, vehicle
+- Status badges color-coded correctly
+- Auto-refreshes every 30 seconds without user action
+
+---
+
+## SESSION 22: DIGITAL DISPATCH (AI AUTO-ACCEPT ENGINE)
+
+### Objective
+Build the Digital Dispatch feature that automatically accepts or declines incoming motor club dispatch requests based on rules the user defines. This is TowPilot's premium "Digital Dispatch" feature — we're building it natively without paywalling it behind a demo call.
+
+### Files to Create
+
+**packages/api/src/db/schema.ts** — Add tables:
+```typescript
+export const dispatchRules = pgTable('dispatch_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  ruleName: varchar('rule_name', { length: 255 }).notNull(),
+  motorClubId: uuid('motor_club_id').references(() => accounts.id),
+  serviceTypes: jsonb('service_types').notNull(), // ['Towing', 'Jump Start', etc.]
+  vehicleClasses: jsonb('vehicle_classes').notNull(), // ['LIGHT', 'MEDIUM', etc.]
+  serviceAreaRadius: integer('service_area_radius_miles').notNull().default(25),
+  minPriceAccept: integer('min_price_accept_cents'),
+  timeOfDayStart: varchar('time_of_day_start', { length: 5 }), // '07:00'
+  timeOfDayEnd: varchar('time_of_day_end', { length: 5 }), // '23:00'
+  daysOfWeek: jsonb('days_of_week').notNull(), // ['MON', 'TUE', etc.]
+  action: varchar('action', { length: 20 }).notNull(), // ACCEPT, DECLINE, REVIEW
+  isActive: boolean('is_active').notNull().default(true),
+  isLearningMode: boolean('is_learning_mode').notNull().default(true),
+  priority: integer('priority').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const dispatchDecisions = pgTable('dispatch_decisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  callRequestId: varchar('call_request_id', { length: 100 }).notNull(),
+  requestDate: timestamp('request_date').notNull(),
+  motorClubAccount: varchar('motor_club_account', { length: 255 }),
+  serviceNeeded: varchar('service_needed', { length: 100 }),
+  vehicle: varchar('vehicle', { length: 255 }),
+  decisionAction: varchar('decision_action', { length: 20 }).notNull(),
+  decisionReason: text('decision_reason'),
+  matchedRuleId: uuid('matched_rule_id').references(() => dispatchRules.id),
+  eta: varchar('eta', { length: 50 }),
+  wasOverridden: boolean('was_overridden').notNull().default(false),
+  isLearningOnly: boolean('is_learning_only').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+```
+
+**packages/api/src/modules/digital-dispatch/digital-dispatch.service.ts**
+```typescript
+import { Injectable, Logger } from '@nestjs/common';
+import { eq, and } from 'drizzle-orm';
+import { dispatchRules, dispatchDecisions } from '../../db/schema';
+
+interface IncomingRequest {
+  callRequestId: string;
+  motorClub: string;
+  serviceType: string;
+  vehicleClass: string;
+  pickupAddress: string;
+  destinationAddress: string;
+  proposedPrice: number;
+  requestTime: Date;
+}
+
+@Injectable()
+export class DigitalDispatchService {
+  private readonly logger = new Logger(DigitalDispatchService.name);
+
+  constructor(private readonly db: any) {}
+
+  async evaluateRequest(tenantId: string, request: IncomingRequest): Promise<{
+    action: 'ACCEPT' | 'DECLINE' | 'REVIEW';
+    reason: string;
+    matchedRuleId: string | null;
+    isLearningOnly: boolean;
+  }> {
+    const rules = await this.db.query.dispatchRules.findMany({
+      where: and(
+        eq(dispatchRules.tenantId, tenantId),
+        eq(dispatchRules.isActive, true)
+      ),
+      orderBy: [dispatchRules.priority],
+    });
+
+    for (const rule of rules) {
+      if (this.requestMatchesRule(request, rule)) {
+        // Log the decision
+        await this.db.insert(dispatchDecisions).values({
+          tenantId,
+          callRequestId: request.callRequestId,
+          requestDate: request.requestTime,
+          motorClubAccount: request.motorClub,
+          serviceNeeded: request.serviceType,
+          vehicle: request.vehicleClass,
+          decisionAction: rule.action,
+          decisionReason: `Matched rule: ${rule.ruleName}`,
+          matchedRuleId: rule.id,
+          isLearningOnly: rule.isLearningMode,
+        });
+
+        return {
+          action: rule.action,
+          reason: `Matched rule: ${rule.ruleName}`,
+          matchedRuleId: rule.id,
+          isLearningOnly: rule.isLearningMode,
+        };
+      }
+    }
+
+    // No matching rule — default to REVIEW
+    await this.db.insert(dispatchDecisions).values({
+      tenantId,
+      callRequestId: request.callRequestId,
+      requestDate: request.requestTime,
+      motorClubAccount: request.motorClub,
+      serviceNeeded: request.serviceType,
+      vehicle: request.vehicleClass,
+      decisionAction: 'REVIEW',
+      decisionReason: 'No matching rule found',
+      matchedRuleId: null,
+      isLearningOnly: true,
+    });
+
+    return {
+      action: 'REVIEW',
+      reason: 'No matching rule found',
+      matchedRuleId: null,
+      isLearningOnly: true,
+    };
+  }
+
+  private requestMatchesRule(request: IncomingRequest, rule: any): boolean {
+    // Service type match
+    if (!rule.serviceTypes.includes(request.serviceType)) return false;
+
+    // Vehicle class match
+    if (!rule.vehicleClasses.includes(request.vehicleClass)) return false;
+
+    // Time of day match
+    const hour = request.requestTime.getHours();
+    const minute = request.requestTime.getMinutes();
+    const currentTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    if (rule.timeOfDayStart && currentTime < rule.timeOfDayStart) return false;
+    if (rule.timeOfDayEnd && currentTime > rule.timeOfDayEnd) return false;
+
+    // Day of week match
+    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const today = days[request.requestTime.getDay()];
+    if (!rule.daysOfWeek.includes(today)) return false;
+
+    // Price match
+    if (rule.minPriceAccept && request.proposedPrice < rule.minPriceAccept) return false;
+
+    return true;
+  }
+}
+```
+
+**packages/web/src/app/admin/digital-dispatch/page.tsx** — Two-tab UI:
+- **Decisions:** Table of all evaluated requests with their decision (ACCEPT / DECLINE / REVIEW), matched rule, and a "Learning Mode" badge if `isLearningOnly`
+- **Rules:** CRUD for dispatch rules with form fields for motor club, service types, vehicle classes, service area, min price, time of day, days of week, action, learning mode toggle
+
+### Learning Mode Behavior
+When a rule is in Learning Mode, the system logs the decision but does NOT actually accept or decline the dispatch in Towbook. The user sees what the AI would have done, can review the decisions, and once confident, toggles Learning Mode OFF to enable real auto-accept/decline.
+
+### Acceptance Tests
+- Rule evaluation matches in <100ms
+- Decision log shows all evaluated requests with full audit trail
+- Learning mode never actually accepts/declines in Towbook
+- When Learning Mode is OFF, the adapter calls `acceptDispatch()` or `declineDispatch()` on Towbook
+
+---
+
+## EXTENDED BUILD ORDER
+
+After completing Sessions 1-20, build in this order:
+1. **Session 21:** Command Center (highest user-visible feature)
+2. **Session 22:** Digital Dispatch (premium AI feature)
+
+Total: 22 sessions to build a product that beats TowPilot AI feature-for-feature with the added moat of outbound calls, CONVINI integration, AAA portal, native zero-latency mode, and the US Tow Alliance ownership opportunity.
