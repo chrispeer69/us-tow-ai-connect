@@ -20,6 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Card, CardContent } from '@/components/ui/card';
+import { api, DEFAULT_TENANT_ID, TENANT_HEADER } from '@/lib/utils';
 
 const CATEGORIES = [
   'ALL',
@@ -52,9 +53,6 @@ interface LogsResponse {
   total: number;
   totalPages: number;
 }
-
-const TENANT_HEADER = 'x-tenant-id';
-const DEFAULT_TENANT_ID = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || 'default-tenant';
 
 export default function CallLogsPage() {
   const [logs, setLogs] = useState<InteractionLog[]>([]);
@@ -90,11 +88,9 @@ export default function CallLogsPage() {
     setError(null);
     try {
       const params = buildParams({ page: String(page), limit: '25' });
-      const res = await fetch(`/api/v1/admin/interaction-logs?${params.toString()}`, {
-        headers: { [TENANT_HEADER]: DEFAULT_TENANT_ID },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: LogsResponse = await res.json();
+      const data = await api<LogsResponse>(
+        `/v1/admin/interaction-logs?${params.toString()}`,
+      );
       setLogs(data.items);
       setTotalPages(data.totalPages);
       setTotal(data.total);
@@ -106,6 +102,8 @@ export default function CallLogsPage() {
   }
 
   async function exportCsv() {
+    // CSV needs a Blob for the download — api() only returns JSON/text, so we
+    // keep a direct fetch here but reuse the shared tenant constants.
     const params = buildParams({ format: 'csv' });
     const res = await fetch(`/api/v1/admin/interaction-logs?${params.toString()}`, {
       headers: { [TENANT_HEADER]: DEFAULT_TENANT_ID },

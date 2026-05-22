@@ -20,12 +20,14 @@ export function cn(...inputs: ClassValue[]): string {
   return inputs.map(flatten).filter(Boolean).join(' ');
 }
 
-const TENANT_HEADER = 'x-tenant-id';
+export const TENANT_HEADER = 'x-tenant-id';
 // Must be a real tenants.id UUID. The API's tenants.id column is uuid-typed,
 // so a non-UUID fallback (e.g. the previous "default-tenant" literal) causes
 // every admin endpoint to 500 on the Postgres cast. Mirrors the API-side
 // DEFAULT_ADMIN_TENANT_ID env default — keep in sync with .env.example.
-const DEFAULT_TENANT_ID =
+// Exported so pages that can't use api() (e.g. blob downloads) reuse the
+// same value instead of declaring their own.
+export const DEFAULT_TENANT_ID =
   process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
 
 export async function api<T = unknown>(
