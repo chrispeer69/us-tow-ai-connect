@@ -76,6 +76,18 @@ pnpm dev:api   # Starts NestJS on port 3001
 pnpm dev:web   # Starts Next.js on port 3000
 ```
 
+## Build & Workspace Dependencies
+
+`@ustow/api` and `@ustow/web` both depend on `@ustow/shared` (workspace package) for Zod schemas and shared types. `@ustow/shared` is consumed as its compiled output (`packages/shared/dist/`), **not** its source, so the API and web builds will fail with `TS2305: Module '"@ustow/shared"' has no exported member ...` whenever the dist is missing or stale.
+
+To prevent that, the `api` and `web` packages have a `prebuild` script:
+
+```json
+"prebuild": "pnpm --filter @ustow/shared build"
+```
+
+pnpm runs `prebuild` automatically before `build`, so `pnpm --filter @ustow/api build` (or `... @ustow/web build`) will always compile `@ustow/shared` first. **Rule:** any time you add a new export to `packages/shared/src/`, do not run `tsc` directly in `packages/api` — use `pnpm --filter @ustow/api build` so the prebuild hook fires, or run `pnpm --filter @ustow/shared build` manually first.
+
 ## Build Sessions
 
 This project is built in 10 sequential sessions. See `docs/BUILD_SESSIONS.md` for the exact engineering prompts for each session.
