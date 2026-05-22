@@ -63,6 +63,17 @@ Note: the BUILD_SESSIONS.md document was updated upstream during this build. The
 - **CSV export.** Same endpoint with `format=csv` query param; server streams `text/csv` with RFC 4180 escaping.
 - **Default date range.** Front-end does not send `date_from`/`date_to` unless the user picks them; server defaults to "all time" for the export and last 30 days for the table.
 
+## Session 3 — Thinkrr Knowledge Pack URL + webhook receiver
+
+- **Knowledge endpoint route.** `GET /public/knowledge/:tenantId/profile.md`. No auth guard. UUID-shaped tenantId enforced at the controller so the DB lookup is short-circuited on malformed paths. `Cache-Control: public, max-age=60` so Thinkrr's scraper sees current data within a minute.
+- **Tenant resolution in webhook.** The spec only checks `tenants.assignedPhoneNumber` against `to_number || agent_phone`. I extended the resolver to fall through three options in priority order: explicit `tenant_id` in payload → `thinkrrAgentId` match on `agent_id` → assigned phone number. This means a tenant can be matched even if Thinkrr changes its phone-number field shape, and it lets ops include `tenant_id` directly when configuring the webhook URL per tenant.
+- **Shared-secret verification via URL path.** Thinkrr cannot attach auth headers to webhooks, so the secret is carried in the path: `POST /webhooks/thinkrr/:secret/call-completed`. The Thinkrr dashboard is configured with `${PUBLIC_BASE_URL}/webhooks/thinkrr/${THINKRR_WEBHOOK_SECRET}/call-completed`. The handler does a `timingSafeEqual` against `process.env.THINKRR_WEBHOOK_SECRET`. If the env var is unset (dev), any value in the slot is accepted and a warning is logged. An unsecured legacy route `/webhooks/thinkrr/call-completed` is retained but returns 401 if the env var IS set, to nudge ops toward the secured URL.
+  - **Earlier draft** used HMAC-SHA256 of the raw request body in `X-Webhook-Signature`, which required `express.json({ verify })` in `main.ts` to preserve `req.rawBody`. That `main.ts` change was reverted intentionally by the founder/linter, so the URL-secret approach was adopted instead — same goal (mutual secret), no global body-parser changes, and resilient to Thinkrr's lack of header support.
+- **Webhook acceptance shape.** Returns HTTP 200 with `{ received: true, accepted: <bool>, reason?: <string> }` even for unknown tenants — Thinkrr should not retry on our miscategorization, only on real 5xx failures.
+- **Summary truncation.** `interactionLogs.summary` is `text`, but I trim to 2000 chars to bound row size in case Thinkrr sends a full transcript when only a summary was requested.
+- **`KnowledgeEndpointService.generateTenantMarkdown` fallback for activeRule.** Uses the related rows if available (loaded via `with: { routingRules }`), and falls back to a direct `routing_rules` query ordered by `priority_order` when none of the related rows have `is_active_now = true`. Matches the resolution that `AiConnectService.getActiveTransferRoute` performs for the authenticated `/v1/ai-connect/transfer-route` endpoint.
+- **Body parser change.** Switched `main.ts` from Nest's default body parser to an explicit `express.json({ verify })` so the raw body is preserved on `req.rawBody` for HMAC verification. `urlencoded` is also re-registered so Twilio form-encoded webhooks (Session 9) continue to work.
+
 ## Items flagged for human review
 
 1. Towbook DOM selectors for active rows are inherited from the spec but were not verified against a live account. Verify before production traffic.
