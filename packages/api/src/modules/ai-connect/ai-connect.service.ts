@@ -21,6 +21,7 @@ import { NotificationService } from '../notifications/notification.service';
 import { TwilioOutboundService } from '../outbound/twilio-outbound.service';
 import { DriverPingsService, type LatestDriverPing } from '../driver-pings/driver-pings.service';
 import { GoogleDistanceMatrixService } from '../driver-pings/google-distance-matrix.service';
+import { TrackingService } from '../tracking/tracking.service';
 
 const DEFAULT_ETA_MINS = 45;
 // Pings older than this are ignored when picking "the nearest available
@@ -71,6 +72,7 @@ export class AiConnectService {
     private readonly twilio: TwilioOutboundService,
     private readonly driverPings: DriverPingsService,
     private readonly distanceMatrix: GoogleDistanceMatrixService,
+    private readonly tracking: TrackingService,
   ) {}
 
   async getActiveTransferRoute(tenantId: string) {
@@ -309,7 +311,31 @@ export class AiConnectService {
         .where(eq(dispatchRequests.id, row.id));
     }
 
-    return { dispatch_request_id: row.id, status: row.status, dispatcher_notified: notified };
+    // Session 24: auto-create a tracking link + SMS the caller. Best-effort —
+    // a tracking failure should never block dispatch creation (which the
+    // human dispatcher is also notified about via SMS independently).
+    let tracking: { tracking_url: string; token: string; expires_at: string } | null = null;
+    try {
+      const created = await this.tracking.create(tenantId, {
+        callerPhone: body.caller_phone,
+        callerName: body.caller_name,
+        jobId: row.id,
+      });
+      tracking = {
+        tracking_url: created.tracking_url,
+        token: created.token,
+        expires_at: created.expires_at,
+      };
+    } catch (err) {
+      this.logger.warn(`Tracking link creation failed: ${(err as Error).message}`);
+    }
+
+    return {
+      dispatch_request_id: row.id,
+      status: row.status,
+      dispatcher_notified: notified,
+      tracking,
+    };
   }
 
   private async notifyDispatcher(

@@ -16,6 +16,7 @@ import { KnowledgeEndpointModule } from './modules/knowledge-endpoint/knowledge-
 import { WebhookReceiverModule } from './modules/webhook-receiver/webhook-receiver.module';
 import { OutboundModule } from './modules/outbound/outbound.module';
 import { OutboundSmsModule } from './modules/outbound-sms/outbound-sms.module';
+import { TrackingModule } from './modules/tracking/tracking.module';
 import { DriverPingsModule } from './modules/driver-pings/driver-pings.module';
 import { DriverJobsModule } from './modules/driver-jobs/driver-jobs.module';
 import { ConviniModule } from './modules/convini/convini.module';
@@ -40,6 +41,7 @@ import { HealthController } from './modules/health/health.controller';
     WebhookReceiverModule,
     OutboundModule,
     OutboundSmsModule,
+    TrackingModule,
     DriverPingsModule,
     DriverJobsModule,
     ConviniModule,
