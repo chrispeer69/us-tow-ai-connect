@@ -2768,3 +2768,133 @@ Admin (`x-tenant-id` placeholder):
 6. The driver PWA's service worker registers in production
    (HTTPS-gated), and "Add to Home Screen" works from iOS Safari /
    Android Chrome with the manifest icon.
+
+## Session 24: Caller Communication (2026-05-23)
+
+Lands two tightly-coupled features on a shared outbound-SMS substrate:
+public live-tracking links that we SMS to every caller after dispatch
+creation, and an SMS-driven manager flip-accept workflow that lets
+managers approve flagged Digital Dispatch jobs by texting `YES`,
+`NO REASON …`, or `YES NOTE …` to our Twilio number.
+
+### Files added
+
+**Shared SMS module** (`packages/api/src/modules/outbound-sms/`):
+- `twilio-sms.service.ts` — `sendSms` (idempotent, 60 s dedupe),
+  `sendBulk`, `recordInbound`, `updateStatusBySid`. Falls back to
+  log-only when Twilio env is unset.
+- `outbound-sms.module.ts` (global), `sms-webhook.controller.ts`
+  (`POST /webhooks/twilio/sms-status-callback`), `sms-log.controller.ts`
+  (`GET /v1/admin/sms-log` admin-auth).
+- `twilio-sms.service.spec.ts` (2 tests).
+
+**Tracking module** (`packages/api/src/modules/tracking/`):
+- `tracking.service.ts` — 12-char URL-safe tokens (excludes `0OIl1`),
+  24 h expiry, public view joins `driver_pings` for live driver coords.
+- `tracking.controller.ts` — `POST /v1/tracking/create` (tenant key),
+  `GET /v1/tracking/:token` (public), `POST /v1/tracking/:token/update`
+  (tenant key).
+- `tracking.service.spec.ts` (2 tests).
+
+**Flip-accept module** (`packages/api/src/modules/flip-accept/`):
+- `flip-accept-parser.ts` — YES / YES NOTE / NO REASON / unknown.
+- `flip-accept.service.ts` — `createRequest`, `applyInboundReply`,
+  `expirePending`, `manualOverride`, `listHistory`. Calls
+  `AaaPortalAdapter.acceptJob` / `declineJob` (currently logged stubs;
+  status flips to `auto_dispatched` on success, `approved` on stub).
+- `flip-accept.controller.ts` — `POST /v1/flip-accept/request`,
+  `GET /v1/flip-accept/history`, `POST /v1/flip-accept/manual-override`,
+  plus a second controller for `POST /webhooks/twilio/sms-inbound`.
+- `flip-accept-expiry.cron.ts` — sweeps `pending → expired` every 30 s
+  (5 min default window).
+- `digital-dispatch-bridge.ts` — polls `dispatch_decisions` every 30 s
+  for new `decision = 'flagged'` rows that don't yet have a flip request
+  and creates one. Keeps Digital Dispatch (parallel session) decoupled.
+- `flip-accept-parser.spec.ts` (6 tests),
+  `flip-accept.service.spec.ts` (4 tests).
+
+**Web**:
+- `packages/web/src/app/track/[token]/page.tsx` + `tracking-client.tsx`
+  + `tracking-map.tsx` — mobile-first public tracking page with map,
+  polls every 10 s, sticky dispatch-call CTA.
+- `packages/web/src/app/admin/sms-log/page.tsx` — paginated audit log
+  with direction/status/date filters and expandable detail rows.
+
+**Migrations**:
+- `0009_caller_communication.sql` — `tracking_links`, `sms_messages`,
+  `flip_accept_requests` tables; `tenants.manager_phones`,
+  `tenants.sms_enabled`, `tenants.tracking_url_base` columns.
+- `0010_seed_caller_comm.sql` — seeds Roadside's `manager_phones =
+  ["+17408129489"]`, `sms_enabled = true`. Lives in a separate file
+  to avoid touching the production-seed session's tenant-zero seed.
+
+**Docs**:
+- `docs/CALLER_COMMUNICATION.md` — tracking flow + SMS substrate.
+- `docs/FLIP_ACCEPT.md` — protocol, parser, adapter integration,
+  manager phone setup, override flow.
+- `docs/ASSUMPTIONS.md` — Session 24 section.
+
+### Files changed
+
+- `packages/api/src/db/schema.ts` — added `trackingLinks`, `smsMessages`,
+  `flipAcceptRequests` Drizzle tables + types + tenant columns.
+- `packages/api/src/db/migrations/meta/_journal.json` — 0009 + 0010
+  entries.
+- `packages/api/src/app.module.ts` — registered `OutboundSmsModule`,
+  `TrackingModule`, `FlipAcceptModule`.
+- `packages/api/src/modules/ai-connect/ai-connect.module.ts` — imports
+  `TrackingModule`.
+- `packages/api/src/modules/ai-connect/ai-connect.service.ts` —
+  `createDispatchRequest()` now auto-creates a tracking link and SMSes
+  the caller, returning a `tracking` block in the response. Wrapped in
+  try/catch so a tracking failure never blocks dispatch creation.
+
+### Endpoints introduced
+
+Tenant-authenticated (`X-Tenant-API-Key`):
+- `POST /v1/tracking/create`
+- `POST /v1/tracking/:token/update`
+- `GET  /v1/flip-accept/history`
+- `POST /v1/flip-accept/manual-override`
+
+Public (no auth):
+- `GET  /v1/tracking/:token` — used by the caller-facing tracking page.
+
+Server-to-server (legacy `x-api-key`):
+- `POST /v1/flip-accept/request` — Digital Dispatch bridge calls this
+  internally; can also be hit directly during onboarding.
+
+Admin (`x-tenant-id`):
+- `GET  /v1/admin/sms-log`
+
+Webhooks (`X-Twilio-Signature` validated):
+- `POST /webhooks/twilio/sms-status-callback`
+- `POST /webhooks/twilio/sms-inbound`
+
+### Test Result
+
+- 95 vitest tests pass (was 81 — +14 new: 6 parser, 4 inbound-reply,
+  2 tracking-token, 2 SMS fallback/dedupe).
+- `pnpm --filter @ustow/api tsc --noEmit` — green.
+- `pnpm --filter @ustow/web tsc --noEmit` — green.
+
+### Acceptance Criteria
+
+1. `POST /v1/ai-connect/dispatch-request` creates a `tracking_links`
+   row, sends an SMS via `TwilioSmsService`, and returns a populated
+   `tracking` object even when Twilio is unconfigured (status =
+   `'log_only'`).
+2. `GET /v1/tracking/:token` renders without auth and returns
+   `expired: true` once `expires_at` passes.
+3. A manager texting `YES NOTE BRING DOLLY` to our Twilio number flips
+   the matching pending flip-accept row to `auto_dispatched` (or
+   `approved` if the adapter stub didn't acknowledge), records the
+   notes, and TwiML-replies "Got it. Job accepted for AAA #…".
+4. `FlipAcceptExpiryCron` flips rows past `expires_at` to `expired`
+   on its next 30 s tick.
+5. `DigitalDispatchBridge` cron creates a `flip_accept_requests` row
+   for each new `dispatch_decisions` row with `decision = 'flagged'`,
+   without importing any Digital Dispatch internals.
+6. The admin `/admin/sms-log` page paginates SMS history with
+   direction/status/date filters and exposes Twilio SID + delivery
+   timestamps in the expanded detail row.

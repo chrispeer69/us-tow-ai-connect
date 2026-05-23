@@ -138,6 +138,19 @@ for the full runbook):
 | `GET  /v1/driver/jobs/queue?driver_phone=`        | Driver's assigned but inactive jobs (Session 25)     |
 | `GET  /v1/driver/jobs/history?driver_phone=`      | Driver's completed jobs, last 30 days (Session 25)   |
 | `POST /v1/driver/jobs/:job_id/status?driver_phone=` | Driver state transition (Session 25)              |
+| `POST /v1/tracking/create`                        | Allocate tracking token + SMS caller (Session 24)    |
+| `POST /v1/tracking/:token/update`                 | Patch tracking status / driver / ETA (Session 24)    |
+| `GET  /v1/flip-accept/history`                    | Flip-accept request history (Session 24)             |
+| `POST /v1/flip-accept/manual-override`            | Approve/decline a pending flip request (Session 24)  |
+
+### Public + webhook endpoints (Session 24)
+
+| Verb / Path                                       | Purpose                                              |
+|---------------------------------------------------|------------------------------------------------------|
+| `GET  /v1/tracking/:token`                        | Public tracking-status read — used by `/track/<token>` |
+| `POST /v1/flip-accept/request`                    | Server-to-server flip-accept creation (legacy x-api-key) |
+| `POST /webhooks/twilio/sms-status-callback`       | Twilio outbound delivery callback                    |
+| `POST /webhooks/twilio/sms-inbound`               | Twilio inbound replies for the flip-accept workflow  |
 
 ### Admin endpoints (placeholder `x-tenant-id` header)
 
@@ -150,6 +163,7 @@ for the full runbook):
 | `GET /v1/admin/driver-pings/latest`          | Latest ping per driver (Session 23)                    |
 | `GET /v1/admin/driver-pings/:phone/history`  | Per-driver ping history (Session 23)                   |
 | `GET /v1/admin/convini/incoming`             | Convini SMS landing pad (Session 25)                   |
+| `GET /v1/admin/sms-log`                      | Inbound/outbound SMS audit log (Session 24)            |
 | `GET /v1/admin/command-center/*`             | Sessions 21 dispatch board — see [COMMAND_CENTER](docs/COMMAND_CENTER.md) |
 | `GET /v1/admin/digital-dispatch/*`           | Sessions 22 rules engine — see [DIGITAL_DISPATCH](docs/DIGITAL_DISPATCH.md) |
 
@@ -160,6 +174,8 @@ for the full runbook):
 | `/admin/command-center`         | Live dispatch board (map + table + side drawer)      |
 | `/admin/digital-dispatch`       | Rules / decisions / stats / test sandbox             |
 | `/admin/drivers-live`           | Live drivers map — table + map + history side panel (Session 25) |
+| `/admin/sms-log`                | Inbound/outbound SMS audit log (Session 24)          |
+| `/track/<token>`                | Public caller-facing tracking page (Session 24)      |
 
 ### Driver App (Session 25)
 

@@ -30,6 +30,8 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AdminDigestModule } from './modules/admin-digest/admin-digest.module';
 import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { TenantOnboardingModule } from './modules/tenant-onboarding/tenant-onboarding.module';
+import { BrandingModule } from './modules/branding/branding.module';
+import { KnowledgePackModule } from './modules/knowledge-pack/knowledge-pack.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -61,6 +63,8 @@ import { HealthController } from './modules/health/health.controller';
     AdminDigestModule,
     AdminSystemModule,
     TenantOnboardingModule,
+    BrandingModule,
+    KnowledgePackModule,
   ],
   controllers: [HealthController],
   providers: [

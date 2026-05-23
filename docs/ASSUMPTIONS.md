@@ -622,3 +622,79 @@ sidebar component. To avoid clobbering its in-flight edits, this session
 links to `/admin/drivers-live` via the existing parallel route only — the
 sidebar nav entry is left for the Command Center session to add when it
 next touches the nav file. The page is fully reachable by direct URL.
+
+---
+
+## Session 24 — Caller Communication (2026-05-23)
+
+### `manager_phones` is a JSONB array of E.164 strings, not a relational table
+
+`tenants.manager_phones` could have been a `tenant_manager_phones` table
+keyed by tenant_id. It's stored as a JSONB array on the tenants row
+instead because (a) the list is small (≤5 phones per tenant for the
+foreseeable future), (b) every read path needs the whole list (no row-level
+queries make sense), and (c) the admin UI for editing it doesn't exist
+yet — a single column is easier to seed and inspect. Convert to a proper
+table the first time per-phone metadata (escalation order, on-call hours)
+matters.
+
+### `tracking_url_base` defaults to the API origin, not the web app
+
+Default is `https://ustowapi-production.up.railway.app/track` because at
+seed time the public web domain isn't decided yet, and the API runtime
+already has SSL + a stable URL. Flip to the web origin via a one-line
+SQL `UPDATE tenants` once the customer-facing domain is set up. See
+`docs/CALLER_COMMUNICATION.md` for the command.
+
+### Tracking-link tokens use a 56-char alphabet excluding `0OIl1`
+
+Generating 12-char tokens from `[A-Za-z0-9]` minus the easily-confused
+glyphs gives ~`56^12 ≈ 9e20` combinations — plenty for the foreseeable
+caller base, and human-friendly if a caller reads the URL aloud. Implemented
+in `TrackingService.generateToken` with retry-on-collision (5 attempts).
+
+### Caller phone is exposed as last-4 only on the public tracking page
+
+`GET /v1/tracking/:token` returns `caller_phone_last4` (or null), never the
+full E.164 number. The page is public; we shouldn't leak the caller's
+phone to anyone who guesses or shares the token. The full phone stays in
+the DB for our internal dispatch use.
+
+### Public tracking page status refresh is 10 s (not Socket.io)
+
+The Command Center uses websockets because it needs sub-second multi-job
+visibility for dispatchers. The caller-facing page only needs to feel
+fresh; a 10 s poll with `cache: 'no-store'` keeps the page stateless and
+the public web bundle small (no socket.io-client on a per-caller page).
+
+### Sidebar nav entry for `/admin/sms-log` is intentionally not added
+
+The admin sidebar component is owned by parallel sessions (Command Center
+Terminal C). Adding `SMS Log` to the nav would require editing that file.
+Following the same pattern as Session 25's `/admin/drivers-live`, the
+page is reachable by direct URL until the nav owner adds the link.
+
+### Inbound SMS resolves the request by manager-phone tenant match first, then newest pending
+
+The first single-tenant rollout (Roadside) makes the resolver simple: try
+to match the sender's E.164 against any tenant's `manager_phones`, then
+fall back to the newest pending row across all tenants. Tighten to a strict
+tenant match the first time we onboard a second AAA-style tenant.
+
+### Adapter `acceptJob` / `declineJob` are still logged stubs
+
+The AAA Salesforce community DOM hasn't been captured for the Accept /
+Decline buttons (called out by Session 22's `AAA_ADAPTER_BUILD.md`).
+Flip-accept calls `acceptJob` anyway; it logs a `BLOCKERS.md` entry if
+the call doesn't actually move the work order. The flip-accept row's
+status reflects this distinction: `auto_dispatched` when the adapter
+acknowledges, `approved` when only the audit row updated.
+
+### Tracking creation never blocks dispatch creation
+
+`AiConnectService.createDispatchRequest()` wraps the tracking-create call
+in a try/catch. A tracking failure (DB blip, Twilio outage, malformed
+phone) emits a warning log and the dispatch row still returns successfully
+to Thinkrr. The human dispatcher still gets their SMS notification
+independently, so the caller-facing tracking link is a value-add, not a
+critical path.
