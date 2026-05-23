@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { BrandingProvider } from '@/components/branding/BrandingProvider';
+import { ImpersonationBanner } from '@/components/branding/ImpersonationBanner';
 
 const DEFAULT_TENANT_ID =
   process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID ||
@@ -13,6 +14,7 @@ export default function AdminLayout({
 }) {
   return (
     <BrandingProvider tenantId={DEFAULT_TENANT_ID} source="admin">
+      <ImpersonationBanner />
       <div className="flex min-h-screen bg-zinc-950 text-zinc-50">
         {/* Sidebar */}
         <aside className="w-64 border-r border-zinc-800 bg-zinc-900 p-6 flex flex-col gap-6">

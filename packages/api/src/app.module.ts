@@ -32,6 +32,7 @@ import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { TenantOnboardingModule } from './modules/tenant-onboarding/tenant-onboarding.module';
 import { BrandingModule } from './modules/branding/branding.module';
 import { KnowledgePackModule } from './modules/knowledge-pack/knowledge-pack.module';
+import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -65,6 +66,7 @@ import { HealthController } from './modules/health/health.controller';
     TenantOnboardingModule,
     BrandingModule,
     KnowledgePackModule,
+    SuperAdminModule,
   ],
   controllers: [HealthController],
   providers: [
