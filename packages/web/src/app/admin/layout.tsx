@@ -25,6 +25,8 @@ export default function AdminLayout({
           <Link href="/admin/members" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Members</Link>
           <Link href="/admin/api-keys" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">API Keys</Link>
           <Link href="/admin/billing" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Billing</Link>
+          <Link href="/admin/audit-log" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Audit Log</Link>
+          <Link href="/admin/digest" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Digest</Link>
         </nav>
       </aside>
 

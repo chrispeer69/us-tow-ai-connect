@@ -22,6 +22,7 @@ import { DriverPingsModule } from './modules/driver-pings/driver-pings.module';
 import { DriverJobsModule } from './modules/driver-jobs/driver-jobs.module';
 import { ConviniModule } from './modules/convini/convini.module';
 import { RateLimitingModule } from './modules/rate-limiting/rate-limiting.module';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -49,6 +50,7 @@ import { HealthController } from './modules/health/health.controller';
     DriverJobsModule,
     ConviniModule,
     RateLimitingModule,
+    AuditLogModule,
   ],
   controllers: [HealthController],
 })
