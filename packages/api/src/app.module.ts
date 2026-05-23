@@ -15,7 +15,10 @@ import { DigitalDispatchModule } from './modules/digital-dispatch/digital-dispat
 import { KnowledgeEndpointModule } from './modules/knowledge-endpoint/knowledge-endpoint.module';
 import { WebhookReceiverModule } from './modules/webhook-receiver/webhook-receiver.module';
 import { OutboundModule } from './modules/outbound/outbound.module';
+import { OutboundSmsModule } from './modules/outbound-sms/outbound-sms.module';
 import { DriverPingsModule } from './modules/driver-pings/driver-pings.module';
+import { DriverJobsModule } from './modules/driver-jobs/driver-jobs.module';
+import { ConviniModule } from './modules/convini/convini.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -36,7 +39,10 @@ import { HealthController } from './modules/health/health.controller';
     KnowledgeEndpointModule,
     WebhookReceiverModule,
     OutboundModule,
+    OutboundSmsModule,
     DriverPingsModule,
+    DriverJobsModule,
+    ConviniModule,
   ],
   controllers: [HealthController],
 })
