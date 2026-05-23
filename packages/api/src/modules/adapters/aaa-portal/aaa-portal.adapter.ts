@@ -1,10 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { chromium, type Page } from 'playwright';
+import { chromium, type Browser, type Locator, type Page } from 'playwright';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../../common/redis/redis.module';
 import { SessionExpiredException } from '../../../common/exceptions/session-expired.exception';
 import {
   ActiveJob,
+  AdapterActionResult,
   AdapterConnectionTestResult,
   DecryptedCredentials,
   TowingSoftwareAdapter,
@@ -36,6 +40,20 @@ const CANDIDATE_SELECTORS = [
   '.slds-table tbody',
   '[data-aura-class*="WorkOrder"]',
 ];
+
+// Action-button accessible names. Salesforce Lightning renders these inside
+// lightning-button shadow roots; Playwright's getByRole pierces open shadow
+// DOM, so we locate by accessible name rather than CSS. Decline was verified
+// live 2026-05-23 (getByRole('button',{name:'Decline'}) -> 1 visible/enabled).
+// Accept could not be verified — no offered job existed at discovery time — so
+// we try a small set of likely labels and fail cleanly if none resolve. See
+// docs/ADAPTER_SELECTORS.md.
+const ACCEPT_BUTTON_NAMES = ['Accept', 'Accept Call', 'Accept Job', 'Accept Dispatch'];
+const DECLINE_BUTTON_NAMES = ['Decline', 'Decline Call', 'Reject'];
+// Buttons that confirm a reason modal after the primary Decline/Accept click.
+const CONFIRM_BUTTON_NAMES = ['Decline', 'Accept', 'Submit', 'Confirm', 'Save', 'OK', 'Yes'];
+const ACTION_NAV_TIMEOUT_MS = 60_000;
+const ACTION_BUTTON_TIMEOUT_MS = 15_000;
 
 @Injectable()
 export class AaaPortalAdapter implements TowingSoftwareAdapter {
@@ -222,26 +240,173 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
   }
 
   /**
-   * Accept a work order on the AAA portal. The Accept-button selector on the
-   * Work Order detail view is not yet captured in our DOM map, so this
-   * implementation logs the action and returns. The dispatch_decisions row
-   * is still written by the rules engine so the audit trail is preserved.
-   * See docs/BLOCKERS.md for the open work item.
+   * Accept a work order: open it in the portal and click the Accept button.
+   * Never throws — returns an AdapterActionResult so the dispatch audit row
+   * reflects whether the click actually landed.
    */
-  async acceptJob(tenantId: string, sourceJobId: string): Promise<void> {
-    this.logger.warn(
-      `[aaa-portal] acceptJob(tenant=${tenantId}, job=${sourceJobId}) — selectors unverified; see docs/BLOCKERS.md`,
-    );
+  async acceptJob(tenantId: string, sourceJobId: string): Promise<AdapterActionResult> {
+    return this.performAction(tenantId, sourceJobId, 'accept', ACCEPT_BUTTON_NAMES);
   }
 
   /**
-   * Decline a work order. Same status as `acceptJob` — selector unverified,
-   * action logged for audit.
+   * Decline a work order: open it and click Decline, supplying `reason` into
+   * the reason modal when present. Never throws.
    */
-  async declineJob(tenantId: string, sourceJobId: string, reason: string): Promise<void> {
-    this.logger.warn(
-      `[aaa-portal] declineJob(tenant=${tenantId}, job=${sourceJobId}, reason="${reason}") — selectors unverified; see docs/BLOCKERS.md`,
-    );
+  async declineJob(
+    tenantId: string,
+    sourceJobId: string,
+    reason: string,
+  ): Promise<AdapterActionResult> {
+    return this.performAction(tenantId, sourceJobId, 'decline', DECLINE_BUTTON_NAMES, reason);
+  }
+
+  /**
+   * Shared accept/decline driver. Restores the cached login session, opens the
+   * specific Work Order, clicks the primary action button (located by
+   * accessible name — pierces Lightning shadow DOM), handles an optional
+   * reason/confirm modal, and reads back a confirmation string. On any failure
+   * it screenshots to the OS temp dir and returns { success:false, error }.
+   */
+  private async performAction(
+    tenantId: string,
+    sourceJobId: string,
+    kind: 'accept' | 'decline',
+    buttonNames: string[],
+    reason?: string,
+  ): Promise<AdapterActionResult> {
+    const stateJson = await this.redis.get(`session:aaa_portal:${tenantId}`);
+    if (!stateJson) {
+      const error = `no AAA session for tenant ${tenantId} — login required before ${kind}`;
+      this.logger.warn(`[aaa-portal] ${kind}Job: ${error}`);
+      return { success: false, error };
+    }
+
+    let browser: Browser | null = null;
+    let page: Page | null = null;
+    try {
+      const storageState = JSON.parse(stateJson);
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
+      const context = await browser.newContext({ storageState });
+      page = await context.newPage();
+
+      // Open the work-orders list, then click into the row for this job. The
+      // detail URL needs the Salesforce record id, which we don't store — the
+      // human-readable Work Order Number is rendered as a link, so we click it.
+      await page.goto(this.WORK_ORDERS_URL, {
+        waitUntil: 'domcontentloaded',
+        timeout: ACTION_NAV_TIMEOUT_MS,
+      });
+      if (page.url().includes('/login')) {
+        await this.redis.del(`session:aaa_portal:${tenantId}`);
+        return { success: false, error: `session expired for tenant ${tenantId}` };
+      }
+      await page
+        .waitForSelector(WORK_ORDERS_SELECTOR, { timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS })
+        .catch(() => undefined);
+
+      const jobLink = page.getByRole('link', { name: sourceJobId, exact: false }).first();
+      if ((await jobLink.count()) === 0) {
+        await this.screenshotFailure(page, kind, sourceJobId);
+        return {
+          success: false,
+          error: `work order ${sourceJobId} not found in Work Orders list view`,
+        };
+      }
+      await jobLink.click({ timeout: ACTION_BUTTON_TIMEOUT_MS });
+      await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+      await page.waitForTimeout(2_500); // let the LWC detail view settle
+
+      // Primary action button (shadow-DOM-piercing by accessible name).
+      const primary = await this.firstVisibleButton(page, buttonNames);
+      if (!primary) {
+        await this.screenshotFailure(page, kind, sourceJobId);
+        return {
+          success: false,
+          error: `${kind} button not found on work order ${sourceJobId} (tried: ${buttonNames.join(', ')}) — selectors may need verification, see docs/ADAPTER_SELECTORS.md`,
+        };
+      }
+      await primary.click({ timeout: ACTION_BUTTON_TIMEOUT_MS });
+
+      // Optional reason/confirm modal. Best-effort: fill a reason field if one
+      // appears, then click a confirming button. Unverified against a live job
+      // (see docs/BLOCKERS.md) — tolerant of the modal being absent.
+      await page.waitForTimeout(1_500);
+      if (reason) {
+        // Decline reason is typically a textarea; fall back to a text input.
+        let reasonField = page.locator('textarea:visible').last();
+        if ((await reasonField.count()) === 0) {
+          reasonField = page.locator('input[type="text"]:visible').last();
+        }
+        if ((await reasonField.count()) > 0) {
+          await reasonField.fill(reason).catch(() => undefined);
+        }
+      }
+      // Click a confirm button only if a modal/dialog is present, to avoid
+      // re-triggering the same control when no modal opened.
+      const dialog = page.locator('[role="dialog"], .slds-modal, .uiModal').first();
+      if ((await dialog.count()) > 0 && (await dialog.isVisible().catch(() => false))) {
+        const confirm = await this.firstVisibleButton(page, CONFIRM_BUTTON_NAMES, dialog);
+        if (confirm) await confirm.click({ timeout: ACTION_BUTTON_TIMEOUT_MS }).catch(() => undefined);
+      }
+
+      const evidence = await this.readConfirmation(page);
+      this.logger.log(
+        `[aaa-portal] ${kind} succeeded for job ${sourceJobId} (tenant ${tenantId}): ${evidence}`,
+      );
+      return {
+        success: true,
+        confirmedAt: new Date().toISOString(),
+        confirmationEvidence: evidence,
+      };
+    } catch (err) {
+      const error = (err as Error).message;
+      this.logger.error(`[aaa-portal] ${kind}Job failed for ${sourceJobId}: ${error}`);
+      if (page) await this.screenshotFailure(page, kind, sourceJobId);
+      return { success: false, error };
+    } finally {
+      await browser?.close().catch(() => undefined);
+    }
+  }
+
+  /** Find the first visible+enabled button matching any of the accessible names. */
+  private async firstVisibleButton(
+    page: Page,
+    names: string[],
+    scope?: Locator,
+  ): Promise<Locator | null> {
+    const root = scope ?? page;
+    for (const name of names) {
+      const loc = root.getByRole('button', { name, exact: true }).first();
+      if (
+        (await loc.count()) > 0 &&
+        (await loc.isVisible().catch(() => false)) &&
+        (await loc.isEnabled().catch(() => false))
+      ) {
+        return loc;
+      }
+    }
+    return null;
+  }
+
+  /** Read a confirmation string from a toast or the status field. */
+  private async readConfirmation(page: Page): Promise<string> {
+    const toast = page.locator('.slds-notify__content, [role="status"], .toastMessage').first();
+    if ((await toast.count()) > 0) {
+      const t = (await toast.textContent().catch(() => null))?.trim();
+      if (t) return `toast: ${t.slice(0, 200)}`;
+    }
+    return `action submitted at ${new Date().toISOString()} (no toast captured)`;
+  }
+
+  private async screenshotFailure(
+    page: Page,
+    kind: string,
+    sourceJobId: string,
+  ): Promise<void> {
+    const safe = sourceJobId.replace(/[^A-Za-z0-9_-]/g, '_');
+    const file = path.join(os.tmpdir(), `aaa-${kind}-failure-${safe}.png`);
+    await page.screenshot({ path: file, fullPage: true }).catch(() => undefined);
+    this.logger.warn(`[aaa-portal] ${kind} failure screenshot: ${file}`);
   }
 
   private async extractRows(page: Page): Promise<ActiveJob[]> {

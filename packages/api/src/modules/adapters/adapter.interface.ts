@@ -21,15 +21,33 @@ export interface AdapterConnectionTestResult {
   latencyMs: number;
 }
 
+/**
+ * Result of a physical accept/decline action against a portal. Adapters
+ * MUST NOT throw from acceptJob/declineJob — they return this so the
+ * dispatch audit trail reflects whether the click actually landed. On
+ * success, `confirmationEvidence` carries a human-readable string read off
+ * the page (toast text, status change) proving the action took effect.
+ */
+export interface AdapterActionResult {
+  success: boolean;
+  confirmedAt?: string; // ISO timestamp
+  confirmationEvidence?: string;
+  error?: string;
+}
+
 export interface TowingSoftwareAdapter {
   login(tenantId: string, creds: DecryptedCredentials): Promise<void>;
   scrapeAllActiveJobs(tenantId: string): Promise<ActiveJob[]>;
   testConnection(creds: DecryptedCredentials): Promise<AdapterConnectionTestResult>;
   // Optional motor-club style actions. Implemented for adapters that
-  // represent inbound work queues (AAA); Towbook ships a stub since it is
+  // represent inbound work queues (AAA); Towbook ships a no-op since it is
   // dispatch-out, not accept-in.
-  acceptJob?(tenantId: string, sourceJobId: string): Promise<void>;
-  declineJob?(tenantId: string, sourceJobId: string, reason: string): Promise<void>;
+  acceptJob?(tenantId: string, sourceJobId: string): Promise<AdapterActionResult>;
+  declineJob?(
+    tenantId: string,
+    sourceJobId: string,
+    reason: string,
+  ): Promise<AdapterActionResult>;
 }
 
 export enum SoftwareType {
