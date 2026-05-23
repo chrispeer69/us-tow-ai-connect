@@ -4,6 +4,143 @@ Companion to the root `ASSUMPTIONS.md`. Captures non-obvious decisions taken
 during the Command Center (S21), Digital Dispatch (S22), and Driver Pings +
 Live ETA (S23) builds.
 
+## Session 27 — Multi-Tenant Readiness (Bundle C)
+
+### Bundle B (Session 26) absent — fallbacks chosen
+
+The expected Bundle B `audit_log` table, richer rate-limiter, and digest
+email service are not present on `main` (see `docs/BLOCKERS.md`). To
+unblock Session 27:
+
+- Added a **minimal `audit_log` table** in migration `0012_onboarding.sql`
+  with the columns Session 27 actually writes (`tenant_id`, `actor`,
+  `event_type`, `payload jsonb`, `created_at`). Bundle B is expected to
+  later replace or extend this — kept the column set narrow so a merge
+  is straightforward.
+- Re-used the existing `RateLimitGuard` for the tenant-scoped surface and
+  added a sibling **`OnboardingRateLimitGuard`** that keys by client IP
+  (3 signups / hr) for the public onboarding endpoints. Mirrors the
+  Redis `incr + expire` pattern so when Bundle B replaces the limiter
+  both guards can be deleted in one shot.
+- Welcome email goes through the existing `NotificationService.send`
+  which already gracefully degrades to stdout when `SENDGRID_API_KEY`
+  is unset. No new "email service" abstraction created.
+
+### Onboarding draft lifecycle
+
+- `onboarding_drafts.expires_at` defaults to **48 hours** after creation.
+  Long enough to walk away mid-wizard and come back the next morning,
+  short enough that abandoned drafts don't accumulate forever.
+- Drafts are looked up by `id` (returned to the client on
+  `POST /v1/onboarding/start`); we deliberately do NOT trust `email` as
+  the lookup key because the form lets the user change it on step 2.
+- `status` is `draft | submitted | completed | abandoned`. Cron-driven
+  abandonment cleanup is out of scope for this session; a future operator
+  can `DELETE FROM onboarding_drafts WHERE expires_at < NOW() AND status =
+  'draft'` manually.
+
+### Captcha gating
+
+- `SIGNUP_CAPTCHA_KEY` env (Cloudflare Turnstile / hCaptcha secret) gates
+  the `POST /v1/onboarding/complete` endpoint. When **unset**, the
+  endpoint falls back to per-IP rate limiting (3/hr) — same effective
+  abuse protection as the spec calls for, just less robust against a
+  determined attacker. When **set**, the endpoint also requires a
+  `captchaToken` body field which is verified against the provider's
+  siteverify endpoint. Both Turnstile and hCaptcha expose the same
+  `siteverify` POST shape, so a single fetch handles either.
+
+### Branding schema & storage
+
+- **`branding` lives on the `tenants` table as JSONB**, not in a
+  side table, because every read of a tenant already hydrates the row
+  and a JSONB column avoids an N+1 join on every page load. Trade-off:
+  no per-field indexes. Acceptable — branding is never queried by
+  inner fields; the whole blob is read together.
+- **CSS variables, not Tailwind theme tokens.** The admin UI ships with
+  a fixed Tailwind config and changing it would require a rebuild per
+  tenant. CSS custom properties (`--brand-primary`, …) are set on
+  `:root` at runtime by `BrandingProvider` and consumed by existing
+  Tailwind classes via the `[--brand-primary:var(--brand-primary)]`
+  arbitrary-value pattern where they need to win over a Tailwind
+  default. The default values (the existing zinc-950 / blue-500
+  palette) live in `globals.css` so SSR HTML is never blank during
+  hydration.
+- **Asset storage is filesystem-first** with an env-toggle escape to
+  Railway Volume / S3. Logo + favicon are written under
+  `data/branding/<tenant_id>/` and served by the API at
+  `/branding/:tenant_id/logo.png` (and `/favicon.ico`). The fallback
+  path is documented in `docs/BLOCKERS.md` for the operator. Multer is
+  not added as a dep — uploads are accepted via the existing Nest
+  `@nestjs/platform-express` body parser with a tight 2 MB limit. A
+  PNG-only allowlist keeps the surface small.
+- **`hide_powered_by` defaults `false`** — Thinkrr's white-label resale
+  flow needs this on for end-customer agents but the default tenant
+  (Roadside Towing) is happy to leave it on. Surfacing it in the
+  branding admin lets either side flip it without a code change.
+
+### Knowledge Pack v2
+
+- **New `tenant_knowledge_pack` table**, not an alter of
+  `ai_agent_configs.knowledge_pack`. Reasons:
+  1. The new schema is structurally different (sections like `fleet`,
+     `transfer_rules`, `pricing_policy` that the JSONB blob never had).
+  2. A `draft` / `published` split needs two JSONB columns and a
+     `published bool`, which would balloon the agent config row.
+  3. Tenant zero's existing `ai_agent_configs.knowledge_pack` is left
+     intact; the v2 endpoint reads from the new table first and falls
+     back to the v1 blob if no v2 row exists. Migration `0013` seeds a
+     v2 row for tenant zero from the existing v1 blob.
+- **Markdown renderer lives in `branding/knowledge-rendering/`**, not
+  in the existing `knowledge-endpoint` module. Reason: the existing
+  `KnowledgeEndpointService` is owned by Session 3 and is currently
+  the v1 surface (Thinkrr's existing agent points at `profile.md`
+  already). The v2 endpoint is additive (`profile.md` re-rendered from
+  the v2 blob when present, plus a new `profile.json`).
+- **Publishing flow**: edit the draft, hit **Publish**, which copies
+  `draft → content`, bumps `version`, sets `published=true`, writes an
+  `audit_log` row, and optionally fires the Thinkrr KP refresh webhook
+  (skipped + warned if `THINKRR_KP_REFRESH_WEBHOOK_URL` is unset).
+
+### Super-admin + impersonation
+
+- **`platform_role` is a new column on `users`** with values
+  `tenant_user | tenant_admin | super_admin`. The existing
+  `tenant_members.role` column (OWNER / ADMIN / MEMBER / VIEWER) is
+  tenant-scoped; `platform_role` is platform-scoped. They're orthogonal:
+  a super_admin can also be a MEMBER of a specific tenant.
+- There is no `users` table yet — the codebase only has
+  `tenant_members`. Migration `0014_platform_roles.sql` adds a `users`
+  table keyed by `email` (lowercased, unique) and inserts
+  `thechrispeer@gmail.com` with `platform_role='super_admin'` if not
+  present (matches the seed identity in
+  `db/seeds/roadside-tenant-zero.ts`). When a real auth system lands,
+  the `users.id` should be FK'd from `tenant_members`.
+- **Impersonation tokens** are short-lived (15 min) JWT-shaped strings
+  (HS256 signed with `IMPERSONATION_SECRET` env, falls back to
+  `ENCRYPTION_KEY` slice for dev). They carry `super_admin_email`,
+  `target_tenant_id`, and `exp`. The admin UI surfaces a red "you are
+  impersonating X" banner whenever the active session token is
+  impersonated. **All impersonation start/stop events write to
+  `audit_log`.**
+
+### Thinkrr partner mode
+
+- **`partner_account_id` is a single nullable text column on `tenants`.**
+  Sufficient for Thinkrr's "white-label resale" use case — every
+  end-customer tenant Thinkrr provisions through us carries Thinkrr's
+  internal account ID for billing reconciliation. A future second
+  partner would warrant a separate `partners` table; not built today.
+- **`POST /v1/partner/tenants` requires `PARTNER_API_KEY` env**, checked
+  via a tiny `PartnerApiKeyGuard` (constant-time compare against the env
+  value). No multi-partner key issuance flow — when a second partner
+  arrives, this guard graduates to a `partners` table lookup.
+- The bulk endpoint creates **one tenant per request item** with a
+  Thinkrr-scoped default routing rule (transfer back to Thinkrr's
+  configured dispatch line). Returns the Knowledge Pack URLs so
+  Thinkrr can wire them into their agent config without a second
+  round-trip.
+
 ## Session 23 — Driver Pings + Live ETA
 
 ### Data model

@@ -3,6 +3,65 @@
 Issues encountered during the autonomous build that could not be resolved
 in-session and were deferred to keep momentum.
 
+## Session 27 — Multi-Tenant Readiness (Bundle C)
+
+### Session 26 / Bundle B hardening commit not present (2026-05-23)
+
+The Session 27 launch prompt instructs Bundle C to build on top of
+**Session 26 — SaaS Hardening — Bundle B** which is expected to ship the
+`audit_log` table, a richer rate limiter, and a digest email service. A
+scan of `git log --oneline -30` showed no Session 26 / Bundle B
+commit on `main`. The most recent feature commit is
+`3cc99cd feat(tracking): mobile-first public /track/<token> page` and the
+last "session complete" commit is `869cc55 chore: sessions 21+22 complete
+— command center + digital dispatch`.
+
+**Adaptation in this session:**
+
+1. **`audit_log` table** — created a new minimal `audit_log` table as part
+   of the onboarding migration so onboarding / branding / KP-publish /
+   super-admin impersonation events have somewhere to land. If Bundle B
+   later introduces a richer audit table, the schemas should be merged
+   (this one only carries the columns Session 27 actually needs).
+2. **Rate limiter** — reused the existing `RateLimitGuard` (Redis-backed
+   `ratelimit:<key>` counters with `incr + expire`) and added a per-IP
+   variant for the public onboarding endpoints (`OnboardingRateLimitGuard`).
+3. **Digest email** — no Bundle B digest service exists, so the welcome
+   email path falls through to the existing `NotificationService.send`,
+   which already soft-imports `@sendgrid/mail` and falls back to stdout
+   when `SENDGRID_API_KEY` is unset. No new abstraction created.
+
+### Thinkrr KP refresh webhook URL not configured
+
+- **Where:** `packages/api/src/modules/branding/knowledge-pack.service.ts`
+- **Symptom:** On `POST /v1/admin/knowledge-pack/publish`, the service
+  attempts to fire a Thinkrr Knowledge Pack refresh webhook so Thinkrr
+  re-fetches the new `profile.md` / `profile.json` immediately rather
+  than waiting for its own re-scrape cycle. The Thinkrr webhook URL is
+  not documented in any Thinkrr integration we have. The publish step
+  succeeds; the webhook call is skipped and a warning is logged.
+- **What's needed:** Confirm with Thinkrr support whether their
+  Knowledge Pack supports a "refresh-now" webhook. If yes, set
+  `THINKRR_KP_REFRESH_WEBHOOK_URL` in Railway. If no, the existing 60s
+  `Cache-Control` header on the public endpoint will eventually pick up
+  the new content.
+
+### Branding asset storage falls back to local filesystem
+
+- **Where:** `packages/api/src/modules/branding/branding-assets.service.ts`
+- **Symptom:** Logo / favicon uploads are written to
+  `data/branding/<tenant_id>/...` on the local filesystem when no S3 /
+  Railway Volume env vars are configured. On Railway's ephemeral
+  container filesystem this means the assets disappear on the next
+  deploy or container restart.
+- **What's needed (operator):** Provision a Railway Volume mounted at
+  `/data` and set `PROD_FILE_STORAGE=volume` (or wire up
+  `BRANDING_S3_BUCKET` + AWS creds and set `PROD_FILE_STORAGE=s3`).
+  Until then, branding assets are dev-only and operators should host
+  the logo elsewhere and put the URL into `branding.logo_url` directly.
+
+
+
 ## Session 23
 
 ### Untracked command-center module without deps (2026-05-23)
