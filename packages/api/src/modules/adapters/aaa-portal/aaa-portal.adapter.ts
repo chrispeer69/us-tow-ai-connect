@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { chromium } from 'playwright';
+import { chromium, type Page } from 'playwright';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../../common/redis/redis.module';
 import { SessionExpiredException } from '../../../common/exceptions/session-expired.exception';
@@ -13,6 +13,29 @@ import {
 const CHROMIUM_ARGS = ['--no-sandbox', '--disable-dev-shm-usage'];
 const SESSION_TTL_SECONDS = 3600;
 const JOBS_CACHE_TTL_SECONDS = 300;
+
+// Salesforce community pages keep WebSocket telemetry connections open
+// indefinitely, so `networkidle` never fires within the Playwright default
+// 30s window — the cron started failing on 2026-05-21. Switching to
+// `domcontentloaded` plus an explicit wait for the work-order table fixes it.
+// Verified empirically: dom load completes in ~3s; table renders within ~8s.
+const AAA_NAV_TIMEOUT_MS = 60_000;
+const WORK_ORDERS_SELECTOR = 'table[role="grid"] tbody';
+const WORK_ORDERS_SELECTOR_TIMEOUT_MS = 30_000;
+const SCRAPE_MAX_ATTEMPTS = 2;
+const SCRAPE_RETRY_BACKOFF_MS = 5_000;
+
+// Candidate selectors we count on every scrape — gives us instant visibility
+// when Salesforce restructures the DOM. `table[role="grid"] tbody` is the
+// verified anchor; the rest are legacy guesses kept for regression detection.
+const CANDIDATE_SELECTORS = [
+  WORK_ORDERS_SELECTOR,
+  'table[role="grid"]',
+  'tbody tr',
+  'lightning-datatable',
+  '.slds-table tbody',
+  '[data-aura-class*="WorkOrder"]',
+];
 
 @Injectable()
 export class AaaPortalAdapter implements TowingSoftwareAdapter {
@@ -30,12 +53,17 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      await page.goto(this.LOGIN_URL, { waitUntil: 'networkidle', timeout: 30_000 });
+      await page.goto(this.LOGIN_URL, {
+        waitUntil: 'domcontentloaded',
+        timeout: AAA_NAV_TIMEOUT_MS,
+      });
       await page.fill('#username', creds.username);
       await page.fill('#password', creds.password);
       await page.click('#Login');
 
-      await page.waitForURL('**/ACACONTRACTORCOMMUNITY/s/**', { timeout: 30_000 });
+      await page.waitForURL('**/ACACONTRACTORCOMMUNITY/s/**', {
+        timeout: AAA_NAV_TIMEOUT_MS,
+      });
 
       const storageState = await context.storageState();
       await this.redis.set(
@@ -57,6 +85,28 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
   }
 
   async scrapeAllActiveJobs(tenantId: string): Promise<ActiveJob[]> {
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= SCRAPE_MAX_ATTEMPTS; attempt++) {
+      try {
+        return await this.scrapeOnce(tenantId, attempt);
+      } catch (err) {
+        lastErr = err;
+        if (err instanceof SessionExpiredException) throw err;
+        if (attempt < SCRAPE_MAX_ATTEMPTS) {
+          this.logger.warn(
+            `AAA Portal scrape attempt ${attempt} failed for tenant ${tenantId}: ${(err as Error).message} — retrying in ${SCRAPE_RETRY_BACKOFF_MS}ms`,
+          );
+          await new Promise((r) => setTimeout(r, SCRAPE_RETRY_BACKOFF_MS));
+        }
+      }
+    }
+    this.logger.error(
+      `AAA Portal scrape exhausted ${SCRAPE_MAX_ATTEMPTS} attempts for tenant ${tenantId}: ${(lastErr as Error)?.message}`,
+    );
+    throw lastErr;
+  }
+
+  private async scrapeOnce(tenantId: string, attempt: number): Promise<ActiveJob[]> {
     const stateJson = await this.redis.get(`session:aaa_portal:${tenantId}`);
     if (!stateJson) {
       throw new SessionExpiredException(`No session context for tenant ${tenantId}`);
@@ -69,14 +119,29 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       const context = await browser.newContext({ storageState });
       const page = await context.newPage();
 
-      await page.goto(this.WORK_ORDERS_URL, { waitUntil: 'networkidle', timeout: 30_000 });
+      await page.goto(this.WORK_ORDERS_URL, {
+        waitUntil: 'domcontentloaded',
+        timeout: AAA_NAV_TIMEOUT_MS,
+      });
 
       if (page.url().includes('/login')) {
         await this.redis.del(`session:aaa_portal:${tenantId}`);
         throw new SessionExpiredException(`Session bounced to login for tenant ${tenantId}`);
       }
 
-      await page.waitForSelector('table[role="grid"] tbody', { timeout: 15_000 });
+      // Explicit wait for the work-order table to render. We tolerate it not
+      // appearing within the timeout (account may legitimately have zero
+      // jobs) — the selector-count diagnostic below distinguishes "0 = no
+      // jobs" from "0 = wrong selector".
+      await page
+        .waitForSelector(WORK_ORDERS_SELECTOR, {
+          timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS,
+        })
+        .catch(() => undefined);
+
+      await this.dumpDiagnostics(page, tenantId, attempt).catch((e) => {
+        this.logger.warn(`[aaa-debug] diagnostic dump failed: ${(e as Error).message}`);
+      });
 
       const jobs: ActiveJob[] = await this.extractRows(page);
 
@@ -88,7 +153,7 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       );
 
       this.logger.log(
-        `AAA Portal: Scraped ${jobs.length} In Progress jobs for tenant ${tenantId}`,
+        `AAA Portal: Scraped ${jobs.length} In Progress jobs for tenant ${tenantId} (attempt ${attempt})`,
       );
       return jobs;
     } finally {
@@ -103,11 +168,16 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       const context = await browser.newContext();
       const page = await context.newPage();
 
-      await page.goto(this.LOGIN_URL, { waitUntil: 'networkidle', timeout: 30_000 });
+      await page.goto(this.LOGIN_URL, {
+        waitUntil: 'domcontentloaded',
+        timeout: AAA_NAV_TIMEOUT_MS,
+      });
       await page.fill('#username', creds.username);
       await page.fill('#password', creds.password);
       await page.click('#Login');
-      await page.waitForURL('**/ACACONTRACTORCOMMUNITY/s/**', { timeout: 30_000 });
+      await page.waitForURL('**/ACACONTRACTORCOMMUNITY/s/**', {
+        timeout: AAA_NAV_TIMEOUT_MS,
+      });
 
       return {
         success: true,
@@ -125,7 +195,33 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
     }
   }
 
-  private async extractRows(page: import('playwright').Page): Promise<ActiveJob[]> {
+  private async dumpDiagnostics(page: Page, tenantId: string, attempt: number): Promise<void> {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const counts = await page.evaluate((selectors: string[]) => {
+      const doc: any = (globalThis as any).document;
+      const result: Array<{ selector: string; count: number }> = [];
+      for (const sel of selectors) {
+        let count = 0;
+        try {
+          count = doc.querySelectorAll(sel).length;
+        } catch {
+          count = -1;
+        }
+        result.push({ selector: sel, count });
+      }
+      return result;
+    }, CANDIDATE_SELECTORS);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    this.logger.log(
+      `[aaa-debug] tenant=${tenantId} attempt=${attempt} url=${page.url()}`,
+    );
+    for (const c of counts) {
+      this.logger.log(`[aaa-debug]   ${c.selector} -> ${c.count}`);
+    }
+  }
+
+  private async extractRows(page: Page): Promise<ActiveJob[]> {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     return page.evaluate(() => {
       const doc: any = (globalThis as any).document;

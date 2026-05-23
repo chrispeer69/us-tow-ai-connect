@@ -3,6 +3,30 @@
 Issues encountered during the autonomous build that could not be resolved
 in-session and were deferred to keep momentum.
 
+## Session 23
+
+### Untracked command-center module without deps (2026-05-23)
+
+Two untracked files appeared during this session, dropped by a sibling
+script/agent — not part of the Session-23 task list:
+
+- `packages/api/src/modules/command-center/command-center.gateway.ts`
+- `packages/api/src/modules/command-center/geocoder.service.ts`
+
+The gateway imports `socket.io` and `@nestjs/websockets`, neither of which is
+declared in `packages/api/package.json`. `nest build` therefore failed after
+the new files appeared, even though the Session-23 code itself compiles
+cleanly. Sibling SQL migrations `0006_command_center.sql` and
+`0007_digital_dispatch.sql` were also dropped in but not yet referenced from
+this session.
+
+**Resolution applied this session.** Added `@nestjs/websockets@^10`,
+`@nestjs/platform-socket.io@^10`, and `socket.io@^4` as dependencies of
+`@ustow/api` so the gateway compiles. The gateway is not yet wired into
+`AppModule`, so adding the deps does not change runtime behaviour. The owner
+of Sessions 21–22 should land the module/controller wiring + UI in a
+follow-up commit.
+
 ## Open
 
 ### AAA Salesforce portal — Accept/Decline button selectors unknown
