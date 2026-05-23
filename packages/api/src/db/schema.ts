@@ -31,6 +31,14 @@ export const tenants = pgTable('tenants', {
   trackingUrlBase: text('tracking_url_base')
     .notNull()
     .default('https://ustowapi-production.up.railway.app/track'),
+  // Session 26: SaaS hardening (digest + IP allow-list + audit retention)
+  digestEmails: jsonb('digest_emails').notNull().default([] as unknown as never),
+  digestFrequency: varchar('digest_frequency', { length: 10 }).notNull().default('daily'),
+  allowedAdminIps: jsonb('allowed_admin_ips').notNull().default([] as unknown as never),
+  auditRetentionDays: integer('audit_retention_days').notNull().default(365),
+  // Session 27: white-label branding + Thinkrr partner reconciliation.
+  branding: jsonb('branding').notNull().default({} as unknown as never),
+  partnerAccountId: varchar('partner_account_id', { length: 120 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -679,3 +687,172 @@ export const driverPushSubscriptions = pgTable(
 );
 
 export type DriverPushSubscriptionRow = typeof driverPushSubscriptions.$inferSelect;
+
+// ============ API KEY USAGE STATS (Session 26) ============
+// Cold archive of the Redis-backed rate-limit counters, flushed every 5 min by
+// RateLimitStatsAggregator. `identifier` is whatever the throttler keyed off
+// (api key prefix, ip, etc.) — duplicated alongside (tenant_id, api_key_id) so
+// row writes succeed even before we have resolved a tenant.
+export const apiKeyUsageStats = pgTable(
+  'api_key_usage_stats',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    apiKeyId: uuid('api_key_id').references(() => tenantApiKeys.id, { onDelete: 'set null' }),
+    identifier: text('identifier').notNull(),
+    endpointGroup: varchar('endpoint_group', { length: 20 }).notNull(),
+    requestCount: integer('request_count').notNull().default(0),
+    throttledCount: integer('throttled_count').notNull().default(0),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    windowUniq: uniqueIndex('api_key_usage_stats_window_uniq').on(
+      t.identifier,
+      t.endpointGroup,
+      t.windowStart,
+    ),
+    tenantWindowIdx: index('api_key_usage_stats_tenant_window_idx').on(
+      t.tenantId,
+      t.windowStart,
+    ),
+    windowIdx: index('api_key_usage_stats_window_idx').on(t.windowStart),
+  }),
+);
+
+export type ApiKeyUsageStatsRow = typeof apiKeyUsageStats.$inferSelect;
+
+// ============ AUDIT LOG (Session 26) ============
+// One row per mutating action. The interceptor auto-captures
+// POST/PUT/PATCH/DELETE against /v1/admin/* and /v1/ai-connect/*; explicit
+// AuditLogService.record() calls add domain-specific before/after state.
+// All jsonb payloads pass through sanitizeForAudit() at write time to redact
+// `password`, `apiKey`, `token`, `secret`, etc.
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    actorType: varchar('actor_type', { length: 20 }).notNull(),
+    actorId: text('actor_id').notNull(),
+    action: text('action').notNull(),
+    resourceType: text('resource_type'),
+    resourceId: text('resource_id'),
+    beforeState: jsonb('before_state'),
+    afterState: jsonb('after_state'),
+    metadata: jsonb('metadata').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantCreatedIdx: index('audit_log_tenant_created_idx').on(t.tenantId, t.createdAt),
+    actorIdx: index('audit_log_actor_idx').on(t.actorType, t.actorId),
+    resourceIdx: index('audit_log_resource_idx').on(t.resourceType, t.resourceId),
+    actionIdx: index('audit_log_action_idx').on(t.action, t.createdAt),
+  }),
+);
+
+export type AuditLogRow = typeof auditLog.$inferSelect;
+
+// ============ EMAIL MESSAGES (Session 26) ============
+// SendGrid analogue of `sms_messages`. The digest scheduler is the primary
+// writer today; future flows (member invites, alerts) will share this table.
+export const emailMessages = pgTable(
+  'email_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    toAddress: text('to_address').notNull(),
+    fromAddress: text('from_address').notNull(),
+    subject: text('subject').notNull(),
+    htmlBody: text('html_body'),
+    textBody: text('text_body'),
+    sendgridMessageId: text('sendgrid_message_id'),
+    status: varchar('status', { length: 20 }).notNull().default('queued'),
+    relatedKind: varchar('related_kind', { length: 40 }),
+    relatedId: text('related_id'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantCreatedIdx: index('email_messages_tenant_created_idx').on(t.tenantId, t.createdAt),
+    statusIdx: index('email_messages_status_idx').on(t.status, t.createdAt),
+  }),
+);
+
+export type EmailMessageRow = typeof emailMessages.$inferSelect;
+
+// ============ ONBOARDING DRAFTS (Session 27, Section 1) ============
+// Server-side state for the public 4-step signup wizard. The client
+// holds the `id` returned by /v1/onboarding/start and threads it through
+// every step + the final complete call. form_data accumulates all
+// submitted step values.
+export const onboardingDrafts = pgTable(
+  'onboarding_drafts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: varchar('email', { length: 255 }),
+    formData: jsonb('form_data').notNull().default({} as unknown as never),
+    currentStep: integer('current_step').notNull().default(1),
+    status: varchar('status', { length: 20 }).notNull().default('draft'),
+    clientIp: varchar('client_ip', { length: 64 }),
+    partnerAccountId: varchar('partner_account_id', { length: 120 }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    completedTenantId: uuid('completed_tenant_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    emailIdx: index('onboarding_drafts_email_idx').on(t.email),
+    statusIdx: index('onboarding_drafts_status_idx').on(t.status, t.expiresAt),
+    partnerIdx: index('onboarding_drafts_partner_idx').on(t.partnerAccountId),
+  }),
+);
+
+export type OnboardingDraftRow = typeof onboardingDrafts.$inferSelect;
+
+// ============ TENANT KNOWLEDGE PACK v2 (Session 27, Section 3) ============
+// Versioned per-tenant profile content with separate `draft` and
+// `content` (published) blobs. Replaces the
+// `ai_agent_configs.knowledge_pack` blob for v2 readers — the v1 endpoint
+// still falls back to the legacy blob when no v2 row exists.
+export const tenantKnowledgePack = pgTable(
+  'tenant_knowledge_pack',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .unique(),
+    content: jsonb('content').notNull().default({} as unknown as never),
+    draft: jsonb('draft').notNull().default({} as unknown as never),
+    version: integer('version').notNull().default(0),
+    published: boolean('published').notNull().default(false),
+    lastPublishedAt: timestamp('last_published_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type TenantKnowledgePackRow = typeof tenantKnowledgePack.$inferSelect;
+
+// ============ PLATFORM USERS (Session 27, Section 4) ============
+// Platform-scoped identity. `platform_role` is orthogonal to
+// `tenant_members.role`: a super_admin can also be a MEMBER of a
+// specific tenant. Keyed by lowercased email.
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: varchar('email', { length: 255 }).notNull().unique(),
+    name: varchar('name', { length: 255 }),
+    platformRole: varchar('platform_role', { length: 20 }).notNull().default('tenant_user'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type UserRow = typeof users.$inferSelect;

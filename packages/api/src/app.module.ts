@@ -21,6 +21,7 @@ import { FlipAcceptModule } from './modules/flip-accept/flip-accept.module';
 import { DriverPingsModule } from './modules/driver-pings/driver-pings.module';
 import { DriverJobsModule } from './modules/driver-jobs/driver-jobs.module';
 import { ConviniModule } from './modules/convini/convini.module';
+import { RateLimitingModule } from './modules/rate-limiting/rate-limiting.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -47,6 +48,7 @@ import { HealthController } from './modules/health/health.controller';
     DriverPingsModule,
     DriverJobsModule,
     ConviniModule,
+    RateLimitingModule,
   ],
   controllers: [HealthController],
 })

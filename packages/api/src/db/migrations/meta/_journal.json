@@ -78,6 +78,34 @@
       "when": 1748900000000,
       "tag": "0011_driver_experience",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1748950000000,
+      "tag": "0012_rate_limit_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1748960000000,
+      "tag": "0013_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1748970000000,
+      "tag": "0014_admin_digest",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1749000000000,
+      "tag": "0015_onboarding",
+      "breakpoints": true
     }
   ]
 }
