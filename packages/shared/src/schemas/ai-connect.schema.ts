@@ -56,6 +56,51 @@ export const TransferRouteResponseSchema = z.object({
 });
 
 // ============================================================
+// SMART ACTIONS (Session 23)
+// Generic Thinkrr -> backend command pipe; payload schema is open so the
+// agent can call new action types without a backend release.
+// ============================================================
+
+export const SmartActionRequestSchema = z.object({
+  tenant_id: z.string().uuid().optional(),
+  action_type: z.enum([
+    'CREATE_DISPATCH',
+    'TRANSFER_TO_HUMAN',
+    'REQUEST_CALLBACK',
+    'SEND_SMS',
+    'UPDATE_JOB',
+    'OTHER',
+  ]),
+  call_id: z.string().optional(),
+  payload: z.record(z.unknown()).default({}),
+});
+
+export type SmartActionRequest = z.infer<typeof SmartActionRequestSchema>;
+
+// ============================================================
+// DISPATCH REQUEST (Session 23) — new tow request from the agent.
+// ============================================================
+
+export const DispatchRequestCreateSchema = z.object({
+  caller_name: z.string().min(1),
+  caller_phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Must be E.164 format'),
+  vehicle: z
+    .object({
+      year: z.string().optional(),
+      make: z.string().optional(),
+      model: z.string().optional(),
+      color: z.string().optional(),
+    })
+    .optional(),
+  location: z.string().min(1),
+  destination: z.string().optional(),
+  reason: z.string().optional(),
+  agent_notes: z.string().optional(),
+});
+
+export type DispatchRequestCreate = z.infer<typeof DispatchRequestCreateSchema>;
+
+// ============================================================
 // TYPE EXPORTS
 // ============================================================
 

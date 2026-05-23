@@ -137,6 +137,26 @@ export class TwilioOutboundService {
     });
     return message.sid;
   }
+
+  /**
+   * Generic SMS sender used by the AI agent's dispatch-request endpoint
+   * (Session 23). Falls back to log-only when Twilio isn't configured so
+   * local dev doesn't error.
+   */
+  async sendDispatchSms(toPhone: string, body: string): Promise<string | null> {
+    if (!this.client || !this.fromNumber) {
+      this.logger.warn(
+        `[twilio-fallback] would SMS ${toPhone}: ${body.replace(/\n/g, ' | ')}`,
+      );
+      return null;
+    }
+    const message = await this.client.messages.create({
+      to: toPhone,
+      from: this.fromNumber,
+      body,
+    });
+    return message.sid;
+  }
 }
 
 function escapeXml(s: string): string {

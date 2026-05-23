@@ -10,8 +10,11 @@ import { randomBytes } from 'crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   aiAgentConfigs,
+  callInteractions,
+  dispatchRequests,
   interactionLogs,
   routingRules,
+  smartActions,
   tenantApiKeys,
   tenantBilling,
   tenantCredentials,
@@ -334,6 +337,88 @@ export class AdminService {
       .limit(query.format === 'csv' ? 10_000 : limit)
       .offset(query.format === 'csv' ? 0 : (page - 1) * limit);
 
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  // ─── call interactions (Session 23 raw Thinkrr payloads) ───────────
+  async listCallInteractions(
+    tenantId: string,
+    query: { page?: string; limit?: string },
+  ) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const rawLimit = Number(query.limit ?? 25);
+    const limit = Math.min(Math.max(rawLimit || 25, 1), 100);
+    const totalRow = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(callInteractions)
+      .where(eq(callInteractions.tenantId, tenantId));
+    const total = totalRow[0]?.count ?? 0;
+    const items = await this.db
+      .select()
+      .from(callInteractions)
+      .where(eq(callInteractions.tenantId, tenantId))
+      .orderBy(desc(callInteractions.createdAt))
+      .limit(limit)
+      .offset((page - 1) * limit);
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async listSmartActions(tenantId: string, query: { page?: string; limit?: string }) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const rawLimit = Number(query.limit ?? 25);
+    const limit = Math.min(Math.max(rawLimit || 25, 1), 100);
+    const totalRow = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(smartActions)
+      .where(eq(smartActions.tenantId, tenantId));
+    const total = totalRow[0]?.count ?? 0;
+    const items = await this.db
+      .select()
+      .from(smartActions)
+      .where(eq(smartActions.tenantId, tenantId))
+      .orderBy(desc(smartActions.createdAt))
+      .limit(limit)
+      .offset((page - 1) * limit);
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async listDispatchRequests(
+    tenantId: string,
+    query: { page?: string; limit?: string },
+  ) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const rawLimit = Number(query.limit ?? 25);
+    const limit = Math.min(Math.max(rawLimit || 25, 1), 100);
+    const totalRow = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dispatchRequests)
+      .where(eq(dispatchRequests.tenantId, tenantId));
+    const total = totalRow[0]?.count ?? 0;
+    const items = await this.db
+      .select()
+      .from(dispatchRequests)
+      .where(eq(dispatchRequests.tenantId, tenantId))
+      .orderBy(desc(dispatchRequests.createdAt))
+      .limit(limit)
+      .offset((page - 1) * limit);
     return {
       items,
       total,

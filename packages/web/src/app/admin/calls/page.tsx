@@ -22,6 +22,158 @@ import { Spinner } from '@/components/ui/spinner';
 import { Card, CardContent } from '@/components/ui/card';
 import { api, DEFAULT_TENANT_ID, TENANT_HEADER } from '@/lib/utils';
 
+interface CallInteraction {
+  id: string;
+  callId: string;
+  callerPhone: string | null;
+  calledNumber: string | null;
+  durationSec: number | null;
+  summary: string | null;
+  transcript: string | null;
+  matchedJobId: string | null;
+  matchedJobSource: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  createdAt: string;
+}
+
+interface CallInteractionsResponse {
+  items: CallInteraction[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+function RawCallsTab() {
+  const [rows, setRows] = useState<CallInteraction[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    void load();
+  }, [page]);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api<CallInteractionsResponse>(
+        `/v1/admin/call-interactions?page=${page}&limit=25`,
+      );
+      setRows(data.items);
+      setTotalPages(data.totalPages);
+      setTotal(data.total);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-zinc-500">
+        Raw Thinkrr webhook payloads with full transcript, summary, and matched job linkage.{' '}
+        {total.toLocaleString()} records.
+      </p>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      <Card>
+        <CardContent className="pt-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Received</TableHead>
+                <TableHead>Caller</TableHead>
+                <TableHead>Called</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead>Matched Job</TableHead>
+                <TableHead>Call ID</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <span className="flex items-center gap-2 text-zinc-400">
+                      <Spinner /> Loading...
+                    </span>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-zinc-500">
+                    No call interactions yet.
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading &&
+                rows.map((row) => (
+                  <>
+                    <TableRow
+                      key={row.id}
+                      className="cursor-pointer"
+                      onClick={() => setExpanded(expanded === row.id ? null : row.id)}
+                    >
+                      <TableCell>{new Date(row.createdAt).toLocaleString()}</TableCell>
+                      <TableCell className="font-mono">{row.callerPhone ?? '—'}</TableCell>
+                      <TableCell className="font-mono">{row.calledNumber ?? '—'}</TableCell>
+                      <TableCell>{row.durationSec ?? 0}s</TableCell>
+                      <TableCell>
+                        {row.matchedJobId ? (
+                          <Badge variant="outline">
+                            {row.matchedJobSource}: {row.matchedJobId}
+                          </Badge>
+                        ) : (
+                          <span className="text-zinc-500">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{row.callId}</TableCell>
+                    </TableRow>
+                    {expanded === row.id && (
+                      <TableRow key={`${row.id}-x`}>
+                        <TableCell colSpan={6} className="bg-zinc-900/40">
+                          <div className="text-xs text-zinc-400">Summary</div>
+                          <p className="text-sm text-zinc-200 whitespace-pre-wrap mb-3">
+                            {row.summary ?? '—'}
+                          </p>
+                          <div className="text-xs text-zinc-400">Transcript</div>
+                          <p className="text-sm text-zinc-200 whitespace-pre-wrap">
+                            {row.transcript ?? '—'}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <div className="flex items-center justify-between">
+        <Button variant="outline" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+          ← Previous
+        </Button>
+        <span className="text-sm text-zinc-400">
+          Page {page} of {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
+          Next →
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 const CATEGORIES = [
   'ALL',
   'ETA_LOOKUP',
@@ -55,6 +207,7 @@ interface LogsResponse {
 }
 
 export default function CallLogsPage() {
+  const [tab, setTab] = useState<'aggregated' | 'raw'>('aggregated');
   const [logs, setLogs] = useState<InteractionLog[]>([]);
   const [category, setCategory] = useState('ALL');
   const [outcome, setOutcome] = useState('');
@@ -134,11 +287,39 @@ export default function CallLogsPage() {
           <h1 className="text-3xl font-bold">Call Logs</h1>
           <p className="text-zinc-400 mt-1">{total.toLocaleString()} total interactions</p>
         </header>
-        <Button variant="outline" onClick={exportCsv}>
-          Export CSV
-        </Button>
+        {tab === 'aggregated' && (
+          <Button variant="outline" onClick={exportCsv}>
+            Export CSV
+          </Button>
+        )}
       </div>
 
+      <div className="flex gap-2 border-b border-zinc-800">
+        <button
+          className={`px-4 py-2 text-sm border-b-2 transition ${
+            tab === 'aggregated'
+              ? 'border-blue-500 text-blue-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+          onClick={() => setTab('aggregated')}
+        >
+          Aggregated
+        </button>
+        <button
+          className={`px-4 py-2 text-sm border-b-2 transition ${
+            tab === 'raw'
+              ? 'border-blue-500 text-blue-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+          onClick={() => setTab('raw')}
+        >
+          Raw Thinkrr Payloads
+        </button>
+      </div>
+
+      {tab === 'raw' && <RawCallsTab />}
+      {tab === 'aggregated' && (
+        <>
       <Card>
         <CardContent className="pt-6 grid grid-cols-1 md:grid-cols-5 gap-3">
           <Input
@@ -289,6 +470,8 @@ export default function CallLogsPage() {
           Next →
         </Button>
       </div>
+        </>
+      )}
     </div>
   );
 }

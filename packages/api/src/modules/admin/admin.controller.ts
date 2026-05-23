@@ -95,6 +95,31 @@ export class AdminController {
     return result;
   }
 
+  // --- Call interactions (Session 23 raw Thinkrr payloads) ---
+  @Get('call-interactions')
+  listCallInteractions(
+    @Req() req: AdminRequest,
+    @Query() query: { page?: string; limit?: string },
+  ) {
+    return this.service.listCallInteractions(req.tenantId, query);
+  }
+
+  @Get('smart-actions')
+  listSmartActions(
+    @Req() req: AdminRequest,
+    @Query() query: { page?: string; limit?: string },
+  ) {
+    return this.service.listSmartActions(req.tenantId, query);
+  }
+
+  @Get('dispatch-requests')
+  listDispatchRequests(
+    @Req() req: AdminRequest,
+    @Query() query: { page?: string; limit?: string },
+  ) {
+    return this.service.listDispatchRequests(req.tenantId, query);
+  }
+
   // --- Company ---
   @Get('company')
   getCompany(@Req() req: AdminRequest) {
