@@ -60,6 +60,7 @@ async function bootstrap() {
     // CORS configured below so we can use the exempt-prefix middleware
     // pattern instead of the global toggle.
     cors: false,
+    rawBody: true,
   });
 
   // Helmet defaults are safe for an API; the one override is
@@ -91,6 +92,35 @@ async function bootstrap() {
   httpAdapter.use((req: { path: string }, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
     if (CORS_EXEMPT_PATH_PREFIXES.some((p) => req.path.startsWith(p))) {
       res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    next();
+  });
+
+  // Raw-body capture for binary image uploads on the branding upload
+  // routes. Reads the request stream into a Buffer (capped at 2 MB) so
+  // the controller can `req.rawBody` it. Avoids adding multer as a dep.
+  httpAdapter.use((req: any, _res: unknown, next: (err?: Error) => void) => {
+    if (
+      typeof req?.path === 'string' &&
+      req.path.startsWith('/v1/admin/branding/upload/') &&
+      (req.method === 'POST' || req.method === 'PUT')
+    ) {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      req.on('data', (c: Buffer) => {
+        bytes += c.length;
+        if (bytes > 2 * 1024 * 1024) {
+          req.destroy(new Error('Upload exceeds 2 MB limit'));
+          return;
+        }
+        chunks.push(c);
+      });
+      req.on('end', () => {
+        req.rawBody = Buffer.concat(chunks);
+        next();
+      });
+      req.on('error', (err: Error) => next(err));
+      return;
     }
     next();
   });

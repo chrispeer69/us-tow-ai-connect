@@ -1,6 +1,9 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { AdminCspMiddleware } from './common/middleware/admin-csp.middleware';
+import { AdminIpAllowListGuard } from './common/guards/admin-ip-allowlist.guard';
 import { RedisModule } from './common/redis/redis.module';
 import { EncryptionModule } from './common/utils/encryption.module';
 import { DbModule } from './db/db.module';
@@ -60,9 +63,15 @@ import { HealthController } from './modules/health/health.controller';
     TenantOnboardingModule,
   ],
   controllers: [HealthController],
+  providers: [
+    // Per-tenant admin IP allow-list. The guard self-skips when the
+    // tenants.allowed_admin_ips column is empty (default), so this is a
+    // no-op for tenants that haven't opted in.
+    { provide: APP_GUARD, useClass: AdminIpAllowListGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestIdMiddleware).forRoutes('*');
+    consumer.apply(RequestIdMiddleware, AdminCspMiddleware).forRoutes('*');
   }
 }
