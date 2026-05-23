@@ -132,6 +132,12 @@ for the full runbook):
 | `POST /v1/ai-connect/dispatch-request`            | Create dispatch ticket + SMS the dispatcher          |
 | `POST /v1/ai-connect/smart-action`                | Generic command pipe (CREATE_DISPATCH, TRANSFER_TO_HUMAN, …) |
 | `POST /v1/ai-connect/log-interaction`             | Append to the legacy aggregated interaction_logs     |
+| `POST /v1/driver-pings`                           | Driver location ping (Sessions 23)                   |
+| `POST /v1/driver/push/subscribe`                  | Driver web-push subscription (Session 25)            |
+| `GET  /v1/driver/jobs/active?driver_phone=`       | Driver's current active job (Session 25)             |
+| `GET  /v1/driver/jobs/queue?driver_phone=`        | Driver's assigned but inactive jobs (Session 25)     |
+| `GET  /v1/driver/jobs/history?driver_phone=`      | Driver's completed jobs, last 30 days (Session 25)   |
+| `POST /v1/driver/jobs/:job_id/status?driver_phone=` | Driver state transition (Session 25)              |
 
 ### Admin endpoints (placeholder `x-tenant-id` header)
 
@@ -141,6 +147,9 @@ for the full runbook):
 | `GET /v1/admin/call-interactions`            | Raw Thinkrr payloads w/ transcript, summary, match    |
 | `GET /v1/admin/smart-actions`                | Audit log of agent-issued Smart Actions               |
 | `GET /v1/admin/dispatch-requests`            | New tow requests created by the agent                 |
+| `GET /v1/admin/driver-pings/latest`          | Latest ping per driver (Session 23)                    |
+| `GET /v1/admin/driver-pings/:phone/history`  | Per-driver ping history (Session 23)                   |
+| `GET /v1/admin/convini/incoming`             | Convini SMS landing pad (Session 25)                   |
 | `GET /v1/admin/command-center/*`             | Sessions 21 dispatch board — see [COMMAND_CENTER](docs/COMMAND_CENTER.md) |
 | `GET /v1/admin/digital-dispatch/*`           | Sessions 22 rules engine — see [DIGITAL_DISPATCH](docs/DIGITAL_DISPATCH.md) |
 
@@ -150,6 +159,19 @@ for the full runbook):
 |---------------------------------|------------------------------------------------------|
 | `/admin/command-center`         | Live dispatch board (map + table + side drawer)      |
 | `/admin/digital-dispatch`       | Rules / decisions / stats / test sandbox             |
+| `/admin/drivers-live`           | Live drivers map — table + map + history side panel (Session 25) |
+
+### Driver App (Session 25)
+
+| Path                       | Description                                            |
+|----------------------------|--------------------------------------------------------|
+| `/driver`                  | Mobile PWA — active job + queue + ping                 |
+| `/driver/map`              | Full-screen Google Maps with driver + pickup markers   |
+| `/driver/history`          | Completed jobs, last 30 days                           |
+| `/driver/profile`          | Driver name, phone, ping interval, GPS accuracy        |
+
+See [`docs/DRIVER_APP.md`](docs/DRIVER_APP.md) for the full workflow guide,
+PWA install instructions, and the state-machine reference.
 
 ### Operational endpoints
 
@@ -158,6 +180,7 @@ for the full runbook):
 | `GET  /health`                       | Liveness — 200 once Nest finished booting          |
 | `GET  /health/ready`                 | Readiness — 200 only when Postgres + Redis are up  |
 | `POST /webhooks/twilio/flip-response`<br>`POST /webhooks/twilio/convini-response`<br>`POST /webhooks/twilio/call-status` | Twilio TwiML callbacks (HMAC-SHA1 signature required when `TWILIO_AUTH_TOKEN` is set) |
+| `POST /webhooks/twilio/convini-sms-inbound` | Convini inbound SMS receiver (Session 25, stub) |
 
 ### Smoke test
 

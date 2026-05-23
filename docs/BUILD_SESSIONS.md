@@ -2662,3 +2662,109 @@ wins; default is to flag.
    any rule against any existing job in the Sandbox tab.
 4. Deleting a rule does not remove its historical decisions
    (`dispatch_decisions.rule_id` is `ON DELETE SET NULL`).
+
+## Session 25: Driver Experience
+
+Mobile-first driver PWA + driver-side jobs API + Convini SMS receiver
+scaffolding + admin live-drivers map upgrade + push-notification
+foundation. Lands the missing piece between the Command Center (S21)
+operator view and the actual driver in the truck.
+
+### What changed
+
+**API**
+
+- New module `packages/api/src/modules/driver-jobs/**` exposing four
+  endpoints:
+  - `GET  /v1/driver/jobs/active?driver_phone=`
+  - `GET  /v1/driver/jobs/queue?driver_phone=`
+  - `GET  /v1/driver/jobs/history?driver_phone=&days=&limit=`
+  - `POST /v1/driver/jobs/:job_id/status?driver_phone=` (body:
+    `{status, notes?, lat?, lng?}`)
+- New module `packages/api/src/modules/convini/**`:
+  - `POST /webhooks/twilio/convini-sms-inbound` — permissive parser, 200
+    OK on every body, ignores anything lacking the `CONVINI:` / `CONVINI#`
+    marker.
+  - `GET  /v1/admin/convini/incoming?limit=` — admin list of inbound rows.
+- New endpoint `POST /v1/driver/push/subscribe` (tenant-key authed)
+  persisting subscriptions into `driver_push_subscriptions`. Web-push
+  delivery is deferred until VAPID keys are configured.
+- Migration `0011_driver_experience.sql` adds three tables:
+  `driver_job_events`, `convini_incoming_jobs`, `driver_push_subscriptions`.
+
+**Web**
+
+- New driver PWA at `packages/web/src/app/driver/**`:
+  - `/driver` — active-job card with state-machine actions
+    (accept/decline → en_route → on_scene → in_tow → completed),
+    collapsible queue, geolocation poller, ping-age indicator, GPS
+    permission banner.
+  - `/driver/map` — dark-themed Google Maps with driver + pickup/dropoff
+    markers and a straight-line polyline.
+  - `/driver/history` — completed jobs in the last 30 days.
+  - `/driver/profile` — name, phone, ping interval (15/30/60s),
+    high-accuracy GPS toggle, log out.
+- BFF routes under `packages/web/src/app/api/driver/**` proxy upstream
+  with `DRIVER_TENANT_API_KEY` server-side so the browser never carries
+  the tenant key.
+- PWA assets: `driver-manifest.json`, `driver-sw.js` (cache-first shell,
+  network-first /api), inline registration in `driver/layout.tsx`.
+- New page `/admin/drivers-live` — split-screen latest-pings table +
+  Google Map + history side panel, auto-refresh every 10 s.
+
+**Docs / config**
+
+- `docs/CONVINI_INTEGRATION.md` — wire-format placeholders, env var
+  expectations, BLOCKERS for the still-pending download URL.
+- `docs/ASSUMPTIONS.md` — Session 25 section on driver_job_events as
+  system-of-record, phone-keyed lookups, Convini parser permissiveness,
+  deferred web-push, separate driver layout.
+- `docs/BLOCKERS.md` — Playwright not yet installed; Windows symlink
+  EPERM on `next build` standalone copy step.
+- `packages/api/.env.example` — adds `CONVINI_DOWNLOAD_URL`,
+  `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
+
+### Endpoints introduced
+
+Tenant-authenticated (`X-Tenant-API-Key`):
+- `GET  /v1/driver/jobs/active?driver_phone=`
+- `GET  /v1/driver/jobs/queue?driver_phone=`
+- `GET  /v1/driver/jobs/history?driver_phone=&days=&limit=`
+- `POST /v1/driver/jobs/:job_id/status?driver_phone=`
+- `POST /v1/driver/push/subscribe`
+
+Public webhook (Twilio):
+- `POST /webhooks/twilio/convini-sms-inbound`
+
+Admin (`x-tenant-id` placeholder):
+- `GET  /v1/admin/convini/incoming?limit=`
+
+### Test Result
+- 81 vitest tests pass (was 78 — adds 7 driver-jobs specs + 8 convini
+  specs net of one merge artefact).
+- `pnpm --filter @ustow/api build` — green.
+- `pnpm --filter @ustow/web` TypeScript — green.
+- Playwright E2E specs written under `packages/web/tests/e2e/` — see
+  BLOCKERS for the install recipe to run them.
+
+### Acceptance Criteria
+1. A driver opens `/driver` on their phone, fills in name + phone in
+   `/driver/profile`, toggles "On Shift," and the API receives pings on
+   the configured interval (15/30/60s) without leaking the tenant key
+   to the client.
+2. When the Command Center assigns a job to that driver's phone, the
+   `/driver` home re-fetch picks it up within 30 seconds and renders the
+   active-job card with the correct legal next actions.
+3. Tapping a state transition (en_route / on_scene / completed) records
+   a row in `driver_job_events`, attempts to update `unified_jobs`, and
+   surfaces a toast — even if the unified_jobs update fails (the audit
+   row is always durable).
+4. Posting a CONVINI-formatted SMS to
+   `/webhooks/twilio/convini-sms-inbound` results in a row in
+   `convini_incoming_jobs` plus (when reachable) a new `unified_jobs`
+   row with `source='convini'`.
+5. `/admin/drivers-live` shows a table + map of every driver whose last
+   ping is fresher than the selected age filter, refreshing every 10 s.
+6. The driver PWA's service worker registers in production
+   (HTTPS-gated), and "Add to Home Screen" works from iOS Safari /
+   Android Chrome with the manifest icon.
