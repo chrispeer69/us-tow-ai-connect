@@ -184,8 +184,9 @@ export class WebhookReceiverService {
       } catch {
         continue;
       }
+      const callerLast10 = lastTenDigits(callerPhone);
       const hit = jobs.find(
-        (j) => normalizePhoneDigits(j.customerPhone) === callerPhone,
+        (j) => lastTenDigits(normalizePhoneDigits(j.customerPhone)) === callerLast10,
       );
       if (hit?.jobId) return { jobId: hit.jobId, source };
     }
@@ -239,6 +240,14 @@ export class WebhookReceiverService {
 function normalizePhoneDigits(value: string | null | undefined): string {
   if (!value) return '';
   return value.replace(/\D/g, '');
+}
+
+/**
+ * For phone-equality across Towbook (10 digits, US, no country code) and
+ * Thinkrr (E.164 with leading 1), compare the last 10 digits.
+ */
+function lastTenDigits(digits: string): string {
+  return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
 function parseDate(value: string | undefined): Date | null {

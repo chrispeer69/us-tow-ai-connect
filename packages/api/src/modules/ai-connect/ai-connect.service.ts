@@ -98,6 +98,7 @@ export class AiConnectService {
     if (!phone) {
       return { found: false, message: 'phone is required' };
     }
+    const phoneLast10 = phone.length > 10 ? phone.slice(-10) : phone;
     const sources: Array<{ key: string; source: 'TOWBOOK' | 'AAA_PORTAL' }> = [
       { key: `jobs:towbook:${tenantId}`, source: 'TOWBOOK' },
       { key: `jobs:aaa_portal:${tenantId}`, source: 'AAA_PORTAL' },
@@ -117,7 +118,11 @@ export class AiConnectService {
       } catch {
         continue;
       }
-      const hit = jobs.find((j) => j.customerPhone.replace(/\D/g, '') === phone);
+      const hit = jobs.find((j) => {
+        const d = j.customerPhone.replace(/\D/g, '');
+        const last10 = d.length > 10 ? d.slice(-10) : d;
+        return last10 === phoneLast10;
+      });
       if (hit) {
         return { found: true, source, job: hit };
       }
