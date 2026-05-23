@@ -140,6 +140,47 @@ export const LiveEtaQuerySchema = z.object({
 export type LiveEtaQuery = z.infer<typeof LiveEtaQuerySchema>;
 
 // ============================================================
+// DRIVER JOBS (Session 25) — driver-side actions taken against an assigned
+// unified_job. Phone-keyed lookup (no driver uuid) matches the rest of the
+// driver surface. Status transitions are validated at the service layer
+// against an allow-list so the API doesn't accept arbitrary strings.
+// ============================================================
+
+export const DriverJobStatusUpdateSchema = z.object({
+  status: z.enum([
+    'accept',
+    'decline',
+    'en_route',
+    'on_scene',
+    'in_tow',
+    'completed',
+    'cancel',
+  ]),
+  notes: z.string().max(1000).optional(),
+  lat: z.number().gte(-90).lte(90).optional(),
+  lng: z.number().gte(-180).lte(180).optional(),
+});
+
+export type DriverJobStatusUpdate = z.infer<typeof DriverJobStatusUpdateSchema>;
+
+// ============================================================
+// DRIVER PUSH SUBSCRIBE (Session 25) — driver PWA registers a web-push
+// subscription. Shape matches the W3C PushSubscription serialization.
+// ============================================================
+
+export const DriverPushSubscribeSchema = z.object({
+  driver_phone: z.string().min(7).max(20),
+  endpoint: z.string().url(),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+  }),
+  user_agent: z.string().max(500).optional(),
+});
+
+export type DriverPushSubscribe = z.infer<typeof DriverPushSubscribeSchema>;
+
+// ============================================================
 // TYPE EXPORTS
 // ============================================================
 

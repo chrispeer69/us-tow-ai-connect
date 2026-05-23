@@ -594,3 +594,88 @@ export const flipAcceptRequests = pgTable(
 );
 
 export type FlipAcceptRequestRow = typeof flipAcceptRequests.$inferSelect;
+
+// ============ DRIVER JOB EVENTS (Session 25) ============
+// Audit log of every driver-side state transition. `job_id` deliberately has
+// no FK to `unified_jobs` — see migration comment. Driver phone is normalized
+// to E.164 by the service before insert.
+export const driverJobEvents = pgTable(
+  'driver_job_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    driverPhone: varchar('driver_phone', { length: 20 }).notNull(),
+    jobId: uuid('job_id'),
+    eventType: varchar('event_type', { length: 20 }).notNull(),
+    notes: text('notes'),
+    lat: numeric('lat', { precision: 10, scale: 6 }),
+    lng: numeric('lng', { precision: 10, scale: 6 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantDriverCreatedIdx: index('driver_job_events_tenant_driver_created_idx').on(
+      t.tenantId,
+      t.driverPhone,
+      t.createdAt,
+    ),
+    tenantJobIdx: index('driver_job_events_tenant_job_idx').on(t.tenantId, t.jobId),
+  }),
+);
+
+export type DriverJobEventRow = typeof driverJobEvents.$inferSelect;
+
+// ============ CONVINI INCOMING JOBS (Session 25) ============
+// Raw landing pad for inbound Convini SMS. parsed_payload is best-effort;
+// raw_body is always preserved for re-processing once the wire format is
+// confirmed by the integration owner.
+export const convini_incoming_jobs = pgTable(
+  'convini_incoming_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    conviniId: varchar('convini_id', { length: 120 }),
+    rawBody: text('raw_body').notNull(),
+    parsedPayload: jsonb('parsed_payload').notNull().default({}),
+    status: varchar('status', { length: 20 }).notNull().default('received'),
+    errorMessage: text('error_message'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    tenantStatusIdx: index('convini_incoming_jobs_tenant_status_idx').on(t.tenantId, t.status),
+    conviniIdIdx: index('convini_incoming_jobs_convini_id_idx').on(t.tenantId, t.conviniId),
+  }),
+);
+
+export const conviniIncomingJobs = convini_incoming_jobs;
+export type ConviniIncomingJobRow = typeof convini_incoming_jobs.$inferSelect;
+
+// ============ DRIVER PUSH SUBSCRIPTIONS (Session 25) ============
+// Web-push endpoints registered by the driver PWA. One driver can have many
+// devices, so the unique constraint is (tenant_id, endpoint), not phone.
+export const driverPushSubscriptions = pgTable(
+  'driver_push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    driverPhone: varchar('driver_phone', { length: 20 }).notNull(),
+    endpoint: text('endpoint').notNull(),
+    p256dhKey: text('p256dh_key').notNull(),
+    authKey: text('auth_key').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    endpointUniq: uniqueIndex('driver_push_subs_endpoint_uniq').on(t.tenantId, t.endpoint),
+    tenantPhoneIdx: index('driver_push_subs_tenant_phone_idx').on(t.tenantId, t.driverPhone),
+  }),
+);
+
+export type DriverPushSubscriptionRow = typeof driverPushSubscriptions.$inferSelect;
