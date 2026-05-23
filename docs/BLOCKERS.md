@@ -265,7 +265,24 @@ Saved 50-line slice of Railway web logs filtered for
 `docs/diagnostics/web-errors.txt` so the proxy failure pattern is
 recoverable from git history even after Railway log retention rolls.
 
-### Operator action: run pending migrations 0013–0017 on production DB
+### RESOLVED (2026-05-23): pending migrations applied to production DB
+
+- **Resolution:** Applied via the Railway Postgres **public TCP proxy**
+  (`kodama.proxy.rlwy.net`), since the API service only exposes the
+  internal `postgres.railway.internal` host (unreachable from a local
+  `railway run`) and `railway ssh` requires registered keys. Ran
+  `DATABASE_URL="$DATABASE_PUBLIC_URL" pnpm db:migrate` with the public
+  URL injected via `railway run --service Postgres`.
+- **Actual scope was wider than 0013–0017:** the prod DB was only at
+  migration **0008** — `__drizzle_migrations` held 8 rows. Drizzle
+  applied all ten pending migrations **0009–0018** in order
+  (`0009_caller_communication` … `0018_platform_users`). Post-run count
+  is 18 / max id 18. All pending migrations were additive DDL (no
+  DROP/TRUNCATE/DELETE), so the gap was safe to close in one pass.
+- **Verification (with-header) — all six now 200:**
+  `company:200 members:200 api-keys:200 billing:200 audit-log:200 digest:200`.
+
+#### Original report (kept for history)
 
 - **Where:** production Postgres (Railway Postgres service, project
   "US Tow AI Connect"), API service `@ustow/api`.
