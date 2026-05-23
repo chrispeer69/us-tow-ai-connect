@@ -698,3 +698,65 @@ phone) emits a warning log and the dispatch row still returns successfully
 to Thinkrr. The human dispatcher still gets their SMS notification
 independently, so the caller-facing tracking link is a value-add, not a
 critical path.
+
+## 2026-05-23 — Browser-only /admin/* 500 (web → API rewrite proxied to localhost)
+
+### Symptom
+
+Chris reported all `/admin/*` pages showing **HTTP 500 in browser**
+(incognito) while `curl` against the same URLs returned **200**.
+
+### Root cause
+
+`packages/web/next.config.js` defined the rewrite target as:
+
+```js
+const apiTarget = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+async rewrites() { return [{ source: '/api/:path*', destination: `${apiTarget}/:path*` }]; }
+```
+
+On Railway, the `@ustow/web` service had **no `NEXT_PUBLIC_API_URL` env
+var**, so every `/api/*` request the client made was server-side proxied
+to `http://localhost:3001` inside the web container, which has nothing on
+that port → `ECONNREFUSED` → Next emits 500.
+
+Confirmed via Railway logs (saved to `docs/diagnostics/web-errors.txt`):
+
+```
+Failed to proxy http://localhost:3001/v1/admin/integrations/status [AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/command-center/jobs?... [AggregateError: ] { code: 'ECONNREFUSED' }
+... (every /api/v1/admin/* call)
+```
+
+Curl on `/admin/integrations` returned 200 because the page itself is
+`X-Nextjs-Prerender: 1` static HTML served from cache — only the
+client-side XHR to `/api/*` (which the browser fires after hydrate) was
+failing. The user's "header-gated" hypothesis was off — the bug is
+proxy misconfiguration, not auth.
+
+### Fix
+
+Made the rewrite target resolution safe-by-default in
+`packages/web/next.config.js`:
+
+1. Prefer `NEXT_PUBLIC_API_URL` (canonical, still operator-set).
+2. Fall back to `API_URL` (server-only alias).
+3. **Fall back to `https://ustowapi-production.up.railway.app` whenever
+   `NODE_ENV=production` or `RAILWAY_ENVIRONMENT` is set** — guarantees
+   the proxy never silently routes to localhost in prod.
+4. Local dev still gets `http://localhost:3001`.
+5. Logs `[next.config] /api/* → <target> (env source: …)` at startup
+   so future deploys make the routing obvious in Railway log scroll.
+
+This is a safety net. The durable fix is for the operator to set
+`NEXT_PUBLIC_API_URL` on the Railway `@ustow/web` service — see
+`docs/BLOCKERS.md`.
+
+### Also added: `packages/web/src/app/admin/error.tsx`
+
+The previous error boundary was only at `app/error.tsx` (root segment),
+which means any throw inside an admin page replaced the entire viewport
+with the generic "Something went wrong" card and lost the sidebar.
+Scoped boundary keeps the sidebar/nav visible and offers a "Reload
+section" (calls `reset()`) and "Reload page" (window.location.reload)
+without leaking the error message to the user.

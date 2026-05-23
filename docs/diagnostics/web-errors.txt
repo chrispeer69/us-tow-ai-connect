@@ -1,0 +1,50 @@
+Failed to proxy http://localhost:3001/v1/admin/integrations/status [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/command-center/jobs?status=new%2Cassigned%2Cen_route%2Con_scene%2Cin_tow [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/command-center/drivers [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/command-center/trucks [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/command-center/stats [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/digital-dispatch/rules [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/routing-rules [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/interaction-logs?page=1&limit=25 [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/agent-config [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/company [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/members [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/api-keys [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/billing [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/audit-log?limit=50&page=1 [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/digest [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/company [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/members [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/api-keys [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/billing [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/audit-log?limit=50&page=1 [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/digest [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/company [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/company [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/agent-config [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }
+Failed to proxy http://localhost:3001/v1/admin/interaction-logs?page=1&limit=25 [AggregateError: ] { code: 'ECONNREFUSED' }
+[AggregateError: ] { code: 'ECONNREFUSED' }

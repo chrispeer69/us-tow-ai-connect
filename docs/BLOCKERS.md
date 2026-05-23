@@ -215,3 +215,52 @@ follow-up commit.
   Windows, run `npx tsc --noEmit` instead, or enable Windows Developer
   Mode (Settings → Privacy & security → For developers) so the symlink
   creation step works without elevated privileges.
+
+## 2026-05-23
+
+### Operator action: set `NEXT_PUBLIC_API_URL` on Railway `@ustow/web` service
+
+- **Where:** Railway → project "US Tow AI Connect" → service `@ustow/web`
+  → Variables.
+- **Required value:** `NEXT_PUBLIC_API_URL=https://ustowapi-production.up.railway.app`
+  (or whatever the canonical API hostname becomes; today's API URL is in
+  `railway status` output).
+- **Why:** the web service proxies `/api/:path*` → `${NEXT_PUBLIC_API_URL}/:path*`.
+  Without the env var, prior code silently fell back to `http://localhost:3001`,
+  producing the "browser HTTP 500 on every /admin/* page" symptom. The
+  next.config.js safety net committed today derives a sensible production
+  default so we don't bleed any more, but the env var is still the
+  canonical source of truth — without it set, the next domain rename
+  will silently break the proxy again.
+- **How to set without re-deploy:** Railway picks up new variables on the
+  next deploy. Push any commit, or use Railway dashboard "Deploy" button
+  after saving the variable.
+
+### Operator action: API returns 500 (not 401) when `x-tenant-id` header is missing
+
+- **Where:** `packages/api/**` (Nest admin routes — touched by other
+  workstreams; this session was scoped not to modify it).
+- **Symptom:** `curl https://ustowapi-production.up.railway.app/v1/admin/integrations/status`
+  without `-H "x-tenant-id: …"` returns **HTTP 500** ("Internal Server
+  Error") rather than a clean **HTTP 401** with a JSON body. Confirmed
+  during today's diagnosis.
+- **Probable cause:** the admin tenant resolver (likely in `AdminAuthGuard`
+  or the tenant scope service) dereferences a missing header and throws
+  before any auth-style 401 mapping. Could also be the Postgres uuid cast
+  failing on `undefined` — same root cause family as the
+  `DEFAULT_TENANT_ID` UUID comment in `packages/web/src/lib/utils.ts`.
+- **Why not fixed in this session:** prompt explicitly said
+  `DO NOT TOUCH: packages/api/**`.
+- **Fix sketch:** in the admin tenant resolution path, when the request
+  has neither a session cookie nor an `x-tenant-id` header, return
+  `throw new UnauthorizedException('tenant header required')` rather than
+  letting an undefined uuid hit the SQL layer. Add an integration test
+  asserting the missing-header response is `401` (currently it would
+  pass as `500` if it exists at all).
+
+### Diagnostics artifact
+
+Saved 50-line slice of Railway web logs filtered for
+`500|error|throw|exception|ECONNREFUSED` to
+`docs/diagnostics/web-errors.txt` so the proxy failure pattern is
+recoverable from git history even after Railway log retention rolls.
