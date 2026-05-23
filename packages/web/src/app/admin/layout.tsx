@@ -16,6 +16,8 @@ export default function AdminLayout({
         </div>
         <nav className="flex flex-col gap-2 flex-grow">
           <Link href="/admin/integrations" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Integrations</Link>
+          <Link href="/admin/command-center" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Command Center</Link>
+          <Link href="/admin/digital-dispatch" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Digital Dispatch</Link>
           <Link href="/admin/routing" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Routing</Link>
           <Link href="/admin/calls" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">Calls</Link>
           <Link href="/admin/ai-agent" className="hover:bg-zinc-800 px-3 py-2 rounded text-sm transition">AI Agent</Link>
