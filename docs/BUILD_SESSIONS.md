@@ -3027,3 +3027,123 @@ Admin (`x-tenant-id` placeholder):
   alert surface the outage), but worth re-evaluating once we have real
   abuse traffic.
 
+
+---
+
+## Session 27 — Multi-Tenant Readiness (Bundle C)
+
+**Scope:** Self-serve tenant signup, white-label branding, Knowledge
+Pack v2, super-admin multi-tenant view, Thinkrr partner mode.
+
+### Section 1 — Tenant Onboarding Flow
+
+Public 4-step wizard at `/onboarding` with backing
+`/v1/onboarding/{start,step,test-credentials,complete}` API. New
+`onboarding_drafts` table (migration `0015`) stores form_data jsonb and
+48h-expiring drafts. Completion atomically creates tenant + OWNER
+member + platform user + initial API key + routing rule + agent config
++ KP v2 draft + (optional) encrypted credentials. Captcha gates
+completion (`SIGNUP_CAPTCHA_KEY` env) with per-IP rate limit (3/hr)
+fallback. Welcome email via existing `NotificationService` (SendGrid
+or stdout). See `docs/TENANT_ONBOARDING.md`.
+
+### Section 2 — White-Label Branding
+
+`tenants.branding` jsonb column added in migration `0016`. New
+`branding` module exposes admin GET/PUT + 2 MB raw-bytes upload for
+`logo`/`favicon` (stored under `data/branding/<tenant_id>/`, served at
+`/branding/:id/:filename`). Public read at `/branding/public/:id` for
+the driver PWA / tracking page. `PROD_FILE_STORAGE=volume` switches to
+`/data/branding`; `s3` is a TODO. Frontend `BrandingProvider` (admin
+layout) writes `--brand-primary` / `--brand-secondary` / `--brand-accent`
+/ `--brand-font` to `:root` at runtime and swaps the favicon link.
+`/admin/branding` page = form with live preview, color pickers, file
+uploads. See `docs/WHITE_LABEL_BRANDING.md`.
+
+### Section 3 — Knowledge Pack v2
+
+New `tenant_knowledge_pack` table (migration `0017`) holds versioned
+`draft`/`content` jsonb with `published` flag. `KnowledgePackV2Schema`
+in `@ustow/shared` covers identity / services / service_areas / hours
+/ fleet / transfer_rules / pricing_policy / escalation sections. New
+`knowledge-pack` module exposes
+`GET /v1/admin/knowledge-pack`,
+`PUT /v1/admin/knowledge-pack/draft`,
+`POST /v1/admin/knowledge-pack/publish`, plus public
+`/public/knowledge/:id/profile.{v2.md,json}`. Legacy
+`/public/knowledge/:id/profile.md` prefers v2 when published; falls
+back to v1 renderer. Publish writes an audit row and best-effort POSTs
+to `THINKRR_KP_REFRESH_WEBHOOK_URL` (warns + continues when unset).
+Tenant-zero is seeded from its existing v1 blob. Admin page at
+`/admin/knowledge-pack`. See `docs/KNOWLEDGE_PACK_V2.md`.
+
+### Section 4 — Super-Admin Multi-Tenant View
+
+New `users` table (migration `0018`) with `platform_role` column
+(`tenant_user` | `tenant_admin` | `super_admin`); seeds
+`thechrispeer@gmail.com` as super_admin. `super-admin` module:
+
+- `SuperAdminAuthGuard` — resolves `x-super-admin-email` header
+  against the `users.platform_role` check.
+- `GET /v1/super-admin/tenants` — global list with per-tenant active
+  job + 24h call counts + plan.
+- `GET /v1/super-admin/tenants/:id` — drill-down (24h/7d call counts,
+  active jobs, billing row, last 20 interaction_logs).
+- `POST /v1/super-admin/impersonate` — HS256-signed 15-min token,
+  audit log entry written. `POST /impersonate/stop` writes the
+  matching audit row.
+
+Frontend: `/admin/tenants` global list, `/admin/tenants/:id`
+drill-down, both with Impersonate button. `ImpersonationBanner`
+(sticky red top bar) is rendered in the admin layout whenever
+`sessionStorage.impersonationBanner` is set, with an Exit button.
+
+### Section 5 — Thinkrr Partner Mode
+
+`tenants.partner_account_id` added in migration `0016`. `partner`
+module exposes `POST /v1/partner/tenants` guarded by
+`PartnerApiKeyGuard` (constant-time compare against `PARTNER_API_KEY`
+env). Bulk-creates 1–50 tenants per call with `partner_account_id`
+pre-filled; each new tenant gets a tenant row, OWNER member, platform
+user, named API key, optional routing rule, empty agent config, and
+KP v2 draft. Branding defaults to `hidePoweredBy: true` for
+partner-resold tenants. Audit trail records `partner.tenant.created`
+per tenant. See `docs/THINKRR_PARTNER_MODE.md` for the full integration
+guide (auth, endpoint contract, onboarding handoff via draft links,
+KP handoff, billing reconciliation, operator runbook).
+
+### Section 6 — Tests
+
+10 new vitest unit tests added, all passing alongside the 123
+existing tests (133/133 green):
+
+- `tenant-onboarding.service.spec` — happy-path complete + missing-step
+  rejection + captcha behavior.
+- `knowledge-pack-renderer.spec` — section rendering + empty-array
+  fallbacks.
+- `branding.service.spec` — defaults merge + missing tenant +
+  put round-trip.
+
+2 new Playwright e2e specs:
+
+- `onboarding.spec` — full 4-step wizard with mocked API.
+- `branding.spec` — color save asserts the CSS variable updates.
+
+### Section 7 — Docs
+
+- `docs/TENANT_ONBOARDING.md` — flow, endpoint reference, draft
+  lifecycle.
+- `docs/WHITE_LABEL_BRANDING.md` — schema, API, upload limits, frontend
+  integration.
+- `docs/KNOWLEDGE_PACK_V2.md` — schema, publish flow, tenant-zero seed.
+- `docs/THINKRR_PARTNER_MODE.md` — partner integration guide.
+- README updated with Multi-tenant SaaS surface section + new env vars.
+- Session 27 entry in `BUILD_SESSIONS.md` (this section).
+
+### Blockers + adaptations
+- Session 26 / Bundle B was in-flight in parallel during this session;
+  migrations were renumbered to 0015+ and `audit_log` writes go
+  through Bundle B's richer schema. See `docs/BLOCKERS.md`.
+- `THINKRR_KP_REFRESH_WEBHOOK_URL` not configured — KP publish logs a
+  warning and continues. See `docs/BLOCKERS.md`.
+- `PROD_FILE_STORAGE=s3` not implemented — falls back to local.

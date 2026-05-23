@@ -76,6 +76,33 @@ pnpm dev:api   # Starts NestJS on port 3001
 pnpm dev:web   # Starts Next.js on port 3000
 ```
 
+## Multi-tenant SaaS surface (Session 27 / Bundle C)
+
+The platform is white-label: Thinkrr resells US Tow AI-Connect to end-
+customer tow companies. Each tow company is a **tenant** with its own
+API key, branding, knowledge pack, and routing config.
+
+| Surface | Where it lives |
+|---|---|
+| **Self-serve signup** | `/onboarding` (web) → `/v1/onboarding/*` (api). See `docs/TENANT_ONBOARDING.md`. |
+| **Branding (theme + logo + signatures)** | `/admin/branding` → `/v1/admin/branding`. See `docs/WHITE_LABEL_BRANDING.md`. |
+| **Knowledge Pack v2** (rich, draft/publish) | `/admin/knowledge-pack` → `/public/knowledge/:id/profile.{md,json,v2.md}`. See `docs/KNOWLEDGE_PACK_V2.md`. |
+| **Super-admin (platform operator)** | `/admin/tenants` → `/v1/super-admin/*`. Impersonation supported with banner + 15-min token. |
+| **Thinkrr partner mode** | `POST /v1/partner/tenants`. See `docs/THINKRR_PARTNER_MODE.md`. |
+
+### New env vars added in Session 27
+
+| Var | Required? | Default | Purpose |
+|---|---|---|---|
+| `SIGNUP_CAPTCHA_KEY` | optional | unset | Cloudflare Turnstile / hCaptcha secret. When set, `/v1/onboarding/complete` requires a `captchaToken`. When unset, falls back to per-IP rate limit (3/hr). |
+| `SIGNUP_CAPTCHA_VERIFY_URL` | optional | Turnstile siteverify | Override for hCaptcha or custom providers. |
+| `PROD_FILE_STORAGE` | optional | `local` | `local` \| `volume` \| `s3` — branding asset storage backend. |
+| `IMPERSONATION_SECRET` | optional | sha256(ENCRYPTION_KEY) | HMAC secret for super-admin impersonation tokens. |
+| `SUPER_ADMIN_DEV_EMAIL` | optional | unset | Single-operator dev fallback for `SuperAdminAuthGuard`. |
+| `PARTNER_API_KEY` | required for partner mode | unset | Shared secret for `POST /v1/partner/tenants`. Set in Railway. |
+| `PARTNER_NAME` | optional | `thinkrr` | Labels audit_log entries for partner-created tenants. |
+| `THINKRR_KP_REFRESH_WEBHOOK_URL` | optional | unset | Posted to on Knowledge Pack publish so Thinkrr can refresh immediately. |
+
 ## Build & Workspace Dependencies
 
 `@ustow/api` and `@ustow/web` both depend on `@ustow/shared` (workspace package) for Zod schemas and shared types. `@ustow/shared` is consumed as its compiled output (`packages/shared/dist/`), **not** its source, so the API and web builds will fail with `TS2305: Module '"@ustow/shared"' has no exported member ...` whenever the dist is missing or stale.
