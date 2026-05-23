@@ -5,31 +5,49 @@ in-session and were deferred to keep momentum.
 
 ## Session 27 — Multi-Tenant Readiness (Bundle C)
 
-### Session 26 / Bundle B hardening commit not present (2026-05-23)
+### Session 26 / Bundle B is in-flight in parallel (2026-05-23)
 
 The Session 27 launch prompt instructs Bundle C to build on top of
-**Session 26 — SaaS Hardening — Bundle B** which is expected to ship the
-`audit_log` table, a richer rate limiter, and a digest email service. A
-scan of `git log --oneline -30` showed no Session 26 / Bundle B
-commit on `main`. The most recent feature commit is
-`3cc99cd feat(tracking): mobile-first public /track/<token> page` and the
-last "session complete" commit is `869cc55 chore: sessions 21+22 complete
-— command center + digital dispatch`.
+**Session 26 — SaaS Hardening — Bundle B**. At session start no Bundle B
+commit was on `main` (`git log --oneline -30` topped out at
+`3cc99cd feat(tracking): mobile-first public /track/<token> page`). Mid-
+session the Bundle B agent began dropping uncommitted files into the
+working tree: migrations `0012_rate_limit_stats.sql`,
+`0013_audit_log.sql`, `0014_admin_digest.sql`, a `rate-limiting/`
+module, an `audit_log` Drizzle table on `schema.ts`, the
+`api_key_usage_stats` and `email_messages` tables, and new tenant
+columns `digest_emails`, `digest_frequency`, `allowed_admin_ips`,
+`audit_retention_days`.
 
-**Adaptation in this session:**
+**Adaptation taken in this session:**
 
-1. **`audit_log` table** — created a new minimal `audit_log` table as part
-   of the onboarding migration so onboarding / branding / KP-publish /
-   super-admin impersonation events have somewhere to land. If Bundle B
-   later introduces a richer audit table, the schemas should be merged
-   (this one only carries the columns Session 27 actually needs).
-2. **Rate limiter** — reused the existing `RateLimitGuard` (Redis-backed
-   `ratelimit:<key>` counters with `incr + expire`) and added a per-IP
-   variant for the public onboarding endpoints (`OnboardingRateLimitGuard`).
-3. **Digest email** — no Bundle B digest service exists, so the welcome
-   email path falls through to the existing `NotificationService.send`,
-   which already soft-imports `@sendgrid/mail` and falls back to stdout
-   when `SENDGRID_API_KEY` is unset. No new abstraction created.
+1. **Migration numbering** — Session 27's onboarding migration was
+   originally written as `0012_onboarding.sql`. Renamed to
+   `0015_onboarding.sql` so it sequences after Bundle B's 0012–0014
+   regardless of merge order. The journal entry below is added at idx
+   14 only after Bundle B's journal entries land; Session 27 leaves
+   stub idx 14 pointing at `0015_onboarding` so Drizzle can apply our
+   migration on its own.
+2. **`audit_log` table** — Bundle B's richer schema
+   (`actor_type / actor_id / action / resource_type / resource_id /
+   before_state / after_state / metadata`) was kept. Session 27
+   features write through that schema using
+   `auditLog`'s richer column set; we do not introduce a competing
+   shape. If Bundle B is reverted, Session 27's writers will need a
+   minimal fallback — see commit history of this PR for the original
+   shape we proposed.
+3. **Rate limiter** — Bundle B's `rate-limiting/` module isn't wired
+   into `AppModule` yet from our side. Session 27's public onboarding
+   endpoints reuse the existing `RateLimitGuard` (Redis-backed
+   `incr + expire` counters) with a sibling
+   `OnboardingRateLimitGuard` that keys by client IP (3 signups / hr).
+   When Bundle B's throttler graduates, the onboarding guard can be
+   deleted.
+4. **Digest email** — Welcome email goes through
+   `NotificationService.send` (soft-imports `@sendgrid/mail`, falls
+   back to stdout when `SENDGRID_API_KEY` is unset). Once Bundle B's
+   email digest service lands, the call site should switch to it for
+   delivery + audit-trail consistency.
 
 ### Thinkrr KP refresh webhook URL not configured
 
