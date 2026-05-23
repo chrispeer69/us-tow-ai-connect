@@ -19,8 +19,17 @@ import type {
 import type { ActiveJob } from '../adapters/adapter.interface';
 import { NotificationService } from '../notifications/notification.service';
 import { TwilioOutboundService } from '../outbound/twilio-outbound.service';
+import { DriverPingsService, type LatestDriverPing } from '../driver-pings/driver-pings.service';
+import { GoogleDistanceMatrixService } from '../driver-pings/google-distance-matrix.service';
 
 const DEFAULT_ETA_MINS = 45;
+// Pings older than this are ignored when picking "the nearest available
+// driver" — a stale ping from 2 hours ago is worse than no ping at all
+// because it makes the agent quote a confidently-wrong number.
+const PING_FRESHNESS_SECONDS = 20 * 60;
+// Drivers further than this from the caller are not considered for live ETA.
+// 60 miles ≈ 1 hr drive — beyond that the configured default is more honest.
+const MAX_CANDIDATE_DISTANCE_MILES = 60;
 const DEFAULT_SERVICES = [
   { key: 'LIGHT_TOW', label: 'Light Duty Tow' },
   { key: 'MEDIUM_TOW', label: 'Medium Duty Tow' },
@@ -60,6 +69,8 @@ export class AiConnectService {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly notifications: NotificationService,
     private readonly twilio: TwilioOutboundService,
+    private readonly driverPings: DriverPingsService,
+    private readonly distanceMatrix: GoogleDistanceMatrixService,
   ) {}
 
   async getActiveTransferRoute(tenantId: string) {
@@ -132,11 +143,17 @@ export class AiConnectService {
 
   // ─── eta ────────────────────────────────────────────────────────────
   /**
-   * Distance/driver-GPS integration is deferred. For v1 we return the
-   * configured default ETA from ai_agent_configs (falling back to 45).
-   * lat/lng are accepted for forward compatibility and currently unused.
+   * Live ETA: pick the closest fresh-pinged driver and ask Google Distance
+   * Matrix for the driving duration to the caller's location. Falls back to
+   * the tenant's configured default ETA at three boundaries:
+   *   1. No caller lat/lng supplied (agent didn't geocode the address).
+   *   2. No driver_pings rows fresh enough to trust.
+   *   3. Distance Matrix returns nothing (API key missing, quota, etc.).
+   * The `basis` field surfaces *which* path produced the number so the
+   * Thinkrr agent can phrase the response accurately ("our nearest truck is
+   * about 18 minutes out" vs "our typical ETA is 45 minutes").
    */
-  async estimateEta(tenantId: string, _lat: number | null, _lng: number | null) {
+  async estimateEta(tenantId: string, lat: number | null, lng: number | null) {
     const cfg = (
       await this.db
         .select({ defaultEtaMins: aiAgentConfigs.defaultEtaMins })
@@ -144,10 +161,93 @@ export class AiConnectService {
         .where(eq(aiAgentConfigs.tenantId, tenantId))
         .limit(1)
     )[0];
-    const eta = cfg?.defaultEtaMins ?? DEFAULT_ETA_MINS;
+    const defaultEta = cfg?.defaultEtaMins ?? DEFAULT_ETA_MINS;
+
+    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+      return {
+        eta_minutes: defaultEta,
+        basis: 'default_eta_mins (no caller coordinates supplied)',
+      };
+    }
+
+    let candidates: LatestDriverPing[] = [];
+    try {
+      candidates = await this.driverPings.listLatestPerDriver(tenantId, {
+        maxAgeSeconds: PING_FRESHNESS_SECONDS,
+      });
+    } catch (err) {
+      this.logger.warn(`driver_pings lookup failed: ${(err as Error).message}`);
+    }
+
+    const callerPoint = { lat, lng };
+    const ranked = candidates
+      .map((c) => ({
+        ping: c,
+        miles: GoogleDistanceMatrixService.haversineMiles(
+          { lat: c.lat, lng: c.lng },
+          callerPoint,
+        ),
+      }))
+      .filter((c) => c.miles <= MAX_CANDIDATE_DISTANCE_MILES)
+      .sort((a, b) => a.miles - b.miles);
+
+    if (ranked.length === 0) {
+      return {
+        eta_minutes: defaultEta,
+        basis: 'default_eta_mins (no fresh driver pings within range)',
+      };
+    }
+
+    // Ask Distance Matrix for the top N nearest by straight-line distance —
+    // shortest miles isn't always shortest driving time (highways), so let
+    // Google pick the actual winner from a small shortlist.
+    const shortlist = ranked.slice(0, 3);
+    let matrix: Awaited<ReturnType<GoogleDistanceMatrixService['durationToPoint']>> = [];
+    try {
+      matrix = await this.distanceMatrix.durationToPoint(
+        shortlist.map((s) => ({ lat: s.ping.lat, lng: s.ping.lng, label: s.ping.driverPhone })),
+        callerPoint,
+      );
+    } catch (err) {
+      this.logger.warn(`Distance Matrix call threw: ${(err as Error).message}`);
+    }
+
+    if (matrix.length === 0) {
+      // Fall back to a haversine-only estimate at a conservative 30 mph
+      // surface-street speed. Better than nothing when the API is down.
+      const nearest = shortlist[0];
+      const minutes = Math.max(5, Math.round((nearest.miles / 30) * 60));
+      return {
+        eta_minutes: minutes,
+        basis: 'haversine_estimate (Distance Matrix unavailable)',
+        driver: {
+          phone: nearest.ping.driverPhone,
+          name: nearest.ping.driverName,
+          distance_miles: Number(nearest.miles.toFixed(2)),
+          ping_age_seconds: nearest.ping.ageSeconds,
+        },
+      };
+    }
+
+    const winner = matrix.reduce((best, cur) =>
+      cur.durationSeconds < best.durationSeconds ? cur : best,
+    );
+    const winnerPing = shortlist.find(
+      (s) => s.ping.lat === winner.origin.lat && s.ping.lng === winner.origin.lng,
+    )?.ping;
+
+    const etaMinutes = Math.max(1, Math.round(winner.durationSeconds / 60));
     return {
-      eta_minutes: eta,
-      basis: 'default_eta_mins (driver-GPS integration deferred — see ASSUMPTIONS.md)',
+      eta_minutes: etaMinutes,
+      basis: 'distance_matrix (live driver ping + Google driving time)',
+      driver: winnerPing
+        ? {
+            phone: winnerPing.driverPhone,
+            name: winnerPing.driverName,
+            distance_miles: Number((winner.distanceMeters / 1609.344).toFixed(2)),
+            ping_age_seconds: winnerPing.ageSeconds,
+          }
+        : null,
     };
   }
 

@@ -456,3 +456,38 @@ export type DispatchDecisionRow = typeof dispatchDecisions.$inferSelect;
 export type CallInteractionRow = typeof callInteractions.$inferSelect;
 export type SmartActionRow = typeof smartActions.$inferSelect;
 export type DispatchRequestRow = typeof dispatchRequests.$inferSelect;
+
+// ============ DRIVER PINGS (Session 23) ============
+// Standalone location reporting keyed by tenant + driver_phone (E.164). Kept
+// distinct from the Command-Center `drivers` table so this module can run
+// before that table is populated; correlation is done at read time by phone.
+export const driverPings = pgTable(
+  'driver_pings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    driverPhone: varchar('driver_phone', { length: 20 }).notNull(),
+    driverName: varchar('driver_name', { length: 120 }),
+    lat: numeric('lat', { precision: 10, scale: 6 }).notNull(),
+    lng: numeric('lng', { precision: 10, scale: 6 }).notNull(),
+    heading: numeric('heading', { precision: 5, scale: 2 }),
+    speedMph: numeric('speed_mph', { precision: 5, scale: 2 }),
+    accuracyM: numeric('accuracy_m', { precision: 8, scale: 2 }),
+    batteryPct: integer('battery_pct'),
+    source: varchar('source', { length: 20 }).notNull().default('manual'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantPhoneRecordedIdx: index('driver_pings_tenant_phone_recorded_idx').on(
+      t.tenantId,
+      t.driverPhone,
+      t.recordedAt,
+    ),
+    tenantRecordedIdx: index('driver_pings_tenant_recorded_idx').on(t.tenantId, t.recordedAt),
+  }),
+);
+
+export type DriverPingRow = typeof driverPings.$inferSelect;

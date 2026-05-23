@@ -74,6 +74,13 @@ function makeRedis(map: Record<string, string> = {}) {
 
 const NOTIFICATIONS = { send: vi.fn() };
 const TWILIO = { sendDispatchSms: vi.fn(async () => 'SM-stub') };
+const DRIVER_PINGS = {
+  listLatestPerDriver: vi.fn(async () => []),
+};
+const DISTANCE_MATRIX = {
+  durationToPoint: vi.fn(async () => []),
+  isConfigured: () => false,
+};
 
 describe('AiConnectService.lookupByPhone', () => {
   it('returns not_found when phone is missing', async () => {
@@ -82,6 +89,8 @@ describe('AiConnectService.lookupByPhone', () => {
       makeRedis() as never,
       NOTIFICATIONS as never,
       TWILIO as never,
+      DRIVER_PINGS as never,
+      DISTANCE_MATRIX as never,
     );
     const r = await svc.lookupByPhone(TENANT_ID, '');
     expect(r.found).toBe(false);
@@ -143,27 +152,107 @@ describe('AiConnectService.lookupByPhone', () => {
 });
 
 describe('AiConnectService.estimateEta', () => {
-  it('returns the configured default ETA', async () => {
+  it('falls back to default ETA when no driver pings exist', async () => {
     const svc = new AiConnectService(
       makeDb({ agentConfig: { defaultEtaMins: 45 } }) as never,
       makeRedis() as never,
       NOTIFICATIONS as never,
       TWILIO as never,
+      DRIVER_PINGS as never,
+      DISTANCE_MATRIX as never,
     );
     const r = await svc.estimateEta(TENANT_ID, 39.96, -82.99);
     expect(r.eta_minutes).toBe(45);
-    expect(r.basis).toMatch(/deferred/);
+    expect(r.basis).toMatch(/no fresh driver pings/);
   });
 
-  it('falls back to 45 when no agent config exists', async () => {
+  it('falls back to 45 when no caller coordinates are supplied', async () => {
     const svc = new AiConnectService(
       makeDb({ agentConfig: null }) as never,
       makeRedis() as never,
       NOTIFICATIONS as never,
       TWILIO as never,
+      DRIVER_PINGS as never,
+      DISTANCE_MATRIX as never,
     );
     const r = await svc.estimateEta(TENANT_ID, null, null);
     expect(r.eta_minutes).toBe(45);
+    expect(r.basis).toMatch(/no caller coordinates/);
+  });
+
+  it('uses Distance Matrix when fresh driver pings are within range', async () => {
+    const driverPings = {
+      listLatestPerDriver: vi.fn(async () => [
+        {
+          driverPhone: '+17408129489',
+          driverName: 'Sam',
+          lat: 39.97,
+          lng: -82.99,
+          heading: null,
+          speedMph: null,
+          accuracyM: null,
+          batteryPct: null,
+          recordedAt: new Date(),
+          ageSeconds: 30,
+        },
+      ]),
+    };
+    const distanceMatrix = {
+      isConfigured: () => true,
+      durationToPoint: vi.fn(async () => [
+        {
+          durationSeconds: 12 * 60,
+          distanceMeters: 5 * 1609,
+          origin: { lat: 39.97, lng: -82.99 },
+        },
+      ]),
+    };
+    const svc = new AiConnectService(
+      makeDb({ agentConfig: { defaultEtaMins: 45 } }) as never,
+      makeRedis() as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+      driverPings as never,
+      distanceMatrix as never,
+    );
+    const r = await svc.estimateEta(TENANT_ID, 39.96, -82.99);
+    expect(r.eta_minutes).toBe(12);
+    expect(r.basis).toMatch(/distance_matrix/);
+    expect(distanceMatrix.durationToPoint).toHaveBeenCalled();
+  });
+
+  it('haversine fallback when Distance Matrix is unavailable', async () => {
+    const driverPings = {
+      listLatestPerDriver: vi.fn(async () => [
+        {
+          driverPhone: '+17408129489',
+          driverName: 'Sam',
+          lat: 39.97,
+          lng: -82.99,
+          heading: null,
+          speedMph: null,
+          accuracyM: null,
+          batteryPct: null,
+          recordedAt: new Date(),
+          ageSeconds: 30,
+        },
+      ]),
+    };
+    const distanceMatrix = {
+      isConfigured: () => false,
+      durationToPoint: vi.fn(async () => []),
+    };
+    const svc = new AiConnectService(
+      makeDb({ agentConfig: { defaultEtaMins: 45 } }) as never,
+      makeRedis() as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+      driverPings as never,
+      distanceMatrix as never,
+    );
+    const r = await svc.estimateEta(TENANT_ID, 39.96, -82.99);
+    expect(r.basis).toMatch(/haversine/);
+    expect(r.eta_minutes).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -175,6 +264,8 @@ describe('AiConnectService.recordSmartAction', () => {
       makeRedis() as never,
       NOTIFICATIONS as never,
       TWILIO as never,
+      DRIVER_PINGS as never,
+      DISTANCE_MATRIX as never,
     );
     const r = await svc.recordSmartAction(TENANT_ID, {
       action_type: 'CREATE_DISPATCH',

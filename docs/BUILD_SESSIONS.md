@@ -2431,3 +2431,95 @@ Admin (`x-tenant-id` placeholder):
 - Untracked sibling modules (`command-center/`, `digital-dispatch/`)
   added new SQL migrations + a websocket gateway during this session.
   Their owners should wire them into `AppModule` in a follow-up.
+
+---
+
+## Session 23: Driver Pings + Live ETA (extension, 2026-05-23)
+
+Closes the "real driver-GPS feed → `/v1/ai-connect/eta`" follow-up flagged
+above. The original Session 23 (Thinkrr integration) shipped the endpoint
+with a static-default response; this pass replaces the stub with a live
+driving-time computation backed by a new `driver_pings` table plus Google
+Distance Matrix.
+
+### Objective
+Land a standalone driver-location feed and rewire `/v1/ai-connect/eta` so
+the Thinkrr inbound agent at `+13803336411` quotes the nearest fresh
+driver's actual driving time instead of "45 minutes" for every caller.
+Designed in isolation from the Command-Center `drivers` table so it can
+ship before that module is finalized — joinable by phone later.
+
+### Files added
+- `packages/api/src/db/migrations/0008_driver_pings.sql` — new table keyed
+  by `(tenant_id, driver_phone)` (E.164). Two indexes for "latest per
+  driver" and tenant-wide recency.
+- `packages/api/src/modules/driver-pings/driver-pings.service.ts` — insert
+  + read path (`DISTINCT ON` SQL for latest-per-driver). Includes a
+  `normalizePhone` helper that accepts `(740) 812-9489`, `7408129489`,
+  `+17408129489`, etc.
+- `packages/api/src/modules/driver-pings/google-distance-matrix.service.ts`
+  — REST wrapper over `maps.googleapis.com/maps/api/distancematrix/json`.
+  Reuses `GOOGLE_PLACES_API_KEY` (same Google Cloud project). Includes a
+  `haversineMiles` static for cheap proximity ranking.
+- `packages/api/src/modules/driver-pings/driver-pings.controller.ts` —
+  `POST /v1/driver-pings` (tenant API key), `GET /v1/admin/driver-pings/
+  latest`, `GET /v1/admin/driver-pings/:phone/history` (admin guard).
+- `packages/api/src/modules/driver-pings/driver-pings.module.ts`
+- `packages/api/src/modules/driver-pings/driver-pings.service.spec.ts`
+  — 10 unit tests covering phone normalization, ping persistence,
+  haversine math, and Distance Matrix response parsing.
+
+### Files changed
+- `packages/api/src/db/schema.ts` — added `driverPings` drizzle table +
+  `DriverPingRow` type export.
+- `packages/api/src/db/migrations/meta/_journal.json` — registered the
+  0008 entry for the drizzle migrator.
+- `packages/api/src/app.module.ts` — registered `DriverPingsModule`.
+- `packages/api/src/modules/ai-connect/ai-connect.module.ts` — imports
+  `DriverPingsModule` so the eta path can resolve both services.
+- `packages/api/src/modules/ai-connect/ai-connect.service.ts` — replaced
+  the stub `estimateEta` with a three-tier resolution chain:
+  1. `distance_matrix` — fresh ping (<20 min) + Google driving time
+  2. `haversine_estimate` — fresh ping but DM unreachable; 30 mph fallback
+  3. `default_eta_mins` — no fresh ping in range, or caller has no coords
+- `packages/api/src/modules/ai-connect/ai-connect.service.spec.ts` —
+  updated for the new constructor + added Distance Matrix / haversine
+  fallback tests.
+- `packages/shared/src/schemas/ai-connect.schema.ts` — added
+  `DriverPingCreateSchema` + `LiveEtaQuerySchema`.
+- `docs/ASSUMPTIONS.md` — Session 23 (extension) section.
+
+### Endpoints introduced
+
+Tenant-authenticated (`X-Tenant-API-Key`):
+- `POST /v1/driver-pings` — driver clients post `{driver_phone, lat, lng,
+  …}`. Response: `{id, driver_phone, recorded_at}`. Rate-limited
+  60/min/key.
+
+Admin (`x-tenant-id` placeholder):
+- `GET /v1/admin/driver-pings/latest?max_age_seconds=` — one row per
+  driver_phone with `ageSeconds` server-computed.
+- `GET /v1/admin/driver-pings/:phone/history?limit=` — ping log,
+  newest-first.
+
+Updated tenant-authenticated:
+- `GET /v1/ai-connect/eta?lat=&lng=` — payload now includes `eta_minutes`,
+  `basis`, and (when matched) `driver: {phone, name, distance_miles,
+  ping_age_seconds}`.
+
+### Test Result
+- 36 vitest tests pass (was 26 before this session — 10 new in
+  `driver-pings.service.spec.ts` plus 2 new in
+  `ai-connect.service.spec.ts`).
+- `pnpm --filter @ustow/api build` — green.
+
+### Acceptance Criteria
+1. `POST /v1/driver-pings` with `{driver_phone, lat, lng}` inserts a row
+   with E.164 phone normalization and returns 201.
+2. `GET /v1/ai-connect/eta?lat=&lng=` returns
+   `basis: 'distance_matrix …'` when a ping <20 min old exists within
+   60 mi of the caller and `GOOGLE_PLACES_API_KEY` is set.
+3. With no fresh pings, the endpoint still returns 200 with
+   `basis: 'default_eta_mins (no fresh driver pings within range)'`.
+4. `GET /v1/admin/driver-pings/latest` collapses ping history to one row
+   per driver_phone.

@@ -1,7 +1,74 @@
-# Engineering Assumptions — Sessions 21 & 22
+# Engineering Assumptions — Sessions 21, 22 & 23
 
 Companion to the root `ASSUMPTIONS.md`. Captures non-obvious decisions taken
-during the Command Center (S21) and Digital Dispatch (S22) builds.
+during the Command Center (S21), Digital Dispatch (S22), and Driver Pings +
+Live ETA (S23) builds.
+
+## Session 23 — Driver Pings + Live ETA
+
+### Data model
+
+- **Separate `driver_pings` table, not a column on Command Center's
+  `drivers`.** S21's `drivers` table is uuid-keyed and depends on a
+  populated roster; this module needs to work the moment the API ships,
+  before any driver row exists. Natural key here is
+  `(tenant_id, driver_phone)` in E.164. When S21 is finalized, a future
+  migration can backfill `drivers.id` via the matching phone.
+- **`lat` / `lng` are `numeric(10,6)`**, mirroring S21's `pickup_lat`. Same
+  ±0.1 m precision is plenty for routing a tow truck.
+- **`heading` / `speed_mph` / `accuracy_m` / `battery_pct` all nullable.**
+  Older feature phones won't supply them; a manual operator ping won't
+  either. The /eta path only relies on lat/lng/recorded_at.
+- **`source` column** distinguishes `manual`, `phone_app`, `tablet`,
+  `gps_tracker` for later debugging — does not gate behavior.
+- **No update path; only insert.** Each ping is a row. Latest-per-driver is
+  computed in SQL with `DISTINCT ON (driver_phone) … ORDER BY recorded_at
+  DESC`. Keeps history for free, lets the admin UI scrub backwards in time
+  without a separate history table.
+- **`PING_FRESHNESS_SECONDS = 1200` (20 min)** in `ai-connect.service.ts`.
+  Beyond 20 min the ping is dropped from the candidate list — better to
+  fall back to the static default than confidently quote a stale truck
+  location.
+- **`MAX_CANDIDATE_DISTANCE_MILES = 60`.** Drivers further than that aren't
+  considered for live ETA — at >1 hr drive, the operator's configured
+  `default_eta_mins` is more honest than a Distance Matrix quote on a
+  truck that's not really available.
+
+### /v1/ai-connect/eta routing
+
+- **Phone-keyed driver lookup, not uuid.** The Thinkrr agent doesn't know
+  about driver uuids; it knows `+phone`. Keeps the API surface stable when
+  S21 lands.
+- **Top-3 shortlist by haversine, then Distance Matrix.** Straight-line
+  distance isn't the same as driving time (river crossings, freeway
+  on-ramps). Cheaper than asking Distance Matrix about all candidates;
+  bounded API cost regardless of fleet size.
+- **Prefer `duration_in_traffic` when present.** Requires
+  `departure_time=now` on the Distance Matrix request, which we always
+  send. Falls through to `duration` when traffic data isn't returned.
+- **Triple fallback chain** with the `basis` field surfacing which branch
+  fired, so the agent can phrase the response accurately:
+  1. `distance_matrix` — live ping + Google driving time (best path).
+  2. `haversine_estimate` — ping is fresh, but Distance Matrix unreachable
+     (no API key, quota, network). Estimate at 30 mph surface streets.
+  3. `default_eta_mins` — no fresh ping in range, or caller didn't supply
+     coordinates. Returns the operator's configured static ETA.
+- **GoogleDistanceMatrixService is its own injectable**, not buried in
+  ai-connect.service. Lets the admin map view reuse it later for
+  "approximate ETA per driver to a candidate job."
+- **GOOGLE_PLACES_API_KEY drives both Places and Distance Matrix.** The
+  build sessions doc explicitly says the same Google Cloud project is
+  authorized for both. If they ever get split, the env var name should
+  change to `GOOGLE_MAPS_API_KEY`.
+
+### Auth model
+
+- **POST /v1/driver-pings uses `TenantApiKeyGuard`,** same credential as
+  the Thinkrr agent. Rationale: a phone-app driver client is a tenant-
+  scoped device, not a user. Issuing per-driver bearer tokens is overkill
+  for v1; rotate the tenant key to revoke. Rate limit applies (60/min).
+- **GET /v1/admin/driver-pings/\* uses `AdminAuthGuard`,** same as the
+  rest of the admin surface. No new auth primitives in this session.
 
 ## Session 21 — Command Center
 
