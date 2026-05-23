@@ -115,32 +115,44 @@ export class KnowledgePackService {
    * Public read: prefer the v2 `content` blob when published; otherwise
    * return null and let callers (e.g. KP markdown endpoint) fall back to
    * the legacy v1 blob on ai_agent_configs.
+   *
+   * Wrapped in a try/catch so a missing `tenant_knowledge_pack` table
+   * (migration 0017 not yet applied on a given env) does not take down
+   * the legacy /profile.md endpoint. We return null on any error so the
+   * caller falls back gracefully.
    */
   async getPublishedContent(tenantId: string): Promise<{ tenantName: string; content: KnowledgePackV2 } | null> {
-    const row = (
-      await this.db
-        .select({
-          content: tenantKnowledgePack.content,
-          published: tenantKnowledgePack.published,
-        })
-        .from(tenantKnowledgePack)
-        .where(eq(tenantKnowledgePack.tenantId, tenantId))
-        .limit(1)
-    )[0];
-    if (!row || !row.published) return null;
-    const t = (
-      await this.db
-        .select({ companyName: tenants.companyName })
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1)
-    )[0];
-    const parsed = KnowledgePackV2Schema.safeParse(row.content);
-    if (!parsed.success) {
-      this.logger.warn(`[kp] tenant ${tenantId} stored content failed schema validation`);
+    try {
+      const row = (
+        await this.db
+          .select({
+            content: tenantKnowledgePack.content,
+            published: tenantKnowledgePack.published,
+          })
+          .from(tenantKnowledgePack)
+          .where(eq(tenantKnowledgePack.tenantId, tenantId))
+          .limit(1)
+      )[0];
+      if (!row || !row.published) return null;
+      const t = (
+        await this.db
+          .select({ companyName: tenants.companyName })
+          .from(tenants)
+          .where(eq(tenants.id, tenantId))
+          .limit(1)
+      )[0];
+      const parsed = KnowledgePackV2Schema.safeParse(row.content);
+      if (!parsed.success) {
+        this.logger.warn(`[kp] tenant ${tenantId} stored content failed schema validation`);
+        return null;
+      }
+      return { tenantName: t?.companyName ?? parsed.data.identity.name, content: parsed.data };
+    } catch (err) {
+      this.logger.warn(
+        `[kp] getPublishedContent failed for tenant ${tenantId} (likely missing tenant_knowledge_pack table): ${(err as Error).message}`,
+      );
       return null;
     }
-    return { tenantName: t?.companyName ?? parsed.data.identity.name, content: parsed.data };
   }
 
   private async notifyThinkrrRefresh(tenantId: string, version: number) {
