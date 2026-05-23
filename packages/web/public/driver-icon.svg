@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <g fill="#10b981">
+    <path d="M96 320 L96 240 L160 240 L208 192 L320 192 L368 240 L416 240 L416 336 L384 336 A 32 32 0 1 1 320 336 L192 336 A 32 32 0 1 1 128 336 L96 336 Z" />
+    <circle cx="160" cy="336" r="22" fill="#0f172a"/>
+    <circle cx="352" cy="336" r="22" fill="#0f172a"/>
+  </g>
+  <text x="256" y="436" font-family="Inter,Arial,sans-serif" font-size="48" fill="#e2e8f0" text-anchor="middle" font-weight="700">ROADSIDE</text>
+</svg>
