@@ -57,6 +57,27 @@
       "when": 1748700000000,
       "tag": "0008_driver_pings",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1748800000000,
+      "tag": "0009_caller_communication",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1748800500000,
+      "tag": "0010_seed_caller_comm",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1748900000000,
+      "tag": "0011_driver_experience",
+      "breakpoints": true
     }
   ]
 }

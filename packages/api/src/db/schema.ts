@@ -25,6 +25,12 @@ export const tenants = pgTable('tenants', {
   thinkrrAgentId: varchar('thinkrr_agent_id', { length: 100 }),
   assignedPhoneNumber: varchar('assigned_phone_number', { length: 20 }),
   isActive: boolean('is_active').notNull().default(true),
+  // Session 24: caller-communication config
+  managerPhones: jsonb('manager_phones').notNull().default([] as unknown as never),
+  smsEnabled: boolean('sms_enabled').notNull().default(true),
+  trackingUrlBase: text('tracking_url_base')
+    .notNull()
+    .default('https://ustowapi-production.up.railway.app/track'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -491,3 +497,100 @@ export const driverPings = pgTable(
 );
 
 export type DriverPingRow = typeof driverPings.$inferSelect;
+
+// ============ TRACKING LINKS (Session 24) ============
+// Public, token-addressed status pages for callers. The token is a short
+// URL-safe slug; rows expire 24h after creation by default. `job_id` is left
+// FK-less so this module can run before Command Center's unified_jobs is the
+// source of truth — link by uuid at read time.
+export const trackingLinks = pgTable(
+  'tracking_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    token: text('token').notNull().unique(),
+    callerPhone: text('caller_phone').notNull(),
+    callerName: text('caller_name'),
+    jobId: uuid('job_id'),
+    pickupLat: numeric('pickup_lat', { precision: 10, scale: 7 }),
+    pickupLng: numeric('pickup_lng', { precision: 10, scale: 7 }),
+    status: text('status').notNull().default('created'),
+    assignedDriverPhone: text('assigned_driver_phone'),
+    assignedDriverName: text('assigned_driver_name'),
+    lastEtaMinutes: integer('last_eta_minutes'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: index('tracking_links_token_idx').on(t.token),
+    tenantStatusIdx: index('tracking_links_tenant_status_idx').on(t.tenantId, t.status),
+  }),
+);
+
+export type TrackingLinkRow = typeof trackingLinks.$inferSelect;
+
+// ============ SMS MESSAGES (Session 24) ============
+// Audit log of every inbound/outbound SMS. `related_*` columns are soft links
+// (no FKs) so deleting a tracking link or flip request doesn't blow away the
+// SMS history. `twilio_sid` is the only handle for status-callback updates.
+export const smsMessages = pgTable(
+  'sms_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    direction: text('direction').notNull(),
+    toPhone: text('to_phone').notNull(),
+    fromPhone: text('from_phone').notNull(),
+    body: text('body').notNull(),
+    twilioSid: text('twilio_sid'),
+    status: text('status').notNull().default('queued'),
+    relatedTrackingLinkId: uuid('related_tracking_link_id'),
+    relatedFlipRequestId: uuid('related_flip_request_id'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantCreatedIdx: index('sms_messages_tenant_created_idx').on(t.tenantId, t.createdAt),
+    twilioSidIdx: index('sms_messages_twilio_sid_idx').on(t.twilioSid),
+  }),
+);
+
+export type SmsMessageRow = typeof smsMessages.$inferSelect;
+
+// ============ FLIP ACCEPT REQUESTS (Session 24) ============
+// SMS-driven manager approval workflow. When the dispatch rules engine
+// flags an AAA job (action="flag"), a flip request is created and managers
+// are SMS'd; they reply YES / NO / YES NOTES. Cron sweeps expired rows.
+export const flipAcceptRequests = pgTable(
+  'flip_accept_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    sourceAdapter: text('source_adapter').notNull(),
+    sourceJobId: text('source_job_id').notNull(),
+    jobSummary: jsonb('job_summary').notNull().default({}),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+    status: text('status').notNull().default('pending'),
+    approverPhone: text('approver_phone'),
+    approverResponse: text('approver_response'),
+    approvalNotes: text('approval_notes'),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    tenantStatusIdx: index('flip_accept_requests_tenant_status_idx').on(t.tenantId, t.status),
+    sourceIdx: index('flip_accept_requests_source_idx').on(t.sourceAdapter, t.sourceJobId),
+    statusExpiresIdx: index('flip_accept_requests_status_expires_idx').on(t.status, t.expiresAt),
+  }),
+);
+
+export type FlipAcceptRequestRow = typeof flipAcceptRequests.$inferSelect;
