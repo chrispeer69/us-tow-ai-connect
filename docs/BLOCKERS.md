@@ -64,6 +64,26 @@ columns `digest_emails`, `digest_frequency`, `allowed_admin_ips`,
   `Cache-Control` header on the public endpoint will eventually pick up
   the new content.
 
+### Web service Railway hostname unknown (2026-05-23)
+
+- **Where:** `scripts/post-deploy-smoke.sh`, `docs/DEPLOY_RAILWAY.md`
+- **Symptom:** The post-deploy smoke script's `WEB_URL` default is a
+  placeholder. Probing `ustowweb-production.up.railway.app`,
+  `ustow-web-production.up.railway.app`, `web-production.up.railway.app`,
+  and `ustowaiconnect-production.up.railway.app` all return Railway's
+  platform-level 404 ("Application not found"), meaning none of those
+  are bound to a deployed service. The API hostname
+  (`ustowapi-production.up.railway.app`) IS reachable.
+- **What's needed (human action):**
+  1. Open Railway → `@ustow/web` service → Settings → Networking.
+  2. Note the auto-generated public URL.
+  3. Add it to `docs/DEPLOY_RAILWAY.md` and `scripts/post-deploy-smoke.sh`
+     as the new default `WEB_URL`.
+  4. Re-run `bash scripts/post-deploy-smoke.sh` to confirm `/` and
+     `/api/health` are green.
+- **Workaround:** Until the hostname is captured, the smoke script's
+  `[web]` section will always fail; treat the `[api]` block as the gate.
+
 ### Branding asset storage falls back to local filesystem
 
 - **Where:** `packages/api/src/modules/branding/branding-assets.service.ts`
