@@ -170,3 +170,120 @@ during the Command Center (S21) and Digital Dispatch (S22) builds.
 5. **No driver-distance integration** in the AAA accept decision — adding a
    "closest available driver is within X miles" predicate would require the
    Geocoding pass to complete before the rules engine fires.
+
+## Session 10 — Production deployment (Railway)
+
+### Platform choice
+
+- **Railway** chosen over Render/Fly/Vercel-for-API for two reasons: (a)
+  the spec calls it out explicitly, and (b) Railway's first-class managed
+  Postgres + Redis + GitHub-app integration removes the need for any
+  GitHub Actions secret. The downside is Railway's headed Playwright story
+  is RAM-hungry — flagged in `docs/DEPLOY_RAILWAY.md` as requiring the
+  **Pro 8 GB** tier minimum.
+- **`railway.toml` at the repo root with two `[[services]]` blocks**
+  (`api`, `web`) rather than per-service `railway.json` files. The TOML
+  format is the documented config-as-code shape on Railway as of
+  2026-Q1; switching to JSON would only matter if a single service needed
+  override-via-env. Postgres + Redis are **not** declared in the file —
+  they're added via the Railway dashboard as plugins and exposed to the
+  `api` service via the `${{Postgres.DATABASE_URL}}` /
+  `${{Redis.REDIS_URL}}` reference syntax.
+- **Domain `ustow-aiconnect.com` is not yet registered** (per existing
+  blocker docs / project notes). The deploy doc therefore covers both
+  paths: bootstrap on Railway-generated `*.up.railway.app` subdomains,
+  then a clean CNAME flip when the domain lands. Env vars
+  (`PUBLIC_BASE_URL`, `NEXT_PUBLIC_API_URL`, etc.) are documented as
+  variables to update at flip time, not hard-coded.
+
+### Dockerfile shape
+
+- **Both services use `node:22-slim` + corepack-enabled pnpm 9**, mirroring
+  the root `engines` field in `package.json`. Slim over Alpine because
+  Playwright's `--with-deps` install assumes Debian's apt-based libgbm /
+  libnss / libasound. Alpine works but needs a separate apk recipe and is
+  more fragile across Playwright versions.
+- **Multi-stage builds (deps → build → runtime)** so the production image
+  ships without dev dependencies, source maps, or the build toolchain.
+  The runtime stage runs as the unprivileged `node` user.
+- **API Dockerfile installs Chromium with `--with-deps`** during the build
+  stage and copies the entire `/ms-playwright` directory into the runtime
+  stage. Runtime exports `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` so the
+  adapter never tries to download a browser at first use.
+- **`packages/shared` is built first** in the API/web build stages via
+  `pnpm --filter @ustow/shared build` — the same `prebuild` hook the
+  README documents — so the shared package's `dist/` is present before
+  the API/web compile against it.
+- **Web image uses Next.js `output: 'standalone'`** so the runtime stage
+  only needs `.next/standalone` + `.next/static` + `public/`, dropping
+  the multi-hundred-megabyte `node_modules` tree from the final image.
+  The standalone server is started with `node packages/web/server.js`
+  (Next emits it at that path inside the standalone bundle).
+
+### Health checks
+
+- **`/health` stays dependency-free** so Railway's bootstrap probe can
+  succeed even while Postgres is still warming up; a separate
+  `/health/ready` does the dep checks and is what Railway's
+  `healthcheckPath` is pointed at. Splitting the two endpoints lets us
+  add a separate Kubernetes-style liveness probe later without changing
+  the URL contract.
+- **Readiness pings Postgres with `SELECT 1`** (via the existing Drizzle
+  client) and Redis with `client.ping()`. Latency is reported in the JSON
+  response for ad-hoc debugging. Both checks have a hard 2-second budget
+  enforced by `Promise.race`; a hung dep fails the check rather than
+  hanging the probe forever (Railway would otherwise wait the full
+  healthcheckTimeout).
+
+### CORS + Helmet
+
+- **Helmet** added via `helmet()` middleware on app bootstrap; the only
+  non-default tweak is `crossOriginResourcePolicy: { policy: 'cross-origin' }`
+  so the public Knowledge Pack endpoint can be loaded by Thinkrr's voice
+  agent (which fetches from a different origin).
+- **CORS allow-list** is `WEB_PUBLIC_URL` + an optional comma-separated
+  `CORS_EXTRA_ORIGINS` env var. Webhook routes (`/webhooks/*`) and the
+  public Knowledge Pack route (`/public/*`) are exempt — they're called
+  by server-side integrations that don't honour CORS preflight anyway, so
+  blocking them would only confuse debugging without adding security.
+  The signed webhook secret is the real auth on `/webhooks/thinkrr/*`.
+- **No console-log secret-scrub findings.** A grep of the API source
+  shows only CLI tooling (the `generate-api-key.ts` print, plus boot/dev
+  warnings) writes to console; none of it logs the value of a
+  user-provided secret.
+
+### GitHub Actions
+
+- **CI does type-check + tests only.** Railway's GitHub app handles the
+  actual build + deploy, so no `RAILWAY_TOKEN` lives in GitHub Secrets.
+  This removes the most common "rotated token broke CI" failure mode.
+- **`pnpm test` is invoked with `--if-present` semantics** by iterating
+  the packages: only `@ustow/api` defines a `test` script today, so the
+  workflow runs vitest there and skips the others without failing.
+- **Single workflow file** (`deploy.yml`) — the name is preserved from the
+  original spec even though it does not literally deploy; "deploy" reads
+  as the post-merge gate that lets the deploy proceed.
+
+### Smoke test
+
+- **Bash + curl** rather than Node so the script can be invoked from a
+  bare CI runner or operator's laptop with zero install. Each check is a
+  single `curl -fsS -o /dev/null -w '%{http_code}'` against the
+  production URL; the script `set -euo pipefail`s on the first failure.
+- **Defaults to Railway-generated URLs** when `API_URL` / `WEB_URL` aren't
+  set, so the script is usable immediately after the first deploy
+  (before the custom domain lands).
+
+### Files intentionally NOT touched
+
+- Anything under `packages/api/src/modules/admin/**`,
+  `packages/api/src/modules/command-center/**`,
+  `packages/api/src/modules/digital-dispatch/**` — Sessions 21/22 own
+  these and a sibling Claude Code session was actively editing them at
+  the start of this work.
+- Existing migration files under `packages/api/src/db/migrations/` — only
+  additive new files would have been added, but Session 10 didn't need
+  any.
+- The `unified_jobs` / `drivers` / `trucks` / `job_events` /
+  `dispatch_rules` / `dispatch_decisions` schema. The deploy story is
+  schema-agnostic.
