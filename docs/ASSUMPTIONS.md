@@ -760,3 +760,89 @@ with the generic "Something went wrong" card and lost the sidebar.
 Scoped boundary keeps the sidebar/nav visible and offers a "Reload
 section" (calls `reset()`) and "Reload page" (window.location.reload)
 without leaking the error message to the user.
+
+## 2026-05-23 — API-side: missing `x-tenant-id` returns 401 (was 500)
+
+### Root cause
+
+`packages/api/src/common/guards/admin-auth.guard.ts` resolved the
+tenant id with a string literal fallback:
+
+```ts
+const DEFAULT_TENANT_ID = process.env.DEFAULT_ADMIN_TENANT_ID ?? 'default-tenant';
+const tenantId = (tenantFromJwt || tenantFromHeader || DEFAULT_TENANT_ID || '').trim();
+if (!tenantId) throw new UnauthorizedException(...);
+req.tenantId = tenantId;
+```
+
+When the request had no `x-tenant-id` header AND the Railway
+`@ustow/api` service had no `DEFAULT_ADMIN_TENANT_ID` env var set
+(confirmed via `railway variables --service @ustow/api`), `tenantId`
+resolved to the literal string `'default-tenant'`. That's truthy, so
+the 401 branch didn't fire. The value then flowed into every admin
+service call (`.where(eq(tenants.id, 'default-tenant'))`), where
+Postgres raised `invalid input syntax for type uuid: "default-tenant"`,
+and Nest's default exception filter rendered it as a raw HTTP 500.
+
+The web-side `lib/utils.ts` actually already flagged this exact failure
+mode in a comment ("a non-UUID fallback … causes every admin endpoint
+to 500 on the Postgres cast") and worked around it client-side with the
+seed UUID. The API side still had the broken literal.
+
+### Fix (`admin-auth.guard.ts`)
+
+1. Replaced the `?? 'default-tenant'` literal fallback with a helper
+   that only honours `DEFAULT_ADMIN_TENANT_ID` if it is itself
+   UUID-shaped. An unset (or invalid) env yields `null`, not a poison
+   string.
+2. After resolving from JWT → header → env, the candidate is matched
+   against a UUID-shape regex (`/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`).
+   Anything else throws `UnauthorizedException({ code: 'UNAUTHORIZED',
+   message: 'Invalid tenant identifier' })`.
+3. Missing tenant (everything empty) → same exception with
+   `'Missing tenant context'` message.
+4. Both failure paths still call `recordAuthFailure(req, reason)` so
+   `auth.failed` audit entries continue to land in the audit log.
+5. Validation accepts UUIDs of any version (v1..v8 + the all-zero seed
+   IDs the codebase uses, e.g. `00000000-0000-0000-0000-000000000001`).
+   Strict v4-only would reject the seed/dev IDs that are used in
+   every existing fixture.
+
+### Why the guard is the right layer
+
+Every one of the six failing routes (`/v1/admin/{company, members,
+api-keys, billing, audit-log, digest}`) already passes through
+`@UseGuards(AdminAuthGuard)`:
+
+- `AdminController` — company/members/api-keys/billing
+- `AuditLogController` — audit-log
+- `AdminDigestController` — digest
+
+So fixing the single guard covers all six (plus every other
+`AdminAuthGuard`-protected admin route: command-center, digital-dispatch,
+branding, knowledge-pack, driver-pings, sms-log, admin-system, etc.).
+No per-controller pipe was needed.
+
+### Test coverage
+
+New `admin-auth.guard.spec.ts` (12 tests) asserts:
+- valid header → 200 + `req.tenantId` stamped
+- missing header → 401 (not 500), correct error body shape
+- non-UUID header → 401 (the regression that caused this incident)
+- malformed-UUID header → 401
+- `DEFAULT_ADMIN_TENANT_ID=default-tenant` env → 401 (proves the bug
+  doesn't regress on env-only operators)
+- valid env default → 200
+- header beats env, JWT beats header
+- JWT with bad tenantId → 401
+- uppercase + whitespace tolerated
+
+Full API suite goes from **133 → 145** passing, no regressions.
+
+### Out-of-scope finds (still in BLOCKERS)
+
+`packages/api/src/modules/convini/convini.controller.ts:55` reads
+`process.env.DEFAULT_ADMIN_TENANT_ID || …` directly, with a different
+fallback chain. Not on the 6-route hit list and the guard there will
+still reject non-UUID, but worth a follow-up to delete the redundant
+read. Logged in BLOCKERS so future visibility is preserved.
