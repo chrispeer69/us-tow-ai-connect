@@ -408,3 +408,80 @@ counties, transfer phone). Once additional tenants land, auto-seeding on
 every container start would overwrite mutable rows for tenant zero on
 every deploy. Migrations run automatically; seeding remains a manual
 operator action (`pnpm db:seed:tenant-zero` with `DATABASE_URL` set).
+
+## Session 25 — Driver Experience
+
+### `driver_job_events` is the system-of-record, not `unified_jobs`
+
+Driver-side state transitions (accept / decline / en_route / on_scene /
+in_tow / completed / cancel) always write a row into `driver_job_events`
+before attempting to update `unified_jobs`. Rationale:
+
+- The Command Center session (S21) and the driver-jobs session (S25) ship
+  on independent timelines. We can't assume `unified_jobs` will be
+  populated when the driver app posts an event.
+- A driver tapping "On Scene" at the curb shouldn't lose the audit trail
+  just because the dispatch table hasn't been migrated on a given env.
+- When Command Center is live, the unified_jobs update is best-effort and
+  the audit row remains the canonical record of "what the driver said."
+
+If you ever wire `driver_job_events.job_id` as a real FK to `unified_jobs`,
+use `ON DELETE SET NULL` so the audit history survives a job-row purge.
+
+### Driver lookup is by E.164 phone, never uuid
+
+Same pattern as `driver_pings`: the driver client doesn't know the
+Command Center's `drivers.id` uuid, just its own phone number. The
+`/v1/driver/jobs/*` endpoints take `?driver_phone=` and JOIN through
+`drivers.phone = $1` to reach `unified_jobs.assigned_driver_id`. The
+Command Center populates `drivers.phone` when it onboards a driver.
+
+### Convini parser is permissive on purpose
+
+`ConviniService.parseBody` accepts:
+
+- `CONVINI: KEY=value KEY="quoted value"` — the assumed Twilio-relayed form.
+- `CONVINI# …` — alternative marker glyph.
+- `JOB={…}` — embedded JSON blob, merged into `raw_fields`.
+
+The real Convini wire format is unknown. Until Chris confirms it, the
+parser is intentionally lenient so we capture *something* useful from
+every inbound. `raw_body` is always preserved so historical rows can be
+re-parsed once the format lands. See `docs/CONVINI_INTEGRATION.md`.
+
+### Web Push is foundation-only this session
+
+`POST /v1/driver/push/subscribe` persists subscriptions into
+`driver_push_subscriptions` and de-dupes on `(tenant_id, endpoint)`. We
+do NOT call `webpush.sendNotification(...)` anywhere yet because:
+
+1. `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` aren't issued yet.
+2. The `web-push` npm dep is not added — only adding it once the keys
+   land keeps the prod bundle slim.
+
+When VAPID keys are configured:
+
+1. Generate keys: `npx web-push generate-vapid-keys`.
+2. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` in Railway.
+3. Add `web-push` to `packages/api/package.json`.
+4. Build a `WebPushService` that reads subscriptions from
+   `driver_push_subscriptions` and calls `webpush.sendNotification` per
+   row, handling 410/Gone responses by deleting the stale subscription.
+5. Surface `NEXT_PUBLIC_VAPID_PUBLIC_KEY` to the driver PWA so it can pass
+   the same key to `pushManager.subscribe({ applicationServerKey })`.
+
+### Driver PWA is mobile-first, no Next.js admin chrome
+
+The `/driver` route in `packages/web/src/app/driver/**` deliberately
+doesn't share layout with `/admin/**`. The admin shell is dark-themed,
+desktop-first, and uses keyboard chrome that doesn't translate to a tow
+truck's phone screen. The driver layout is its own `app/driver/layout.tsx`
+with mobile viewport meta, no sidebar, and a fixed bottom nav.
+
+### Admin live-drivers map is not added to sidebar nav this session
+
+The Command Center session (S21) owns `packages/web/src/app/admin/`'s
+sidebar component. To avoid clobbering its in-flight edits, this session
+links to `/admin/drivers-live` via the existing parallel route only — the
+sidebar nav entry is left for the Command Center session to add when it
+next touches the nav file. The page is fully reachable by direct URL.

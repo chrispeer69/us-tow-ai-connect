@@ -11,7 +11,12 @@ import {
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
-import { DriverPingCreateSchema, type DriverPingCreate } from '@ustow/shared';
+import {
+  DriverPingCreateSchema,
+  DriverPushSubscribeSchema,
+  type DriverPingCreate,
+  type DriverPushSubscribe,
+} from '@ustow/shared';
 import {
   TenantApiKeyGuard,
   type TenantAuthenticatedRequest,
@@ -20,6 +25,7 @@ import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { DriverPingsService } from './driver-pings.service';
+import { DriverPushService } from './driver-push.service';
 
 /**
  * Two access paths:
@@ -30,7 +36,10 @@ import { DriverPingsService } from './driver-pings.service';
  */
 @Controller()
 export class DriverPingsController {
-  constructor(private readonly service: DriverPingsService) {}
+  constructor(
+    private readonly service: DriverPingsService,
+    private readonly push: DriverPushService,
+  ) {}
 
   @Post('v1/driver-pings')
   @HttpCode(201)
@@ -77,5 +86,31 @@ export class DriverPingsController {
       limit ? Number(limit) : 50,
     );
     return { status: 'success', data: { pings: rows, count: rows.length } };
+  }
+
+  /**
+   * Register a web-push subscription from the driver PWA. The actual push
+   * sending is gated on VAPID keys being configured (see ASSUMPTIONS.md);
+   * until then this endpoint just persists the subscription so it's ready
+   * when keys land.
+   */
+  @Post('v1/driver/push/subscribe')
+  @HttpCode(201)
+  @UseGuards(TenantApiKeyGuard, RateLimitGuard)
+  @UsePipes(new ZodValidationPipe(DriverPushSubscribeSchema))
+  async subscribePush(
+    @Req() req: TenantAuthenticatedRequest,
+    @Body() body: DriverPushSubscribe,
+  ) {
+    try {
+      const result = await this.push.subscribe(req.tenantId, body);
+      return { status: 'success', data: result };
+    } catch (err) {
+      throw new BadRequestException({
+        status: 'error',
+        code: 'INVALID_SUBSCRIPTION',
+        message: (err as Error).message,
+      });
+    }
   }
 }

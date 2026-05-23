@@ -5,6 +5,7 @@ import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { DriverPingsController } from './driver-pings.controller';
 import { DriverPingsService } from './driver-pings.service';
+import { DriverPushService } from './driver-push.service';
 import { GoogleDistanceMatrixService } from './google-distance-matrix.service';
 
 @Module({
@@ -12,11 +13,12 @@ import { GoogleDistanceMatrixService } from './google-distance-matrix.service';
   controllers: [DriverPingsController],
   providers: [
     DriverPingsService,
+    DriverPushService,
     GoogleDistanceMatrixService,
     TenantApiKeyGuard,
     RateLimitGuard,
     AdminAuthGuard,
   ],
-  exports: [DriverPingsService, GoogleDistanceMatrixService],
+  exports: [DriverPingsService, DriverPushService, GoogleDistanceMatrixService],
 })
 export class DriverPingsModule {}
