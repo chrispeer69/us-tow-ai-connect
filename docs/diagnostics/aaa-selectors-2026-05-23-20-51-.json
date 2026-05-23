@@ -1,0 +1,1988 @@
+{
+  "ok": true,
+  "startedAt": "2026-05-23T20:51:11.181Z",
+  "listView": {
+    "url": "https://aaacluballiance.my.site.com/ACACONTRACTORCOMMUNITY/s/workorder/WorkOrder/Default",
+    "title": "Work Orders",
+    "controlCount": 83,
+    "actionCandidates": [
+      {
+        "tag": "a",
+        "text": "×",
+        "id": "dismissError",
+        "ariaLabel": "Cancel and close",
+        "title": "Cancel and close",
+        "name": null,
+        "className": "close",
+        "dataAttrs": {},
+        "disabled": false,
+        "selectorCandidates": [
+          "#dismissError",
+          "a[aria-label=\"Cancel and close\"]",
+          "a[title=\"Cancel and close\"]",
+          "a:has-text(\"×\")"
+        ],
+        "looksLikeAction": true
+      },
+      {
+        "tag": "button",
+        "text": "Cancel",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_neutral test-cancelButton uiButton--default uiButton--neutral uiButton",
+        "dataAttrs": {
+          "data-aura-rendered-by": "136:307;a",
+          "data-aura-class": "uiButton--default uiButton--neutral uiButton"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"136:307;a\"]",
+          "button[data-aura-class=\"uiButton--default uiButton--neutral uiButton\"]",
+          "button:has-text(\"Cancel\")"
+        ],
+        "looksLikeAction": true
+      }
+    ],
+    "allControls": [
+      {
+        "tag": "a",
+        "text": "×",
+        "id": "dismissError",
+        "ariaLabel": "Cancel and close",
+        "title": "Cancel and close",
+        "name": null,
+        "className": "close",
+        "dataAttrs": {},
+        "disabled": false,
+        "selectorCandidates": [
+          "#dismissError",
+          "a[aria-label=\"Cancel and close\"]",
+          "a[title=\"Cancel and close\"]",
+          "a:has-text(\"×\")"
+        ],
+        "looksLikeAction": true
+      },
+      {
+        "tag": "a",
+        "text": "Refresh",
+        "id": "auraErrorReload",
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "",
+        "dataAttrs": {},
+        "disabled": false,
+        "selectorCandidates": [
+          "#auraErrorReload",
+          "a:has-text(\"Refresh\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Reports",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "18:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"18:92;a\"]",
+          "button:has-text(\"Reports\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Calls",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn comm-navigation__t",
+        "dataAttrs": {
+          "data-aura-rendered-by": "104:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"104:92;a\"]",
+          "button:has-text(\"Calls\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Service Provider Resources",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "160:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"160:92;a\"]",
+          "button:has-text(\"Service Provider Resources\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Statements & Payments",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "243:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"243:92;a\"]",
+          "button:has-text(\"Statements & Payments\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "More",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "296:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"296:92;a\"]",
+          "button:has-text(\"More\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Expand search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Expand search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-triggerButton js-search-triggerButton slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "427:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"427:0\"]",
+          "button[title=\"Expand search\"]",
+          "button:has-text(\"Expand search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-inputSearchButton search-inputSearchButton--left slds-button_icon-border",
+        "dataAttrs": {
+          "data-aura-rendered-by": "290:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"290:0\"]",
+          "button[title=\"Search\"]",
+          "button:has-text(\"Search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-deflectionItemSearchIcon slds-button_icon-border",
+        "dataAttrs": {
+          "data-aura-rendered-by": "304:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"304:0\"]",
+          "button[title=\"Search\"]",
+          "button:has-text(\"Search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Close search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Close search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-triggercloseButton js-search-triggercloseButton slds-button_icon-bare slds-button_ic",
+        "dataAttrs": {
+          "data-aura-rendered-by": "438:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"438:0\"]",
+          "button[title=\"Close search\"]",
+          "button:has-text(\"Close search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "0Notifications",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button slds-button_icon slds-button_icon slds-button_icon-container slds-button_icon-small slds-global-",
+        "dataAttrs": {
+          "data-aura-rendered-by": "27:136;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"27:136;a\"]",
+          "button:has-text(\"0Notifications\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "id": null,
+        "ariaLabel": "OH714 Chris Peer",
+        "title": null,
+        "name": null,
+        "className": "profile-menuTrigger",
+        "dataAttrs": {
+          "data-aura-rendered-by": "228:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"228:0\"]",
+          "button[aria-label=\"OH714 Chris Peer\"]"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "List View Controls",
+        "id": null,
+        "ariaLabel": null,
+        "title": "List View Controls",
+        "name": null,
+        "className": "slds-button slds-button_icon slds-button_icon-more",
+        "dataAttrs": {
+          "data-aura-rendered-by": "810:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"810:0\"]",
+          "button[title=\"List View Controls\"]",
+          "button:has-text(\"List View Controls\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Select list display",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Select list display",
+        "name": null,
+        "className": "slds-button slds-button_icon slds-button_icon-more",
+        "dataAttrs": {
+          "data-aura-rendered-by": "84:307;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"84:307;a\"]",
+          "button[title=\"Select list display\"]",
+          "button:has-text(\"Select list display\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortWork Order Number",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "40:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"40:486;a\"]",
+          "a:has-text(\"SortWork Order Number\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Work Order Number Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "841:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"841:0\"]",
+          "button:has-text(\"Show Work Order Number Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortCall ID",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "57:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"57:486;a\"]",
+          "a:has-text(\"SortCall ID\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Call ID Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "859:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"859:0\"]",
+          "button:has-text(\"Show Call ID Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortCall Date",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "74:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"74:486;a\"]",
+          "a:has-text(\"SortCall Date\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Call Date Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "877:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"877:0\"]",
+          "button:has-text(\"Show Call Date Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortStatus",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "91:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"91:486;a\"]",
+          "a:has-text(\"SortStatus\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Status Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "895:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"895:0\"]",
+          "button:has-text(\"Show Status Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortService Territory",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "108:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"108:486;a\"]",
+          "a:has-text(\"SortService Territory\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Service Territory Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "913:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"913:0\"]",
+          "button:has-text(\"Show Service Territory Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortContact",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "125:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"125:486;a\"]",
+          "a:has-text(\"SortContact\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Contact Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "931:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"931:0\"]",
+          "button:has-text(\"Show Contact Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortMember Number",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "142:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"142:486;a\"]",
+          "a:has-text(\"SortMember Number\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Member Number Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "949:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"949:0\"]",
+          "button:has-text(\"Show Member Number Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "SortPhone Number",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "toggle slds-th__action slds-text-link--reset ",
+        "dataAttrs": {
+          "data-aura-rendered-by": "159:486;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"159:486;a\"]",
+          "a:has-text(\"SortPhone Number\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Show Phone Number Column Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "967:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"967:0\"]",
+          "button:has-text(\"Show Phone Number Column Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1126:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"1126:0\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Cancel",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_neutral test-cancelButton uiButton--default uiButton--neutral uiButton",
+        "dataAttrs": {
+          "data-aura-rendered-by": "136:307;a",
+          "data-aura-class": "uiButton--default uiButton--neutral uiButton"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"136:307;a\"]",
+          "button[data-aura-class=\"uiButton--default uiButton--neutral uiButton\"]",
+          "button:has-text(\"Cancel\")"
+        ],
+        "looksLikeAction": true
+      },
+      {
+        "tag": "button",
+        "text": "Save",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_neutral test-saveButton uiButton--default uiButton--brand uiButton",
+        "dataAttrs": {
+          "data-aura-rendered-by": "144:307;a",
+          "data-aura-class": "uiButton--default uiButton--brand uiButton"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"144:307;a\"]",
+          "button[data-aura-class=\"uiButton--default uiButton--brand uiButton\"]",
+          "button:has-text(\"Save\")"
+        ],
+        "looksLikeAction": false
+      }
+    ],
+    "firstRowHtml": "<tr><td role=\"gridcell\" class=\"slds-cell-edit slds-cell-error errorColumn cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"988:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1008:0\"><div class=\"slds-cell-edit errorColumn slds-cell-error\" data-aura-rendered-by=\"1004:0\"><div class=\"slds-m-horizontal--xx-small forceStatusIcon\" data-aura-rendered-by=\"992:0\" data-aura-class=\"forceStatusIcon\"><!--render facet: 993:0--></div><span class=\"slds-row-number slds-text-body--small slds-text-color--weak\" data-aura-rendered-by=\"1006:0\"></span></div></span></td><th scope=\"row\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1010:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1032:0\"><!--render facet: 1013:0--><!--render facet: 1015:0--><!--render facet: 1017:0--><a data-refid=\"recordId\" data-special-link=\"true\" title=\"[redacted]\" data-navigable=\"true\" target=\"_blank\" data-ownerid=\"1011:0\" data-recordid=\"0WOJx000016oKR0OAM\" rel=\"noreferrer\" href=\"/ACACONTRACTORCOMMUNITY/s/workorder/0WOJx000016oKR0OAM/detail\" class=\"slds-truncate outputLookupLink slds-truncate outputLookupLink-0WOJx000016oKR0OAM-1011:0 forceOutputLookup\" data-aura-rendered-by=\"1022:0\" data-aura-class=\"forceOutputLookup\">·<!--render facet: 1025:0--></a><!--render facet: 1030:0--></span></th><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1034:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1039:0\"><span class=\"slds-truncate uiOutputText\" data-aura-rendered-by=\"1037:0\" data-aura-class=\"uiOutputText\" title=\"[redacted]\">·</span></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1041:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1046:0\"><span class=\"slds-truncate uiOutputText\" data-aura-rendered-by=\"1044:0\" data-aura-class=\"uiOutputText\" title=\"[redacted]\">·</span></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1048:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1054:0\"><span class=\"slds-truncate\" data-aura-rendered-by=\"1051:0\">·</span></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1056:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1078:0\"><!--render facet: 1059:0--><!--render facet: 1061:0--><!--render facet: 1063:0--><a data-refid=\"recordId\" data-special-link=\"true\" title=\"[redacted]\" data-navigable=\"true\" target=\"_blank\" data-ownerid=\"1057:0\" data-recordid=\"0HhJx000000J8xxKAC\" rel=\"noreferrer\" href=\"/ACACONTRACTORCOMMUNITY/s/detail/0HhJx000000J8xxKAC\" class=\"slds-truncate outputLookupLink slds-truncate outputLookupLink-0HhJx000000J8xxKAC-1057:0 forceOutputLookup\" data-aura-rendered-by=\"1068:0\" data-aura-class=\"forceOutputLookup\">·<!--render facet: 1071:0--></a><!--render facet: 1076:0--></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1080:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1102:0\"><!--render facet: 1083:0--><!--render facet: 1085:0--><!--render facet: 1087:0--><a data-refid=\"recordId\" data-special-link=\"true\" title=\"[redacted]\" data-navigable=\"true\" target=\"_blank\" data-ownerid=\"1081:0\" data-recordid=\"003Jx00001Wh1ltIAB\" rel=\"noreferrer\" href=\"/ACACONTRACTORCOMMUNITY/s/detail/003Jx00001Wh1ltIAB\" class=\"slds-truncate outputLookupLink slds-truncate outputLookupLink-003Jx00001Wh1ltIAB-1081:0 forceOutputLookup\" data-aura-rendered-by=\"1092:0\" data-aura-class=\"forceOutputLookup\">·<!--render facet: 1095:0--></a><!--render facet: 1100:0--></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1104:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1111:0\"><span class=\"slds-truncate uiOutputTextArea\" data-aura-rendered-by=\"1107:0\" data-aura-class=\"uiOutputTextArea\">·<!--render facet: 1109:0--></span></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1113:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1120:0\"><span class=\"slds-truncate uiOutputTextArea\" data-aura-rendered-by=\"1116:0\" data-aura-class=\"uiOutputTextArea\">·<!--render facet: 1118:0--></span></span></td><td role=\"gridcell\" class=\"slds-cell-edit cellContainer\" tabindex=\"-1\" data-aura-rendered-by=\"1122:0\"><span class=\"slds-grid slds-grid--align-spread\" data-aura-rendered-by=\"1137:0\"><div data-target-selection-name=\"d3d97191b9714f2388cd2ad681fdc4ed\" class=\"forceVirtualActionMarker forceVirtualAction\" data-aura-rendered-by=\"1125:0\" data-aura-class=\"forceVirtualAction\"><a role=\"button\" aria-expanded=\"false\" aria-haspopup=\"true\" title=\"[redacted]\" class=\"rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled slds-button_icon-border-filled keyboardMode--trigger\" data-aura-rendered-by=\"1126:0\" href=\"javascript:void(0);\"><span class=\"slds-icon_container slds-icon-utility-down\" data-aura-rendered-by=\"1129:0\"><span data-aura-rendered-by=\"1132:0\"><svg class=\"slds-icon slds-icon-text-default slds-icon_xx-small\" focusable=\"false\" aria-hidden=\"true\" data-key=\"down\"><use xlink:href=\"/ACACONTRACTORCOMMUNITY/_slds/icons/utility-sprite/svg/symbols.svg?cache=10.8.2#down\"></use></svg></span><span class=\"slds-assistive-text\" data-aura-rendered-by=\"1134:0\">·</span></span></a></div></span></td></tr>",
+    "firstRowAnchorHrefs": [
+      "/ACACONTRACTORCOMMUNITY/s/workorder/0WOJx000016oKR0OAM/detail",
+      "/ACACONTRACTORCOMMUNITY/s/detail/0HhJx000000J8xxKAC",
+      "/ACACONTRACTORCOMMUNITY/s/detail/003Jx00001Wh1ltIAB",
+      "javascript:void(0);"
+    ]
+  },
+  "detailView": {
+    "url": "https://aaacluballiance.my.site.com/ACACONTRACTORCOMMUNITY/s/workorder/0WOJx000016oKR0OAM/detail",
+    "title": "Work Order: 14808690",
+    "controlCount": 19,
+    "actionCandidates": [
+      {
+        "tag": "a",
+        "text": "×",
+        "id": "dismissError",
+        "ariaLabel": "Cancel and close",
+        "title": "Cancel and close",
+        "name": null,
+        "className": "close",
+        "dataAttrs": {},
+        "disabled": false,
+        "selectorCandidates": [
+          "#dismissError",
+          "a[aria-label=\"Cancel and close\"]",
+          "a[title=\"Cancel and close\"]",
+          "a:has-text(\"×\")"
+        ],
+        "looksLikeAction": true
+      }
+    ],
+    "allControls": [
+      {
+        "tag": "a",
+        "text": "×",
+        "id": "dismissError",
+        "ariaLabel": "Cancel and close",
+        "title": "Cancel and close",
+        "name": null,
+        "className": "close",
+        "dataAttrs": {},
+        "disabled": false,
+        "selectorCandidates": [
+          "#dismissError",
+          "a[aria-label=\"Cancel and close\"]",
+          "a[title=\"Cancel and close\"]",
+          "a:has-text(\"×\")"
+        ],
+        "looksLikeAction": true
+      },
+      {
+        "tag": "a",
+        "text": "Refresh",
+        "id": "auraErrorReload",
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "",
+        "dataAttrs": {},
+        "disabled": false,
+        "selectorCandidates": [
+          "#auraErrorReload",
+          "a:has-text(\"Refresh\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Reports",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "18:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"18:92;a\"]",
+          "button:has-text(\"Reports\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Calls",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "104:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"104:92;a\"]",
+          "button:has-text(\"Calls\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Service Provider Resources",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "158:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"158:92;a\"]",
+          "button:has-text(\"Service Provider Resources\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Statements & Payments",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "241:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"241:92;a\"]",
+          "button:has-text(\"Statements & Payments\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "More",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "comm-navigation__top-level-item-link comm-navigation__sub-menu-trigger js-top-level-menu-item linkBtn",
+        "dataAttrs": {
+          "data-aura-rendered-by": "294:92;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"294:92;a\"]",
+          "button:has-text(\"More\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Expand search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Expand search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-triggerButton js-search-triggerButton slds-button_icon-bare",
+        "dataAttrs": {
+          "data-aura-rendered-by": "427:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"427:0\"]",
+          "button[title=\"Expand search\"]",
+          "button:has-text(\"Expand search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-inputSearchButton search-inputSearchButton--left slds-button_icon-border",
+        "dataAttrs": {
+          "data-aura-rendered-by": "290:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"290:0\"]",
+          "button[title=\"Search\"]",
+          "button:has-text(\"Search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-deflectionItemSearchIcon slds-button_icon-border",
+        "dataAttrs": {
+          "data-aura-rendered-by": "304:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"304:0\"]",
+          "button[title=\"Search\"]",
+          "button:has-text(\"Search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Close search",
+        "id": null,
+        "ariaLabel": null,
+        "title": "Close search",
+        "name": null,
+        "className": "slds-button slds-button_icon search-triggercloseButton js-search-triggercloseButton slds-button_icon-bare slds-button_ic",
+        "dataAttrs": {
+          "data-aura-rendered-by": "438:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"438:0\"]",
+          "button[title=\"Close search\"]",
+          "button:has-text(\"Close search\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "0Notifications",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button slds-button_icon slds-button_icon slds-button_icon-container slds-button_icon-small slds-global-",
+        "dataAttrs": {
+          "data-aura-rendered-by": "27:136;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"27:136;a\"]",
+          "button:has-text(\"0Notifications\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "",
+        "id": null,
+        "ariaLabel": "OH714 Chris Peer",
+        "title": null,
+        "name": null,
+        "className": "profile-menuTrigger",
+        "dataAttrs": {
+          "data-aura-rendered-by": "228:0"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"228:0\"]",
+          "button[aria-label=\"OH714 Chris Peer\"]"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Follow",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_neutral uiButton",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1263:0",
+          "data-aura-class": "uiButton"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"1263:0\"]",
+          "button[data-aura-class=\"uiButton\"]",
+          "button:has-text(\"Follow\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "button",
+        "text": "Change Final Status",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button--brand slds-path__mark-complete stepAction current uiButton",
+        "dataAttrs": {
+          "data-aura-rendered-by": "1004:0",
+          "data-aura-class": "uiButton"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "button[data-aura-rendered-by=\"1004:0\"]",
+          "button[data-aura-class=\"uiButton\"]",
+          "button:has-text(\"Change Final Status\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "More",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "",
+        "dataAttrs": {
+          "data-aura-rendered-by": "18:346;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"18:346;a\"]",
+          "a:has-text(\"More\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show actions for Service Appointments",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "slds-button slds-button_icon-small slds-button_icon-border-filled",
+        "dataAttrs": {
+          "data-aura-rendered-by": "5:490;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"5:490;a\"]",
+          "a:has-text(\"Show actions for Service Appointments\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "82:618;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"82:618;a\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      },
+      {
+        "tag": "a",
+        "text": "Show Actions",
+        "id": null,
+        "ariaLabel": null,
+        "title": null,
+        "name": null,
+        "className": "rowActionsPlaceHolder slds-button slds-button--icon-x-small slds-button_icon-x-small slds-button--icon-border-filled sld",
+        "dataAttrs": {
+          "data-aura-rendered-by": "82:618;a"
+        },
+        "disabled": false,
+        "selectorCandidates": [
+          "a[data-aura-rendered-by=\"82:618;a\"]",
+          "a:has-text(\"Show Actions\")"
+        ],
+        "looksLikeAction": false
+      }
+    ],
+    "firstRowHtml": "",
+    "firstRowAnchorHrefs": []
+  },
+  "detailUrlShape": "https://{SF_ID}.my.site.com/{SF_ID}NITY/s/workorder/{SF_ID}/detail",
+  "locatorProbe": {
+    "note": "getByRole(\"button\",{name,exact}) — pierces open shadow DOM",
+    "results": {
+      "Accept": {
+        "count": 0,
+        "visible": false,
+        "enabled": false
+      },
+      "Decline": {
+        "count": 1,
+        "visible": true,
+        "enabled": true
+      },
+      "Reject": {
+        "count": 0,
+        "visible": false,
+        "enabled": false
+      },
+      "Edit": {
+        "count": 1,
+        "visible": true,
+        "enabled": true
+      },
+      "Called Member": {
+        "count": 1,
+        "visible": true,
+        "enabled": true
+      },
+      "Change Final Status": {
+        "count": 1,
+        "visible": true,
+        "enabled": true
+      },
+      "Dispatch": {
+        "count": 0,
+        "visible": false,
+        "enabled": false
+      },
+      "En Route": {
+        "count": 0,
+        "visible": false,
+        "enabled": false
+      },
+      "Follow": {
+        "count": 1,
+        "visible": true,
+        "enabled": true
+      }
+    }
+  }
+}

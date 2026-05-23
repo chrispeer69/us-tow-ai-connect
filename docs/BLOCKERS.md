@@ -330,3 +330,59 @@ on the (now-validated) `AdminAuthGuard`. Not on today's hit list and
 the guard there will still reject non-UUIDs, but worth deleting the
 duplicate read in a future cleanup pass so the guard is the single
 source of truth.
+
+## 2026-05-23 — Adapter Accept/Decline DOM wiring (Session: adapters)
+
+### Assumptions logged here (ASSUMPTIONS.md had another terminal's uncommitted staged edits)
+A parallel terminal (visual refresh) had `docs/ASSUMPTIONS.md` staged with
+~29 lines of uncommitted work, so to avoid bundling its work into this
+session's commits these assumptions are recorded here instead:
+
+1. **Credentials are NOT in environment variables.** The task said AAA/Towbook
+   creds live in prod env vars + `docs/INTEGRATIONS.md`. Neither is true: there
+   is no `INTEGRATIONS.md`, and `railway variables --service @ustow/api` exposes
+   no `AAA_*` / `TOWBOOK_*` keys. Real creds live **encrypted in the tenant
+   credentials store** (note the `ENCRYPTION_KEY` env var). AAA creds were
+   supplied in the task prompt and used for discovery via env injection at
+   runtime (never committed). Towbook creds could not be obtained — see below.
+2. **Discovery runs headless by default.** The task asked for a visible
+   (headed) browser, but this autonomous environment has no observer/display,
+   so `discover-aaa-selectors.ts` defaults to headless and exposes `HEADFUL=1`
+   for a human to run it headed locally.
+3. **Discovery is strictly read-only.** It logs in (same envelope as the
+   existing scrape cron), reads the DOM, and navigates by URL. It never clicks
+   Accept/Decline — doing so would accept/decline a real member's tow job.
+4. **PII protection:** discovery screenshots contain real member data
+   (name/phone/member#/address) and are git-ignored
+   (`docs/diagnostics/.gitignore`). Only the in-script-redacted
+   `aaa-selectors-*.json` dumps are committed (PII-scrubbed; verified clean).
+
+### AAA Accept button — UNVERIFIED (no offered job available at discovery time)
+- **Where:** `packages/api/src/modules/adapters/aaa-portal/aaa-portal.adapter.ts`
+- **Status:** `Decline` is **confirmed** via shadow-DOM-piercing locator
+  `getByRole('button', { name: 'Decline', exact: true })` (count 1, visible,
+  enabled on a live Work Order). `Accept` returned **count 0** because the only
+  available Work Order was already `Cleared`; Accept only renders on an
+  **offered/pending** job, of which the account had none.
+- **What's needed (human):** when a real offered AAA job exists, confirm the
+  exact Accept button label and the post-click reason/confirm modal flow. See
+  `docs/ADAPTER_SELECTORS.md` → "Human verification checklist".
+
+### AAA post-click confirmation modal — UNVERIFIED
+We never clicked Decline/Accept on a live job, so the reason-modal + confirm
+flow is implemented defensively (best-effort field/button detection) and must
+be verified by a human against a test job.
+
+### Towbook Accept/Decline — NOT APPLICABLE + no creds
+- Towbook is **dispatch-out** (we push calls to it); `docs/TOWBOOK_DOM_MAP.md`
+  documents only login/search/parse — there is no Accept/Decline surface.
+- Towbook creds are unavailable (no `TOWBOOK_USERNAME`/`TOWBOOK_PASSWORD` in any
+  readable env; encrypted in the tenant store). Live discovery was therefore
+  skipped. The adapter keeps a structured no-op returning
+  `success:false, error:'not-applicable'`.
+
+### Pre-existing failing test (not caused by this session)
+Baseline `pnpm --filter @ustow/api test` = **144 passed, 1 failed** (145 total).
+The failure is `digital-dispatch/conditions.spec.ts > distance_max_miles >
+"rejects when no driver has a recent ping"` (expects `matched:false`, gets
+`true`). Pre-existing on `main` before this session's changes.

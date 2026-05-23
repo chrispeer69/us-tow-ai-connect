@@ -1,0 +1,5 @@
+# Live-portal discovery screenshots contain real member PII (names, phone
+# numbers, member numbers, addresses). Never commit them. The redacted
+# *-selectors-*.json dumps (PII scrubbed in-script) are safe and ARE committed.
+aaa-*.png
+towbook-*.png
