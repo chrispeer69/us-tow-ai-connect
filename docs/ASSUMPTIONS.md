@@ -368,3 +368,43 @@ URL env points at localhost.
 - The `unified_jobs` / `drivers` / `trucks` / `job_events` /
   `dispatch_rules` / `dispatch_decisions` schema. The deploy story is
   schema-agnostic.
+
+## Production Knowledge Pack recovery (2026-05-23)
+
+### Root cause
+
+`GET /public/knowledge/00000000-0000-0000-0000-000000000001/profile.md`
+returned `500` in production because the Postgres database was empty — no
+tables existed at all. `/health/ready` reported `db ok` because the
+readiness check only runs `SELECT 1`.
+
+`railway.toml` declared `[[services]] name = "api"` with the right
+`preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"`, but
+the actual Railway service is named `@ustow/api` (verbatim). Railway only
+merges service-scoped settings when the names match exactly, so the
+preDeployCommand was silently ignored on every deploy and migrations
+never ran.
+
+### Fix applied
+
+1. **`railway.toml`** — renamed both service entries from `api` / `web` to
+   `@ustow/api` / `@ustow/web` so `preDeployCommand` actually wires up.
+2. **`packages/api/Dockerfile`** — runtime `CMD` now chains
+   `node dist/db/migrate.js && node dist/main.js`. Belt-and-suspenders: if
+   anyone changes service names again in the future, the container itself
+   guarantees migrations run before the server boots. Drizzle's migrator
+   is idempotent (records applied filenames in `__drizzle_migrations`) so
+   re-running on every start is safe.
+3. **One-off recovery** — ran `pnpm db:migrate` and
+   `pnpm db:seed:tenant-zero` locally against the public proxy URL
+   (`kodama.proxy.rlwy.net:21521`) using the credentials from the
+   Postgres service's `DATABASE_PUBLIC_URL`. The seed is idempotent
+   (`ON CONFLICT … DO UPDATE`), so subsequent re-runs are no-ops.
+
+### Why we did *not* auto-run the tenant-zero seed on startup
+
+The seed is Roadside-Towing-specific (hard-coded UUID, brand list,
+counties, transfer phone). Once additional tenants land, auto-seeding on
+every container start would overwrite mutable rows for tenant zero on
+every deploy. Migrations run automatically; seeding remains a manual
+operator action (`pnpm db:seed:tenant-zero` with `DATABASE_URL` set).

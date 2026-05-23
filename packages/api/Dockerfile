@@ -152,4 +152,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://127.0.0.1:${PORT:-3001}/health || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "packages/api/dist/main.js"]
+# Belt-and-suspenders against the railway.toml/preDeployCommand mismatch that
+# caused production tables to be missing on 2026-05-23: always apply
+# drizzle migrations before booting the server. The migrator is idempotent
+# (writes to __drizzle_migrations) so re-running on every container start is
+# safe and cheap.
+CMD ["sh", "-c", "node packages/api/dist/db/migrate.js && node packages/api/dist/main.js"]

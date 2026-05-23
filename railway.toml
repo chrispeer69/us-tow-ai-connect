@@ -13,7 +13,10 @@
 # Reference docs: https://docs.railway.app/reference/config-as-code
 
 [[services]]
-name = "api"
+# Service name MUST match the actual Railway service name verbatim, otherwise
+# Railway silently ignores these settings (which is how production ended up
+# without migrations applied before the 2026-05-23 tenant-zero recovery).
+name = "@ustow/api"
 
   [services.build]
   builder = "DOCKERFILE"
@@ -33,7 +36,7 @@ name = "api"
   restartPolicyMaxRetries = 5
 
 [[services]]
-name = "web"
+name = "@ustow/web"
 
   [services.build]
   builder = "DOCKERFILE"
