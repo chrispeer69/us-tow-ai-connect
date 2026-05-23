@@ -274,6 +274,20 @@ during the Command Center (S21) and Digital Dispatch (S22) builds.
   set, so the script is usable immediately after the first deploy
   (before the custom domain lands).
 
+### URL audit result (section 4)
+
+A grep for `http://localhost` across `packages/api/src` returned exactly
+one runtime reference: `TwilioOutboundService.baseUrl`, which already
+reads `process.env.PUBLIC_BASE_URL ?? 'http://localhost:3001'`. The
+fallback only fires when the env is unset; in production Railway always
+injects a value (see §3 of the runbook). The Knowledge Pack URL itself is
+**never constructed by source code** — Thinkrr stores the absolute URL in
+its agent config, and the controller (`KnowledgeEndpointController`) only
+serves the path. Same story for the Thinkrr webhook URL: Thinkrr stores
+the absolute URL pre-prefixed with `${PUBLIC_BASE_URL}`. The session 10
+guard added in `main.ts` warns on boot when `NODE_ENV=production` AND any
+URL env points at localhost.
+
 ### Files intentionally NOT touched
 
 - Anything under `packages/api/src/modules/admin/**`,
