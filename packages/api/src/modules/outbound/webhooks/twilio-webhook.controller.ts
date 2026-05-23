@@ -6,6 +6,7 @@ import {
   Logger,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { Inject } from '@nestjs/common';
@@ -13,6 +14,7 @@ import { DB_CLIENT, type DbClient } from '../../../db/db.module';
 import { outboundCallLogs } from '../../../db/schema';
 import { NotificationService } from '../../notifications/notification.service';
 import { TwilioOutboundService } from '../twilio-outbound.service';
+import { TwilioSignatureGuard } from '../../../common/guards/twilio-signature.guard';
 
 const FLIP_ACCEPT_TWIML =
   "<Response><Say voice=\"Polly.Joanna\">Wonderful! I've updated your destination. Your driver has been notified. Have a great day!</Say></Response>";
@@ -32,6 +34,7 @@ interface TwilioFormBody {
 }
 
 @Controller('webhooks/twilio')
+@UseGuards(TwilioSignatureGuard)
 export class TwilioWebhookController {
   private readonly logger = new Logger(TwilioWebhookController.name);
 

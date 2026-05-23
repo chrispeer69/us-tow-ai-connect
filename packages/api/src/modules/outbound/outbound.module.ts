@@ -4,10 +4,17 @@ import { GooglePlacesService } from './google-places.service';
 import { FlipLogicService } from './flip-logic.service';
 import { TwilioOutboundService } from './twilio-outbound.service';
 import { TwilioWebhookController } from './webhooks/twilio-webhook.controller';
+import { TwilioSignatureGuard } from '../../common/guards/twilio-signature.guard';
 
 @Module({
   controllers: [TwilioWebhookController],
-  providers: [OutboundPollerCron, GooglePlacesService, FlipLogicService, TwilioOutboundService],
+  providers: [
+    OutboundPollerCron,
+    GooglePlacesService,
+    FlipLogicService,
+    TwilioOutboundService,
+    TwilioSignatureGuard,
+  ],
   exports: [GooglePlacesService, FlipLogicService, TwilioOutboundService],
 })
 export class OutboundModule {}
