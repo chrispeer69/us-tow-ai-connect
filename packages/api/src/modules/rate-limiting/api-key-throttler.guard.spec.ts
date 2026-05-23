@@ -116,7 +116,9 @@ describe('ApiKeyThrottlerGuard', () => {
   });
 
   it('honours a per-identifier Redis override', async () => {
-    redis.setOverride('throttle:override:tenant_api:usk_aaaaaaaaaaaa', 5);
+    // Guard buckets tenant_api by the 12-char prefix of the API key, so the
+    // override key must use the prefix too — not the full key.
+    redis.setOverride('throttle:override:tenant_api:usk_aaaaaaaa', 5);
     let throttled = 0;
     for (let i = 0; i < 10; i++) {
       const { ctx } = makeContext('/v1/ai-connect/health', {

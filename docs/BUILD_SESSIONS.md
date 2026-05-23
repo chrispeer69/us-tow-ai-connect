@@ -2898,3 +2898,132 @@ Webhooks (`X-Twilio-Signature` validated):
 6. The admin `/admin/sms-log` page paginates SMS history with
    direction/status/date filters and exposes Twilio SID + delivery
    timestamps in the expanded detail row.
+
+## Session 26: SaaS Hardening — Bundle B
+
+Productionisation pass that lands the missing guardrails between a
+"feature-complete dev" stack and a multi-tenant SaaS we'd let real
+customers connect to: rate limiting, audit logging, daily/weekly digest
+emails, IP allow-lists, and operator observability endpoints.
+
+### What changed
+
+**API — rate limiter (commit `0af0700`)**
+- New module `packages/api/src/modules/rate-limiting/**`:
+  - `ApiKeyThrottlerGuard` (global `APP_GUARD`) — fixed-window counter
+    via Redis `INCR + EXPIRE`. Four tiers by URL prefix:
+    `public` 60/min (IP), `tenant_api` 120/min (API-key prefix),
+    `admin` 600/min (`x-tenant-id`), `webhook` 600/min (IP).
+  - `RateLimitStatsService` cron — every 5 min flushes closed Redis
+    windows into `api_key_usage_stats` Postgres table for billing /
+    capacity planning.
+  - Per-identifier override key
+    `throttle:override:{group}:{identifier}` reads through the guard so
+    a single tenant can be bumped without a deploy.
+- Migration `0012_rate_limit_stats.sql` adds `api_key_usage_stats`.
+
+**API — audit log (commit `72c28e9`)**
+- New module `packages/api/src/modules/audit-log/**`:
+  - `AuditLogInterceptor` (global `APP_INTERCEPTOR`) auto-captures
+    POST/PUT/PATCH/DELETE under `/v1/admin/*`, `/v1/ai-connect/*`,
+    `/v1/partner/*` without each module having to opt in.
+  - `AuditLogService.record()` for explicit before/after writes.
+  - `audit-sanitizer.ts` redacts password / token / api_key / secret /
+    ssn keys (exact, substring, suffix matches) up to 8 levels deep.
+  - `@AuditAction(action, resourceType)` + `@SkipAudit()` decorators.
+  - `AuditLogRetentionService` cron at 03:00 daily prunes rows older
+    than each tenant's `audit_retention_days` (default 365).
+- `GET /v1/admin/audit-log` paginated + filterable, and an
+  `/admin/audit-log` Next.js page with expand-row before/after diff.
+- Migration `0013_audit_log.sql` adds `audit_log` with indexes on
+  `(tenant_id, created_at desc)`, `(actor_type, actor_id)`,
+  `(resource_type, resource_id)`, `(action, created_at desc)`.
+
+**API — admin digest (commit `f776da7`)**
+- New module `packages/api/src/modules/admin-digest/**`:
+  - `SendGridEmailService` — pre-writes `email_messages` row, calls
+    SendGrid, updates row with provider id + status. Falls back to
+    `status='logged_only'` when `SENDGRID_API_KEY` is unset; no crash.
+  - `DigestMetricsService` — pulls per-tenant 24h or 7d window from
+    `call_interactions`, `unified_jobs` (+ `dispatch_requests` fold-in
+    as `ai_dispatch`), `dispatch_decisions`, `driver_pings`,
+    `driver_job_events`, `sms_messages`, `api_key_usage_stats`. Every
+    section is wrapped in try/catch — missing tables render as zero,
+    not crash.
+  - `digest-renderer.ts` inline HTML template, no external assets,
+    sparkline ASCII bars, masked phone numbers (last 4 only).
+  - `DigestSchedulerService` cron — daily 08:00, weekly Monday 08:00,
+    filtered by `tenants.digest_frequency`.
+- Endpoints: `GET / PUT /v1/admin/digest`,
+  `POST /v1/admin/digest/test`, `GET /v1/admin/digest/preview`.
+- `/admin/digest` Next.js page — manage recipients, frequency,
+  send-test, live iframe preview.
+- Migration `0014_admin_digest.sql` adds `email_messages` table +
+  `tenants.digest_emails`, `digest_frequency`, `allowed_admin_ips`,
+  `audit_retention_days` columns. Tenant-zero seeded with
+  `thechrispeer@gmail.com` and `chris@bluecollarai.online`.
+
+**API — cross-cutting + system (commits `9cf7b5b`, `215750a`)**
+- `RequestIdMiddleware` tags every request with a UUIDv4 (honours an
+  inbound `X-Request-ID` header for upstream correlation). Audit log
+  records it in `metadata.requestId`.
+- `/health/ready` extended to report email + SMS service configuration
+  state (non-blocking — `logged_only` fallback keeps the API live).
+- `GET /v1/admin/system/stats` — per-tenant 24h breakdown of rate-limit
+  hits / requests by group, top-10 audit actions, email status
+  histogram (sent / logged / failed), error counts, current override
+  list. `PATCH /v1/admin/system/limits` + `DELETE
+  /v1/admin/system/limits/:group/:identifier` for live tuning.
+- `AdminCspMiddleware` — sets `default-src 'none'`, `frame-ancestors
+  'none'`, `base-uri 'none'`, `nosniff`, `no-referrer` on JSON admin
+  surfaces for defense-in-depth.
+- `AdminIpAllowListGuard` (global) — checks
+  `tenants.allowed_admin_ips`; empty list = allow all (default).
+  Supports exact match + `203.0.113.*` wildcards. Fail-open on DB
+  outage so a wedged Postgres can't lock operators out.
+- `AdminAuthGuard` now writes `auth.failed` audit rows (best-effort
+  via `@Optional` `AuditLogService` injection) on missing tenant
+  context, including IP, method, path, user-agent, requestId.
+
+### Tests (commit `d55fa8a`)
+- `rate-limiting/api-key-throttler.guard.spec` — 60/min and 120/min
+  cutoffs, override path, fail-open, passthrough on unmatched paths.
+- `audit-log/audit-sanitizer.spec` — exact / substring / suffix /
+  csrfToken-exception coverage, depth cap.
+- `audit-log/audit-log.interceptor.spec` — POST writes a row without
+  mutating response, `@AuditAction`, `@SkipAudit`, *.failed on throw.
+- `admin-digest/digest-renderer.spec` — sparkline math, fixture
+  round-trip, hostile-value escaping, empty-window fixtures.
+- `admin-digest/digest-metrics.service.spec` — conversion-rate math,
+  100% cap, zero-fill on every-table-missing.
+
+### Endpoints introduced
+
+Admin (`x-tenant-id` placeholder):
+- `GET    /v1/admin/audit-log` — paginated, filterable audit feed.
+- `GET    /v1/admin/digest` — recipients + frequency.
+- `PUT    /v1/admin/digest` — update recipients + frequency.
+- `POST   /v1/admin/digest/test?range=daily|weekly` — send-now.
+- `GET    /v1/admin/digest/preview?range=daily|weekly` — HTML preview.
+- `GET    /v1/admin/system/stats?hours=24` — operator dashboard data.
+- `PATCH  /v1/admin/system/limits` — Redis throttle override.
+- `DELETE /v1/admin/system/limits/:group/:identifier` — clear override.
+
+### Docs added
+- `docs/RATE_LIMITING.md` — tiers, headers, override path, failure modes.
+- `docs/AUDIT_LOG.md` — automatic vs explicit logging, sanitizer block-list,
+  retention policy, query examples.
+- `docs/ADMIN_DIGEST.md` — metric sources, SendGrid setup, fallback,
+  status enum, `email_messages` table reference.
+
+### Blockers / open items
+- `SENDGRID_API_KEY` not yet provisioned in Railway — digest sends as
+  `logged_only` until set. Tracked in `docs/BLOCKERS.md`.
+- CIDR ranges in `tenants.allowed_admin_ips` aren't yet supported — only
+  exact + `*.wildcard` today. Adequate for the small operator IP lists
+  we expect; revisit if a tenant wants broad subnets.
+- The hot path is fail-open on Redis (throttle guard) and DB
+  (allow-list guard). Operationally correct (the readiness probe + Sentry
+  alert surface the outage), but worth re-evaluating once we have real
+  abuse traffic.
+

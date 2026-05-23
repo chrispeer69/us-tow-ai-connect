@@ -164,6 +164,13 @@ for the full runbook):
 | `GET /v1/admin/driver-pings/:phone/history`  | Per-driver ping history (Session 23)                   |
 | `GET /v1/admin/convini/incoming`             | Convini SMS landing pad (Session 25)                   |
 | `GET /v1/admin/sms-log`                      | Inbound/outbound SMS audit log (Session 24)            |
+| `GET /v1/admin/audit-log`                    | Mutating-action audit feed (Session 26)                |
+| `GET / PUT /v1/admin/digest`                 | Digest recipients & frequency (Session 26)             |
+| `POST /v1/admin/digest/test`                 | Send the next digest immediately (Session 26)          |
+| `GET /v1/admin/digest/preview`               | Render digest HTML without sending (Session 26)        |
+| `GET /v1/admin/system/stats`                 | 24h ops dashboard: throttle / audit / digest / errors (Session 26) |
+| `PATCH /v1/admin/system/limits`              | Set Redis throttle override per (group, identifier) (Session 26) |
+| `DELETE /v1/admin/system/limits/:group/:id`  | Clear a throttle override (Session 26)                 |
 | `GET /v1/admin/command-center/*`             | Sessions 21 dispatch board — see [COMMAND_CENTER](docs/COMMAND_CENTER.md) |
 | `GET /v1/admin/digital-dispatch/*`           | Sessions 22 rules engine — see [DIGITAL_DISPATCH](docs/DIGITAL_DISPATCH.md) |
 
@@ -175,6 +182,8 @@ for the full runbook):
 | `/admin/digital-dispatch`       | Rules / decisions / stats / test sandbox             |
 | `/admin/drivers-live`           | Live drivers map — table + map + history side panel (Session 25) |
 | `/admin/sms-log`                | Inbound/outbound SMS audit log (Session 24)          |
+| `/admin/audit-log`              | Mutating-action audit feed with before/after diff (Session 26) |
+| `/admin/digest`                 | Configure digest recipients / frequency, preview, send test (Session 26) |
 | `/track/<token>`                | Public caller-facing tracking page (Session 24)      |
 
 ### Driver App (Session 25)
