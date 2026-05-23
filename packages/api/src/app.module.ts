@@ -11,9 +11,11 @@ import { TenantsModule } from './modules/tenants/tenants.module';
 import { AiConnectModule } from './modules/ai-connect/ai-connect.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { CommandCenterModule } from './modules/command-center/command-center.module';
+import { DigitalDispatchModule } from './modules/digital-dispatch/digital-dispatch.module';
 import { KnowledgeEndpointModule } from './modules/knowledge-endpoint/knowledge-endpoint.module';
 import { WebhookReceiverModule } from './modules/webhook-receiver/webhook-receiver.module';
 import { OutboundModule } from './modules/outbound/outbound.module';
+import { DriverPingsModule } from './modules/driver-pings/driver-pings.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -30,9 +32,11 @@ import { HealthController } from './modules/health/health.controller';
     AiConnectModule,
     AdminModule,
     CommandCenterModule,
+    DigitalDispatchModule,
     KnowledgeEndpointModule,
     WebhookReceiverModule,
     OutboundModule,
+    DriverPingsModule,
   ],
   controllers: [HealthController],
 })

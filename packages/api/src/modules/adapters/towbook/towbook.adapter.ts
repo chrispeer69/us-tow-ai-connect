@@ -151,6 +151,22 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     }
   }
 
+  // Towbook is dispatch-out (we push calls to it), not motor-club intake. The
+  // accept/decline methods exist for adapter-interface parity so the rules
+  // engine can be configured for future Towbook-style intake flows; they
+  // simply log and no-op today.
+  async acceptJob(tenantId: string, sourceJobId: string): Promise<void> {
+    this.logger.log(
+      `[towbook] acceptJob no-op (tenant=${tenantId}, job=${sourceJobId}) — Towbook is dispatch-out`,
+    );
+  }
+
+  async declineJob(tenantId: string, sourceJobId: string, reason: string): Promise<void> {
+    this.logger.log(
+      `[towbook] declineJob no-op (tenant=${tenantId}, job=${sourceJobId}, reason="${reason}")`,
+    );
+  }
+
   private async dumpDiagnostics(
     page: import('playwright').Page,
     tenantId: string,

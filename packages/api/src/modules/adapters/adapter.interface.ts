@@ -25,6 +25,11 @@ export interface TowingSoftwareAdapter {
   login(tenantId: string, creds: DecryptedCredentials): Promise<void>;
   scrapeAllActiveJobs(tenantId: string): Promise<ActiveJob[]>;
   testConnection(creds: DecryptedCredentials): Promise<AdapterConnectionTestResult>;
+  // Optional motor-club style actions. Implemented for adapters that
+  // represent inbound work queues (AAA); Towbook ships a stub since it is
+  // dispatch-out, not accept-in.
+  acceptJob?(tenantId: string, sourceJobId: string): Promise<void>;
+  declineJob?(tenantId: string, sourceJobId: string, reason: string): Promise<void>;
 }
 
 export enum SoftwareType {

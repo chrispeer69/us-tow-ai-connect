@@ -221,6 +221,29 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
     }
   }
 
+  /**
+   * Accept a work order on the AAA portal. The Accept-button selector on the
+   * Work Order detail view is not yet captured in our DOM map, so this
+   * implementation logs the action and returns. The dispatch_decisions row
+   * is still written by the rules engine so the audit trail is preserved.
+   * See docs/BLOCKERS.md for the open work item.
+   */
+  async acceptJob(tenantId: string, sourceJobId: string): Promise<void> {
+    this.logger.warn(
+      `[aaa-portal] acceptJob(tenant=${tenantId}, job=${sourceJobId}) — selectors unverified; see docs/BLOCKERS.md`,
+    );
+  }
+
+  /**
+   * Decline a work order. Same status as `acceptJob` — selector unverified,
+   * action logged for audit.
+   */
+  async declineJob(tenantId: string, sourceJobId: string, reason: string): Promise<void> {
+    this.logger.warn(
+      `[aaa-portal] declineJob(tenant=${tenantId}, job=${sourceJobId}, reason="${reason}") — selectors unverified; see docs/BLOCKERS.md`,
+    );
+  }
+
   private async extractRows(page: Page): Promise<ActiveJob[]> {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     return page.evaluate(() => {

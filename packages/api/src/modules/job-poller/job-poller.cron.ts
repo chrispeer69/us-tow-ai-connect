@@ -9,6 +9,7 @@ import { CommandCenterService } from '../command-center/command-center.service';
 import { AaaNormalizer } from '../command-center/normalizers/aaa.normalizer';
 import { TowbookNormalizer } from '../command-center/normalizers/towbook.normalizer';
 import type { UnifiedJobInput, UnifiedJobSource } from '../command-center/normalizers/types';
+import { DispatchRulesEngineService } from '../digital-dispatch/dispatch-rules-engine.service';
 import { SessionManagerService } from '../session-manager/session-manager.service';
 import { SessionExpiredException } from '../../common/exceptions/session-expired.exception';
 
@@ -33,6 +34,7 @@ export class JobPollerCron {
     private readonly commandCenter: CommandCenterService,
     private readonly towbookNormalizer: TowbookNormalizer,
     private readonly aaaNormalizer: AaaNormalizer,
+    private readonly dispatchEngine: DispatchRulesEngineService,
   ) {}
 
   @Cron('*/60 * * * * *')
@@ -114,10 +116,16 @@ export class JobPollerCron {
       }
 
       try {
-        await this.commandCenter.upsertJob(input);
-        // Note: motor-club sources (aaa_salesforce) will trigger the dispatch
-        // rules engine once it's wired in — see S22 / digital-dispatch module.
-        void MOTOR_CLUB_SOURCES;
+        const result = await this.commandCenter.upsertJob(input);
+        if (result.created && MOTOR_CLUB_SOURCES.has(source)) {
+          this.dispatchEngine
+            .evaluateForJob(tenantId, result.job)
+            .catch((err) =>
+              this.logger.warn(
+                `Rules engine failed for job ${result.job.id}: ${(err as Error).message}`,
+              ),
+            );
+        }
       } catch (err) {
         this.logger.error(
           `Upsert failed for ${source}:${input.sourceJobId} (tenant ${tenantId}): ${(err as Error).message}`,
