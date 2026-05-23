@@ -149,3 +149,31 @@ follow-up commit.
   actually exposes.
 - **What's needed:** Capture a real AAA job row in `source_payload` and
   update the field path or add a dedicated column.
+
+## Session 25
+
+### Playwright not yet installed in `packages/web`
+
+- **Where:** `packages/web/playwright.config.ts`, `packages/web/tests/e2e/*.spec.ts`.
+- **Symptom:** The Session-25 driver-app E2E specs are written and committed,
+  but `@playwright/test` is not yet in `packages/web/package.json`. Running
+  the specs today errors with "Cannot find module '@playwright/test'".
+- **Why we shipped anyway:** the specs are deterministic (mocked routes,
+  patched `navigator.geolocation`) and document the intended QA surface.
+  Adding the dep + downloading browsers from this autonomous session would
+  bloat the install footprint and risk corp-proxy 403s.
+- **Resolution:** `pnpm --filter @ustow/web add -D @playwright/test`, then
+  `pnpm --filter @ustow/web exec playwright install chromium`, then run
+  `pnpm --filter @ustow/web exec playwright test`.
+
+### Next.js standalone build fails on Windows (symlink EPERM)
+
+- **Where:** `pnpm --filter @ustow/web build` on Windows host.
+- **Symptom:** Compilation + static page generation succeed, but the
+  `Collecting build traces …` step crashes with `EPERM: operation not
+  permitted, symlink …` against the pnpm-flattened node_modules.
+- **Workaround:** the Railway Docker build runs under Linux and is
+  unaffected — production builds are fine. For local verification on
+  Windows, run `npx tsc --noEmit` instead, or enable Windows Developer
+  Mode (Settings → Privacy & security → For developers) so the symlink
+  creation step works without elevated privileges.
