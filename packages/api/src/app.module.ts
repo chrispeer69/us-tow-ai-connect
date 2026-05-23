@@ -17,6 +17,7 @@ import { WebhookReceiverModule } from './modules/webhook-receiver/webhook-receiv
 import { OutboundModule } from './modules/outbound/outbound.module';
 import { OutboundSmsModule } from './modules/outbound-sms/outbound-sms.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
+import { FlipAcceptModule } from './modules/flip-accept/flip-accept.module';
 import { DriverPingsModule } from './modules/driver-pings/driver-pings.module';
 import { DriverJobsModule } from './modules/driver-jobs/driver-jobs.module';
 import { ConviniModule } from './modules/convini/convini.module';
@@ -42,6 +43,7 @@ import { HealthController } from './modules/health/health.controller';
     OutboundModule,
     OutboundSmsModule,
     TrackingModule,
+    FlipAcceptModule,
     DriverPingsModule,
     DriverJobsModule,
     ConviniModule,
