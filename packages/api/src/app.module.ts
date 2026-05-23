@@ -23,6 +23,7 @@ import { DriverJobsModule } from './modules/driver-jobs/driver-jobs.module';
 import { ConviniModule } from './modules/convini/convini.module';
 import { RateLimitingModule } from './modules/rate-limiting/rate-limiting.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { AdminDigestModule } from './modules/admin-digest/admin-digest.module';
 import { TenantOnboardingModule } from './modules/tenant-onboarding/tenant-onboarding.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -52,6 +53,7 @@ import { HealthController } from './modules/health/health.controller';
     ConviniModule,
     RateLimitingModule,
     AuditLogModule,
+    AdminDigestModule,
     TenantOnboardingModule,
   ],
   controllers: [HealthController],
