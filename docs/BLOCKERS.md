@@ -264,3 +264,52 @@ Saved 50-line slice of Railway web logs filtered for
 `500|error|throw|exception|ECONNREFUSED` to
 `docs/diagnostics/web-errors.txt` so the proxy failure pattern is
 recoverable from git history even after Railway log retention rolls.
+
+### Operator action: run pending migrations 0013–0017 on production DB
+
+- **Where:** production Postgres (Railway Postgres service, project
+  "US Tow AI Connect"), API service `@ustow/api`.
+- **Symptom:** With the 401-not-500 guard fix deployed (commit
+  `f64f6c9`), the six admin endpoints stop 500-ing on missing-header,
+  but a **with-header** request still returns 500. Railway logs show:
+  - `column "manager_phones" does not exist` → company / members /
+    api-keys / billing
+  - `relation "audit_log" does not exist` → audit-log
+  - `column "digest_emails" does not exist` → digest
+- **Root cause:** migrations `0013_audit_log.sql`, `0014_admin_digest.sql`,
+  and the `manager_phones`/related-columns additions in `0015–0017`
+  are committed to the repo but have not been applied to the production
+  database. The API boot does not auto-run migrations (intentional —
+  the DEPLOY_RAILWAY.md guide documents that migrations are operator
+  triggered).
+- **Why not run from this session:** the scope explicitly said
+  `DO NOT TOUCH: ... migrations` and the action is destructive against
+  shared infrastructure — needs a human eyes-on.
+- **How to apply (matches the pattern already permitted in
+  `.claude/settings.local.json`):**
+  ```
+  DATABASE_URL='postgresql://postgres:<password>@<host>:<port>/railway' \
+    pnpm db:migrate
+  ```
+  Use the production `DATABASE_URL` from Railway's Postgres service
+  ("Connect" tab). Idempotent — Drizzle's `__drizzle_migrations`
+  bookkeeping table skips already-applied entries.
+- **Verification after running:** re-run
+  ```
+  for p in company members api-keys billing audit-log digest; do
+    curl -sS -o /dev/null -w "$p: %{http_code}\n" \
+      -H "x-tenant-id: 00000000-0000-0000-0000-000000000001" \
+      "https://ustowapi-production.up.railway.app/v1/admin/$p"
+  done
+  ```
+  Expected: every line 200. Today's matrix (with this commit live)
+  shows with=500 / without=401 for all six.
+
+### Followup: `convini.controller.ts` has its own DEFAULT_ADMIN_TENANT_ID read
+
+`packages/api/src/modules/convini/convini.controller.ts:55` reads
+`process.env.DEFAULT_ADMIN_TENANT_ID || …` directly rather than relying
+on the (now-validated) `AdminAuthGuard`. Not on today's hit list and
+the guard there will still reject non-UUIDs, but worth deleting the
+duplicate read in a future cleanup pass so the guard is the single
+source of truth.
