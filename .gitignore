@@ -2,8 +2,8 @@ node_modules/
 dist/
 .next/
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 *.log
 .DS_Store
 coverage/
