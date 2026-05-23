@@ -52,6 +52,35 @@ follow-up commit.
   (the Places key in the API uses server-side restrictions; a browser key
   needs HTTP-referrer restrictions).
 
+### Custom domain `ustow-aiconnect.com` not yet registered
+
+- **Where:** referenced from `docs/DEPLOY_RAILWAY.md` §3, §10, §13 and from
+  `infra/railway/README.md`.
+- **Symptom:** the deploy doc references `api.ustow-aiconnect.com` and
+  `app.ustow-aiconnect.com` as the production hostnames, but no DNS
+  records exist yet — first deploy will go to the Railway-generated
+  `*.up.railway.app` subdomains.
+- **What's needed (human action):**
+  1. Register `ustow-aiconnect.com` (Namecheap / Google Domains /
+     Cloudflare Registrar). The build sessions reference the
+     `www.ustowdispatch.com` legacy domain — confirm with the founder
+     which TLD is the final brand before purchase.
+  2. At the registrar's DNS panel, create:
+     ```
+     CNAME  api  →  <api-service>.up.railway.app
+     CNAME  app  →  <web-service>.up.railway.app
+     ```
+     The Railway hostnames are visible in **Service → Settings →
+     Networking** after the first deploy.
+  3. In Railway, attach both custom domains and wait for the cert flip
+     from "Pending" to "Active".
+  4. Update env vars per `docs/DEPLOY_RAILWAY.md` §10 step 4.
+- **Workaround until the domain lands:** use the Railway subdomains in
+  every env var that references `PUBLIC_BASE_URL`, `NEXT_PUBLIC_API_URL`,
+  `WEB_PUBLIC_URL`, `NEXT_PUBLIC_WS_URL`. Thinkrr's Knowledge Pack URL
+  also points at the Railway subdomain in the meantime; see the runbook
+  §13 for the cutover steps once the domain is live.
+
 ### `estimated_payout` field path in AAA source_payload
 
 - **Where:** `packages/api/src/modules/digital-dispatch/conditions.ts`
