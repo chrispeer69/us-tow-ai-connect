@@ -2205,3 +2205,97 @@ The system is considered complete and ready for production when:
 8. Management receives SMS/Email notifications on successful flips.
 9. All sessions pass their unit and integration tests.
 10. The system runs on Railway without manual intervention for 72 hours.
+
+---
+
+## Session 10: Production Deployment — completion log (2026-05-23)
+
+The Session 10 *spec* lives above; this section records what was actually
+delivered on the autonomous build pass. Authoritative operator runbook is
+`docs/DEPLOY_RAILWAY.md`; engineering decisions are in
+`docs/ASSUMPTIONS.md` (Session 10 entry).
+
+### Objective
+Take the locally running stack (NestJS API on :3001, Next.js admin on
+:3000, Postgres + Redis via docker-compose, ngrok-tunneled to Thinkrr) and
+produce everything needed to deploy it to Railway behind stable HTTPS URLs
+with automated migrations, healthchecks, security hardening, and a
+post-deploy smoke gate.
+
+### Files added
+- `railway.toml` — multi-service config (`api`, `web`) with
+  `preDeployCommand = pnpm --filter @ustow/api run db:migrate:prod` and
+  `healthcheckPath` per service.
+- `packages/api/Dockerfile` — 4-stage build (deps → build → playwright →
+  runtime) on `node:22-bookworm-slim`, ships Chromium at
+  `/ms-playwright`, runs as the `node` user under `tini`.
+- `packages/web/Dockerfile` — 3-stage build, Next.js `output: 'standalone'`
+  enabled in `next.config.js`, runtime tier ships only the standalone
+  server + `.next/static` + `public/`.
+- `packages/api/.dockerignore`, `packages/web/.dockerignore` — keep
+  `node_modules`, build outputs and any `.env*` out of the build context.
+- `packages/api/.env.example`, `packages/web/.env.example` — every
+  required variable documented, `.env*` (minus `.example`) ignored at
+  repo level.
+- `packages/api/src/modules/health/health.controller.ts` — adds
+  `/health/ready` with parallel Postgres + Redis probes (`SELECT 1` /
+  `PING`) and a 2s per-check timeout.
+- `packages/web/src/app/api/health/route.ts` — web liveness probe.
+- `packages/api/src/main.ts` — Helmet middleware, allow-listed CORS
+  (with webhook + public + health route exemptions), and a
+  NODE_ENV=production guard that warns when URL env vars still point at
+  localhost.
+- `.github/workflows/deploy.yml` — type-check + tests + Docker syntax
+  lint on every PR/push to main. Railway's GitHub app handles the
+  deploy; no `RAILWAY_TOKEN` required.
+- `scripts/post-deploy-smoke.sh` — bash + curl probe of
+  `/health`, `/health/ready`, the public Knowledge Pack endpoint, the
+  web root, and `/api/health`.
+- `infra/railway/README.md` — topology diagram + service inventory.
+- `docs/DEPLOY_RAILWAY.md` — operator runbook (15 numbered sections
+  including custom domain, rollback, secret rotation, ngrok cutover).
+- `docs/THINKRR_INTEGRATION.md` — Knowledge Pack + webhook contracts +
+  ngrok→production cutover.
+- `docs/BLOCKERS.md` — added entry for the unregistered
+  `ustow-aiconnect.com` domain.
+
+### Files changed
+- `packages/api/package.json` — `+ @sentry/node ^7.119.0`, `+ helmet
+  ^7.1.0`, new `db:migrate:prod` and `db:seed:tenant-zero:prod` scripts
+  pointing at the compiled JS (runtime image has no `tsx`).
+- `packages/api/src/db/migrate.ts` — multi-candidate path resolution so
+  the runner works both as `tsx src/db/migrate.ts` and `node
+  dist/db/migrate.js`.
+- `packages/web/next.config.js` — `output: 'standalone'` +
+  `outputFileTracingRoot` so workspace deps trace correctly.
+- `README.md` — Deployment section linking to the runbook.
+- `.gitignore` — broader `.env.*` pattern with `!.env.example`
+  allow-list.
+
+### Files intentionally NOT touched
+Per the build prompt's boundary list, anything under
+`packages/api/src/modules/admin/`,
+`packages/api/src/modules/command-center/`,
+`packages/api/src/modules/digital-dispatch/`, the existing migration SQL
+files, or the unified-jobs/drivers/trucks schema. The deploy story is
+schema-agnostic.
+
+### Acceptance status
+| #  | Criterion                                                                            | Status |
+|----|--------------------------------------------------------------------------------------|--------|
+| 1  | `git push main` triggers automated tests + deploy                                    | ✅ CI + Railway GitHub app wired |
+| 2  | `https://api.<domain>/health` returns 200                                            | ⏳ awaits first Railway deploy |
+| 3  | Dashboard loads at `https://app.<domain>`                                            | ⏳ awaits first Railway deploy |
+| 4  | Roadside Towing tenant zero is in the DB                                             | ✅ idempotent seed script + docs |
+| 5  | Poller runs every 60 s without errors                                                | ⏳ post-deploy verification |
+| 6  | System unattended 72 h                                                               | ⏳ post-deploy verification |
+
+Items 2–3 and 5–6 are intentionally left ⏳ — they require the human to
+push the Big Green Button on Railway. Section 4 of
+`docs/DEPLOY_RAILWAY.md` is the exact runbook for getting to ✅.
+
+### Open follow-ups (see `docs/BLOCKERS.md`)
+- Register `ustow-aiconnect.com` (or confirm the final brand domain) and
+  attach to Railway.
+- Pre-existing blockers (AAA Accept/Decline selectors, AAA payout field
+  path, Google Maps browser key authorization) are unchanged.

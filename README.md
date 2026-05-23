@@ -88,6 +88,25 @@ To prevent that, the `api` and `web` packages have a `prebuild` script:
 
 pnpm runs `prebuild` automatically before `build`, so `pnpm --filter @ustow/api build` (or `... @ustow/web build`) will always compile `@ustow/shared` first. **Rule:** any time you add a new export to `packages/shared/src/`, do not run `tsc` directly in `packages/api` — use `pnpm --filter @ustow/api build` so the prebuild hook fires, or run `pnpm --filter @ustow/shared build` manually first.
 
+## Deployment
+
+The production deployment lives on [Railway](https://railway.app) — two app
+services (`api`, `web`) plus managed Postgres and Redis. The repo ships
+with everything Railway needs:
+
+| File / dir                    | Purpose                                           |
+|-------------------------------|---------------------------------------------------|
+| `railway.toml`                | Service definitions + healthchecks + pre-deploy   |
+| `packages/api/Dockerfile`     | Multi-stage NestJS build with Playwright Chromium |
+| `packages/web/Dockerfile`     | Multi-stage Next.js standalone build              |
+| `.github/workflows/deploy.yml`| Type-check + tests pre-deploy gate                |
+| `infra/railway/README.md`     | Topology diagram                                  |
+| `scripts/post-deploy-smoke.sh`| Hits prod URLs and fails on the first regression  |
+
+Full step-by-step runbook (env vars, custom domain, migrations, rollback,
+Thinkrr cutover): **`docs/DEPLOY_RAILWAY.md`**. Decisions and trade-offs
+are captured in `docs/ASSUMPTIONS.md` (Session 10 section).
+
 ## Build Sessions
 
 This project is built in 10 sequential sessions. See `docs/BUILD_SESSIONS.md` for the exact engineering prompts for each session.
