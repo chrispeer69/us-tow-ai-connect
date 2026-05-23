@@ -141,6 +141,15 @@ for the full runbook):
 | `GET /v1/admin/call-interactions`            | Raw Thinkrr payloads w/ transcript, summary, match    |
 | `GET /v1/admin/smart-actions`                | Audit log of agent-issued Smart Actions               |
 | `GET /v1/admin/dispatch-requests`            | New tow requests created by the agent                 |
+| `GET /v1/admin/command-center/*`             | Sessions 21 dispatch board — see [COMMAND_CENTER](docs/COMMAND_CENTER.md) |
+| `GET /v1/admin/digital-dispatch/*`           | Sessions 22 rules engine — see [DIGITAL_DISPATCH](docs/DIGITAL_DISPATCH.md) |
+
+### Admin UI
+
+| Path                            | Description                                          |
+|---------------------------------|------------------------------------------------------|
+| `/admin/command-center`         | Live dispatch board (map + table + side drawer)      |
+| `/admin/digital-dispatch`       | Rules / decisions / stats / test sandbox             |
 
 ### Operational endpoints
 

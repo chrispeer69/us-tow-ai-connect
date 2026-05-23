@@ -2523,3 +2523,142 @@ Updated tenant-authenticated:
    `basis: 'default_eta_mins (no fresh driver pings within range)'`.
 4. `GET /v1/admin/driver-pings/latest` collapses ping history to one row
    per driver_phone.
+
+## Session 21: Command Center (2026-05-23)
+
+### Objective
+Stand up a unified live dispatch board at `/admin/command-center` that
+aggregates jobs from every connected adapter (Towbook, AAA Salesforce,
+manual) for the active tenant, geocodes the pickup, renders the result on
+a Google Map plus a sortable table, and supports assigning drivers and
+walking status with real-time websocket updates.
+
+### Files added
+- `packages/api/src/db/migrations/0006_command_center.sql` — `unified_jobs`
+  (keyed on `(tenant_id, source, source_job_id)` UNIQUE plus indexes for
+  status, driver, and updated_at), `drivers`, `trucks`, `job_events`.
+- `packages/api/src/modules/command-center/command-center.service.ts` —
+  upsert, assign, transition, manual create, drivers/trucks CRUD, stats,
+  geocode-cached pickup/dropoff, `recordAutoDecision` hook for the rules
+  engine.
+- `packages/api/src/modules/command-center/command-center.controller.ts` —
+  REST surface (`/v1/admin/command-center/jobs|drivers|trucks|stats`).
+- `packages/api/src/modules/command-center/command-center.gateway.ts` —
+  socket.io gateway at `/ws/command-center` with per-tenant rooms and
+  three event types (`job.created`, `job.updated`, `driver.updated`).
+- `packages/api/src/modules/command-center/geocoder.service.ts` — Google
+  Places JSON API client with 30-day Redis cache.
+- `packages/api/src/modules/command-center/normalizers/` — Towbook + AAA
+  normalizers translating `ActiveJob` → `UnifiedJobInput` (status
+  heuristics, vehicle string parsing, ETA `"15 min"` → integer).
+- `packages/web/src/app/admin/command-center/` — Next.js page + 7 client
+  components (map, table, filter bar, drivers panel, side drawer, stats
+  strip, status pill) wired to socket.io for live updates.
+- `packages/web/src/lib/socket.ts` + `command-center-types.ts`.
+- `docs/COMMAND_CENTER.md` — UI overview, API reference, WS protocol.
+
+### Files changed
+- `packages/api/src/modules/job-poller/job-poller.cron.ts` — each poll
+  cycle now feeds adapter rows through the normalizers into
+  `CommandCenterService.upsertJob`.
+- `packages/api/src/app.module.ts` — registers `CommandCenterModule`.
+- `packages/api/package.json` — adds `@nestjs/websockets`,
+  `@nestjs/platform-socket.io`, `socket.io`.
+- `packages/web/package.json` — adds `@react-google-maps/api`,
+  `socket.io-client`.
+- `packages/web/src/app/admin/layout.tsx` — new "Command Center" sidebar
+  entry between Integrations and Routing.
+
+### Test Result
+- `pnpm --filter @ustow/api build` — green.
+- `pnpm --filter @ustow/api test` — green (existing 60+ tests, plus 3 new
+  for `TowbookNormalizer` / `mapAdapterStatus` / `parseVehicleString`).
+- `pnpm --filter @ustow/web` TypeScript — green.
+
+### Acceptance Criteria
+1. Visiting `/admin/command-center` renders the split-pane map + jobs
+   table with stats strip at the top.
+2. A poll-cycle insert from any adapter shows up as a new row in the
+   table (and on the map if the pickup geocoded) without a refresh,
+   driven by socket.io.
+3. Selecting a row opens the side drawer with the full event timeline,
+   assign-driver dropdown, and status-transition buttons.
+4. With `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` unset the map area renders a
+   helpful placeholder; the rest of the page keeps working.
+
+## Session 22: Digital Dispatch (2026-05-23)
+
+### Objective
+Replace the "every motor-club job needs a human" workflow with a per-tenant
+rules engine that evaluates each incoming AAA Salesforce job and decides
+`accept | decline | flag`. Decisions are audited; first matching rule
+wins; default is to flag.
+
+### Files added
+- `packages/api/src/db/migrations/0007_digital_dispatch.sql` —
+  `dispatch_rules`, `dispatch_decisions`, and `auto_decision*` columns on
+  `unified_jobs`.
+- `packages/api/src/modules/digital-dispatch/conditions.ts` — 9 condition
+  types: `distance_max_miles` (Haversine vs. recent-ping drivers),
+  `time_of_day`, `day_of_week` (both in tenant timezone via
+  `Intl.DateTimeFormat`), `service_type_in`, `estimated_payout_min`,
+  `driver_available_count_min`, `job_age_minutes_max`,
+  `caller_phone_blacklist` (digits-only compare), `custom_jsonpath` (via
+  `jsonpath-plus`).
+- `packages/api/src/modules/digital-dispatch/conditions.spec.ts` —
+  per-condition unit tests; 18 cases covering every type plus
+  `evaluateAll` AND-semantics.
+- `packages/api/src/modules/digital-dispatch/dispatch-rules-engine.service.ts`
+  — priority-ordered evaluation, default flag, writes decision rows,
+  drives `CommandCenterService.recordAutoDecision`, calls adapter
+  side-effect.
+- `packages/api/src/modules/digital-dispatch/digital-dispatch.service.ts`
+  + `digital-dispatch.controller.ts` — rules CRUD, `/:id/test` dry-run,
+  paginated decisions with rule trace, stats with daily series + top
+  decline reasons.
+- `packages/api/src/db/seeds/command-center-tenant-zero.ts` — 2 sample
+  drivers (Central Ohio coords), 2 sample trucks, 3 sample rules
+  (accept within 25mi 06:00-22:00, decline over 50mi, flag when payout
+  missing).
+- `packages/web/src/app/admin/digital-dispatch/` — 4-tab page (Rules,
+  Decisions, Stats, Sandbox) plus a typed visual condition builder.
+- `packages/web/src/lib/digital-dispatch-types.ts` — shared rule + decision
+  + stats types; `describeCondition` for the rule-list summary.
+- `docs/DIGITAL_DISPATCH.md` — rule DSL reference, decision side effects,
+  API reference, seeded-rule walkthrough.
+
+### Files changed
+- `packages/api/src/modules/adapters/adapter.interface.ts` — adds optional
+  `acceptJob` / `declineJob`.
+- `packages/api/src/modules/adapters/aaa-portal/aaa-portal.adapter.ts` —
+  stub implementations that log + return (selectors unverified, flagged
+  in `docs/BLOCKERS.md`). The decision audit row is still written.
+- `packages/api/src/modules/adapters/towbook/towbook.adapter.ts` —
+  acceptJob/declineJob no-ops (Towbook is dispatch-out).
+- `packages/api/src/modules/job-poller/job-poller.cron.ts` — fires
+  `DispatchRulesEngineService.evaluateForJob` for every newly-created
+  unified job whose source is a motor club (`aaa_salesforce`).
+- `packages/api/src/app.module.ts` — registers `DigitalDispatchModule`.
+- `packages/api/package.json` — adds `jsonpath-plus`,
+  `db:seed:command-center` + `:prod` scripts.
+- `packages/web/src/app/admin/layout.tsx` — new "Digital Dispatch"
+  sidebar entry next to Command Center.
+
+### Test Result
+- 63 vitest tests pass (up from 60).
+- `pnpm --filter @ustow/api build` — green.
+- `pnpm --filter @ustow/web` TypeScript — green.
+
+### Acceptance Criteria
+1. `pnpm --filter @ustow/api db:seed:command-center` seeds tenant-zero
+   with 2 drivers, 2 trucks, and 3 dispatch rules without duplicates on
+   rerun.
+2. Creating a new AAA Salesforce job (via poller or manual insert) causes
+   exactly one `dispatch_decisions` row to land within seconds, and the
+   matching `unified_jobs.auto_decision*` columns are populated.
+3. The `/admin/digital-dispatch` UI lists rules, lets a non-power user
+   build conditions via dropdowns, shows decision history with per-rule
+   evaluation trace, renders the 14-day decisions chart, and can dry-run
+   any rule against any existing job in the Sandbox tab.
+4. Deleting a rule does not remove its historical decisions
+   (`dispatch_decisions.rule_id` is `ON DELETE SET NULL`).
