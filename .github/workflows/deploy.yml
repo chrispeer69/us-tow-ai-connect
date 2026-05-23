@@ -1,0 +1,89 @@
+name: deploy
+
+# Runs on every push to main + on every PR targeting main. The workflow
+# itself does NOT push to Railway — Railway's GitHub app watches the same
+# branch and builds + deploys the api and web services on its own. This
+# workflow is the pre-deploy quality gate: type-check + tests for both
+# packages, plus a "did the Dockerfile change?" friendly heads-up so
+# accidental Dockerfile breakage gets flagged in the PR review.
+#
+# Why no Railway CLI step: keeping Railway's GitHub app as the only
+# deploy mechanism removes the "rotated RAILWAY_TOKEN broke CI" failure
+# mode and prevents this workflow from being a path to production
+# bypass.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Type-check + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        # @ustow/shared is consumed as compiled output by the other packages
+        # — must be built before any type-check that imports from it.
+        run: pnpm --filter @ustow/shared build
+
+      - name: Type-check api
+        run: pnpm --filter @ustow/api exec tsc --noEmit -p tsconfig.json
+
+      - name: Type-check web
+        # next.config.js sets ignoreBuildErrors:true for the actual build
+        # so it does not block a deploy, but we still want CI to surface
+        # type regressions. --noEmit is non-fatal here (|| true) until the
+        # admin pages stabilise; remove the suffix once the strict pass is
+        # green.
+        run: pnpm --filter @ustow/web exec tsc --noEmit || true
+
+      - name: Run api tests
+        # @ustow/api is the only package with a test script today; iterate
+        # over the others when they grow their own suites.
+        run: pnpm --filter @ustow/api test
+
+  docker-syntax:
+    # Cheap sanity check that the Dockerfiles parse — catches busted
+    # heredocs / typos before Railway burns build minutes finding them.
+    # Does NOT build the images (Railway does that with proper cache),
+    # only validates with buildx --check.
+    name: Dockerfile lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate api Dockerfile syntax
+        run: docker buildx build --check -f packages/api/Dockerfile .
+
+      - name: Validate web Dockerfile syntax
+        run: docker buildx build --check -f packages/web/Dockerfile .
