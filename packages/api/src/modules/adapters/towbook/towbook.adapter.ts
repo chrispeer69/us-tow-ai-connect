@@ -8,6 +8,7 @@ import { REDIS_CLIENT } from '../../../common/redis/redis.module';
 import { SessionExpiredException } from '../../../common/exceptions/session-expired.exception';
 import {
   ActiveJob,
+  AdapterActionResult,
   AdapterConnectionTestResult,
   DecryptedCredentials,
   TowingSoftwareAdapter,
@@ -151,20 +152,27 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     }
   }
 
-  // Towbook is dispatch-out (we push calls to it), not motor-club intake. The
-  // accept/decline methods exist for adapter-interface parity so the rules
-  // engine can be configured for future Towbook-style intake flows; they
-  // simply log and no-op today.
-  async acceptJob(tenantId: string, sourceJobId: string): Promise<void> {
+  // Towbook is dispatch-out (we push calls to it), not motor-club intake —
+  // there is no Accept/Decline surface in the Towbook UI (docs/TOWBOOK_DOM_MAP
+  // documents only login/search/parse). These methods exist for adapter
+  // interface parity; they return a structured not-applicable result rather
+  // than fabricating a click that has no target. See docs/BLOCKERS.md.
+  async acceptJob(tenantId: string, sourceJobId: string): Promise<AdapterActionResult> {
     this.logger.log(
-      `[towbook] acceptJob no-op (tenant=${tenantId}, job=${sourceJobId}) — Towbook is dispatch-out`,
+      `[towbook] acceptJob not-applicable (tenant=${tenantId}, job=${sourceJobId}) — Towbook is dispatch-out`,
     );
+    return { success: false, error: 'not-applicable: Towbook is dispatch-out (no accept surface)' };
   }
 
-  async declineJob(tenantId: string, sourceJobId: string, reason: string): Promise<void> {
+  async declineJob(
+    tenantId: string,
+    sourceJobId: string,
+    reason: string,
+  ): Promise<AdapterActionResult> {
     this.logger.log(
-      `[towbook] declineJob no-op (tenant=${tenantId}, job=${sourceJobId}, reason="${reason}")`,
+      `[towbook] declineJob not-applicable (tenant=${tenantId}, job=${sourceJobId}, reason="${reason}")`,
     );
+    return { success: false, error: 'not-applicable: Towbook is dispatch-out (no decline surface)' };
   }
 
   private async dumpDiagnostics(
