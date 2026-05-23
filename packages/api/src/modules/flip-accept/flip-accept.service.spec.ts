@@ -97,7 +97,7 @@ describe('FlipAcceptService.applyInboundReply', () => {
     const sms = { sendSms: vi.fn(), recordInbound: vi.fn() };
     const adapters = {
       getAdapter: () => ({
-        acceptJob: vi.fn().mockResolvedValue(undefined),
+        acceptJob: vi.fn().mockResolvedValue({ success: true, confirmationEvidence: 'ok' }),
       }),
     };
     const svc = new FlipAcceptService(db as never, sms as never, adapters as never);

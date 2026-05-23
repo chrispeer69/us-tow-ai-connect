@@ -452,6 +452,11 @@ export const dispatchDecisions = pgTable(
     evaluatedConditions: jsonb('evaluated_conditions').notNull().default([]),
     decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
     decidedBy: varchar('decided_by', { length: 10 }).notNull().default('ai'),
+    // Evidence that the accept/decline click actually landed in the source
+    // portal (toast text / status change), captured by the adapter. Null until
+    // a physical action is attempted. Added in migration 0019.
+    confirmationEvidence: text('confirmation_evidence'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   },
   (t) => ({ jobIdx: index('dispatch_decisions_job_idx').on(t.jobId) }),
 );

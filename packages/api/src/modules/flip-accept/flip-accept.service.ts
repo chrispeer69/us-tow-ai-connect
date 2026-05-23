@@ -349,9 +349,15 @@ export class FlipAcceptService {
       try {
         const adapter = this.adapters.getAdapter(adapterKey);
         if (typeof adapter.acceptJob === 'function') {
-          await adapter.acceptJob(row.tenantId, row.sourceJobId);
-          nextStatus = 'auto_dispatched';
-          autoDispatchSucceeded = true;
+          const actionResult = await adapter.acceptJob(row.tenantId, row.sourceJobId);
+          if (actionResult?.success) {
+            nextStatus = 'auto_dispatched';
+            autoDispatchSucceeded = true;
+          } else {
+            logBlocker(
+              `flip-accept: adapter ${adapterKey} acceptJob did not confirm (source_job_id=${row.sourceJobId}): ${actionResult?.error ?? 'no result'}`,
+            );
+          }
         } else {
           logBlocker(
             `flip-accept: adapter ${adapterKey} has no acceptJob() method (source_job_id=${row.sourceJobId})`,

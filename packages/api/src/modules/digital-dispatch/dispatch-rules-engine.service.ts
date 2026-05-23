@@ -10,6 +10,7 @@ import {
   type UnifiedJobRow,
 } from '../../db/schema';
 import { AdapterFactory } from '../adapters/adapter.factory';
+import type { AdapterActionResult } from '../adapters/adapter.interface';
 import { CommandCenterService } from '../command-center/command-center.service';
 import type { Condition, ConditionResult } from './conditions';
 import { evaluateAll } from './conditions';
@@ -114,52 +115,92 @@ export class DispatchRulesEngineService {
       return { decision, ruleId: matched?.id ?? null, reason, evaluatedConditions: trace };
     }
 
-    await this.db.insert(dispatchDecisions).values({
-      jobId: job.id,
-      ruleId: matched?.id ?? null,
-      decision,
-      reason,
-      evaluatedConditions: trace,
-      decidedBy: 'ai',
-    });
+    const [decisionRow] = await this.db
+      .insert(dispatchDecisions)
+      .values({
+        jobId: job.id,
+        ruleId: matched?.id ?? null,
+        decision,
+        reason,
+        evaluatedConditions: trace,
+        decidedBy: 'ai',
+      })
+      .returning({ id: dispatchDecisions.id });
 
     await this.commandCenter.recordAutoDecision(tenantId, job.id, decision, reason);
 
     if (decision === 'accepted' || decision === 'declined') {
-      await this.applyToAdapter(tenantId, job, decision, reason).catch((err) =>
-        this.logger.warn(
-          `Adapter side-effect for ${decision} failed (job ${job.id}): ${(err as Error).message}`,
-        ),
-      );
+      // Physically click Accept/Decline in the source portal. The adapter
+      // never throws — it returns success/failure — so the decision row's
+      // evidence trail reflects whether the click actually landed.
+      const result = await this.applyToAdapter(tenantId, job, decision, reason);
+      if (result && decisionRow?.id) {
+        await this.db
+          .update(dispatchDecisions)
+          .set({
+            confirmationEvidence: result.success
+              ? result.confirmationEvidence ?? 'confirmed'
+              : `FAILED: ${result.error ?? 'unknown error'}`,
+            confirmedAt: result.confirmedAt ? new Date(result.confirmedAt) : null,
+          })
+          .where(eq(dispatchDecisions.id, decisionRow.id))
+          .catch((err) =>
+            this.logger.warn(
+              `Failed to persist confirmation evidence (decision ${decisionRow.id}): ${(err as Error).message}`,
+            ),
+          );
+      }
     }
 
     return { decision, ruleId: matched?.id ?? null, reason, evaluatedConditions: trace };
   }
 
+  /**
+   * Invoke the source adapter's accept/decline action. Returns the adapter's
+   * result, or null when there is no adapter mapping / the adapter does not
+   * implement the action. Adapter failures are caught and returned as a
+   * failed result so a flaky portal click never crashes the dispatch worker.
+   */
   private async applyToAdapter(
     tenantId: string,
     job: UnifiedJobRow,
     decision: 'accepted' | 'declined',
     reason: string,
-  ) {
+  ): Promise<AdapterActionResult | null> {
     const software = ADAPTER_SOFTWARE_BY_SOURCE[job.source];
     if (!software) {
       this.logger.debug(`No adapter mapping for source ${job.source} — skipping side effect`);
-      return;
+      return null;
     }
     const adapter = this.adapterFactory.getAdapter(software);
-    if (!('acceptJob' in adapter) || typeof (adapter as { acceptJob?: unknown }).acceptJob !== 'function') {
-      this.logger.debug(`Adapter for ${software} does not implement accept/decline`);
-      return;
-    }
     const a = adapter as unknown as {
-      acceptJob?: (tenantId: string, sourceJobId: string) => Promise<void>;
-      declineJob?: (tenantId: string, sourceJobId: string, reason: string) => Promise<void>;
+      acceptJob?: (tenantId: string, sourceJobId: string) => Promise<AdapterActionResult>;
+      declineJob?: (
+        tenantId: string,
+        sourceJobId: string,
+        reason: string,
+      ) => Promise<AdapterActionResult>;
     };
-    if (decision === 'accepted' && a.acceptJob) {
-      await a.acceptJob(tenantId, job.sourceJobId);
-    } else if (decision === 'declined' && a.declineJob) {
-      await a.declineJob(tenantId, job.sourceJobId, reason);
+    const fn = decision === 'accepted' ? a.acceptJob : a.declineJob;
+    if (typeof fn !== 'function') {
+      this.logger.debug(`Adapter for ${software} does not implement ${decision}`);
+      return null;
+    }
+    try {
+      const result =
+        decision === 'accepted'
+          ? await a.acceptJob!(tenantId, job.sourceJobId)
+          : await a.declineJob!(tenantId, job.sourceJobId, reason);
+      if (!result.success) {
+        this.logger.warn(
+          `Adapter ${software} ${decision} did not confirm for job ${job.id}: ${result.error ?? 'no error'}`,
+        );
+      }
+      return result;
+    } catch (err) {
+      const error = (err as Error).message;
+      this.logger.warn(`Adapter ${software} ${decision} threw for job ${job.id}: ${error}`);
+      return { success: false, error };
     }
   }
 }
