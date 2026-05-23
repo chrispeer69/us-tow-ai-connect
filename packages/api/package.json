@@ -12,6 +12,9 @@
     "generate-api-key": "tsx src/bin/generate-api-key.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js",
+    "db:seed:tenant-zero": "tsx src/db/seeds/roadside-tenant-zero.ts",
+    "db:seed:tenant-zero:prod": "node dist/db/seeds/roadside-tenant-zero.js",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

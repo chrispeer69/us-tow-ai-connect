@@ -121,8 +121,12 @@ Migrations run automatically every deploy via the `preDeployCommand`
 declared in `railway.toml`:
 
 ```
-pnpm --filter @ustow/api run db:migrate
+pnpm --filter @ustow/api run db:migrate:prod
 ```
+
+The `:prod` flavour runs the compiled JS (`node dist/db/migrate.js`) — the
+runtime container does not include `tsx`. Use plain `db:migrate` only in
+local dev.
 
 Migration files live in `packages/api/src/db/migrations/` and are applied in
 filename order by Drizzle's migrator, which records applied filenames in a
@@ -131,9 +135,11 @@ filename order by Drizzle's migrator, which records applied filenames in a
 To seed the **tenant zero** Roadside Towing row after the first deploy:
 
 ```
-railway run --service api pnpm --filter @ustow/api exec tsx \
-  src/db/seeds/roadside-tenant-zero.ts
+railway run --service api pnpm --filter @ustow/api run db:seed:tenant-zero:prod
 ```
+
+The `:prod` variant runs the compiled `dist/db/seeds/...` so it works
+inside the slim runtime container that does not carry `tsx`.
 
 The seed is `INSERT … ON CONFLICT DO UPDATE`, so re-running is safe.
 

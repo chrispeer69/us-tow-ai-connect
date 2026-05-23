@@ -22,7 +22,10 @@ name = "api"
   [services.deploy]
   # Apply DB migrations before booting the API. Drizzle's migrator is
   # idempotent so re-running on every deploy is safe.
-  preDeployCommand = "pnpm --filter @ustow/api run db:migrate"
+  # `:prod` flavour invokes the compiled JS — the runtime image does not
+  # ship tsx, so the dev `db:migrate` script (tsx src/db/migrate.ts) would
+  # fail here.
+  preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"
   startCommand = "node packages/api/dist/main.js"
   healthcheckPath = "/health/ready"
   healthcheckTimeout = 30
