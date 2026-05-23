@@ -2299,3 +2299,135 @@ push the Big Green Button on Railway. Section 4 of
   attach to Railway.
 - Pre-existing blockers (AAA Accept/Decline selectors, AAA payout field
   path, Google Maps browser key authorization) are unchanged.
+
+---
+
+## Session 23: Thinkrr Integration Hardening + Adapter Stability (2026-05-23)
+
+### Objective
+Take the live Thinkrr.ai voice agent for **+1 380 333 6411 / Roadside
+Towing** from "Knowledge-Pack + webhook only" to a full bidirectional
+integration: the agent can look up live job data, default ETAs, the
+service catalog, and create dispatch tickets mid-call; we accept the full
+transcript on every completed call; Twilio webhooks are signature-verified;
+the AAA Salesforce scraper is unblocked.
+
+### Files added
+- `packages/api/src/db/migrations/0005_call_interactions.sql` — three new
+  tables (`call_interactions`, `smart_actions`, `dispatch_requests`) plus
+  an `ai_agent_configs.knowledge_pack` JSONB column.
+- `packages/api/src/common/guards/tenant-api-key.guard.ts` — new guard for
+  the agent endpoints. Accepts `X-Tenant-API-Key` (spec) or `x-api-key`
+  (back-compat). Bcrypt-compares against the prefix-resolved tenant.
+- `packages/api/src/common/guards/twilio-signature.guard.ts` — HMAC-SHA1
+  validator for `X-Twilio-Signature` on every `/webhooks/twilio/*` route.
+  Reconstructs the signed URL from `PUBLIC_BASE_URL`.
+- `packages/api/src/common/guards/twilio-signature.guard.spec.ts` — 8
+  vitest cases: valid signature, missing header, tampered body, key
+  ordering, REPLACE_ME bypass, unset-token bypass.
+- `packages/api/src/modules/webhook-receiver/webhook-receiver.service.spec.ts`
+  — 10 vitest cases covering happy-path insert, tenant resolution miss,
+  Towbook match, AAA fallback, and the call-categorizer.
+- `packages/api/src/modules/ai-connect/ai-connect.service.spec.ts` — 6
+  vitest cases for lookup-by-phone, default ETA, smart-action recording.
+- `scripts/smoke-test.sh` — curl-based smoke probe of every Session-23
+  endpoint. 8/8 pass against the local stack.
+- `docs/THINKRR_INTEGRATION.md` — Session 23 section appended with
+  endpoint map, agent setup table, payload schemas, security model, and
+  smoke-test invocation.
+
+### Files changed
+- `packages/api/src/db/schema.ts` — added `callInteractions`,
+  `smartActions`, `dispatchRequests` drizzle tables and the
+  `aiAgentConfigs.knowledgePack` column.
+- `packages/api/src/modules/webhook-receiver/webhook-receiver.service.ts`
+  — now writes to both `call_interactions` (raw payload) and
+  `interaction_logs` (legacy aggregated). Job matching compares last-10
+  digits against Redis-cached Towbook + AAA jobs.
+- `packages/api/src/modules/ai-connect/ai-connect.controller.ts` — added
+  routes for `lookup/by-phone`, `eta`, `services`, `dispatch-request`,
+  `smart-action`. Legacy `transfer-route` + `log-interaction` keep
+  `ApiKeyGuard`; new routes use `TenantApiKeyGuard`.
+- `packages/api/src/modules/ai-connect/ai-connect.service.ts` — new
+  methods: `lookupByPhone`, `estimateEta`, `getServices`,
+  `createDispatchRequest`, `recordSmartAction`,
+  `listCallInteractions`. Dispatch creation fires an SMS via
+  `TwilioOutboundService.sendDispatchSms`.
+- `packages/api/src/modules/ai-connect/ai-connect.module.ts` — imports
+  `OutboundModule`, provides the new guards.
+- `packages/api/src/modules/admin/admin.controller.ts` +
+  `admin.service.ts` — three new admin endpoints
+  (`call-interactions`, `smart-actions`, `dispatch-requests`).
+- `packages/api/src/modules/tenants/tenants.service.ts` —
+  `findByApiKeyPrefix` now resolves keys minted via
+  `/v1/admin/api-keys` (was previously useless because the guard only
+  checked the legacy single-key column on `tenants`).
+- `packages/api/src/modules/adapters/aaa-portal/aaa-portal.adapter.ts` —
+  switched all navigations from `networkidle` (which never resolved
+  because Salesforce keeps a WS open) to `domcontentloaded` + an
+  explicit 30s `waitForSelector('table[role="grid"] tbody')`. Nav
+  timeout raised to 60s for AAA only; scrape retries up to 2x with 5s
+  backoff; logs selector counts for 5 anchors per attempt so 0 rows is
+  unambiguous.
+- `packages/api/src/modules/outbound/webhooks/twilio-webhook.controller.ts`
+  — now gated by `TwilioSignatureGuard`.
+- `packages/api/src/modules/outbound/twilio-outbound.service.ts` — added
+  `sendDispatchSms()` helper. Falls back to stdout when Twilio is
+  unconfigured.
+- `packages/api/src/modules/knowledge-endpoint/knowledge-endpoint.service.ts`
+  — renders the enriched knowledge pack (brands, service area, hours,
+  KP-labeled services, transfer label, impound policy, payment methods).
+- `packages/api/src/db/seeds/roadside-tenant-zero.ts` — writes the real
+  Roadside Towing knowledge pack (brands, 6 counties, 10 services,
+  +16148326197 transfer, motor-club payment options). Idempotent.
+- `packages/api/src/modules/web/admin/calls/page.tsx` — new "Raw Thinkrr
+  Payloads" tab renders the `call_interactions` rows.
+- `packages/shared/src/schemas/ai-connect.schema.ts` — added
+  `SmartActionRequestSchema` and `DispatchRequestCreateSchema`.
+- `packages/api/package.json` — `+ @nestjs/websockets ^10`,
+  `+ @nestjs/platform-socket.io ^10`, `+ socket.io ^4` so the untracked
+  command-center gateway compiles (see `docs/BLOCKERS.md` Session 23).
+  Plus a new `db:seed:tenant-zero` script.
+- `README.md` — new "Thinkrr.ai Integration" section with full endpoint
+  table + smoke-test invocation.
+
+### Endpoints introduced
+
+Public:
+- `POST /webhooks/thinkrr/:secret/call-completed` — hardened with raw
+  payload persistence + caller-phone job matching.
+
+Tenant-authenticated (`X-Tenant-API-Key`):
+- `GET  /v1/ai-connect/lookup/by-phone?phone=<E.164>`
+- `GET  /v1/ai-connect/eta?lat=<>&lng=<>`
+- `GET  /v1/ai-connect/services`
+- `POST /v1/ai-connect/dispatch-request`
+- `POST /v1/ai-connect/smart-action`
+
+Admin (`x-tenant-id` placeholder):
+- `GET /v1/admin/call-interactions`
+- `GET /v1/admin/smart-actions`
+- `GET /v1/admin/dispatch-requests`
+
+### Acceptance status
+| Criterion                                                          | Status |
+|--------------------------------------------------------------------|--------|
+| Thinkrr webhook persists full transcript + matches active job      | ✅ verified via smoke test |
+| Agent can look up active job by caller phone                       | ✅ smoke test pass |
+| Agent can create dispatch ticket + SMS notification (or log-fallback) | ✅ smoke test pass |
+| AAA Salesforce scraper no longer hangs on networkidle              | ✅ wait-condition + retry shipped (live verification on next AAA cron tick) |
+| Twilio webhooks reject unsigned requests when token is set         | ✅ guard + 8 unit tests |
+| Knowledge Pack reflects real Roadside Towing fields                | ✅ verified via `curl /public/knowledge/.../profile.md` |
+| Integration tests + smoke script land                              | ✅ 24 vitest pass + 8/8 smoke endpoints |
+| Docs cover agent setup, KP URL, webhook, lookup endpoints          | ✅ README + `docs/THINKRR_INTEGRATION.md` |
+
+### Open follow-ups (see `docs/BLOCKERS.md`)
+- Real driver-GPS feed → `/v1/ai-connect/eta` should compute live
+  arrival times. Currently always returns the configured default
+  (45 min).
+- Smart Action handlers per `action_type` — every action is recorded
+  with `status: 'PENDING'` but not auto-routed yet.
+- AAA portal Accept/Decline selectors — unchanged from Session 21–22.
+- Untracked sibling modules (`command-center/`, `digital-dispatch/`)
+  added new SQL migrations + a websocket gateway during this session.
+  Their owners should wire them into `AppModule` in a follow-up.

@@ -107,6 +107,58 @@ Full step-by-step runbook (env vars, custom domain, migrations, rollback,
 Thinkrr cutover): **`docs/DEPLOY_RAILWAY.md`**. Decisions and trade-offs
 are captured in `docs/ASSUMPTIONS.md` (Session 10 section).
 
+## Thinkrr.ai Integration
+
+End-to-end integration with Thinkrr's voice agent is wired through three
+surfaces (all introduced in Session 23 — see `docs/THINKRR_INTEGRATION.md`
+for the full runbook):
+
+### Public endpoints
+
+| Verb / Path                                                  | Purpose                                  |
+|--------------------------------------------------------------|------------------------------------------|
+| `GET /public/knowledge/:tenantId/profile.md`                 | Knowledge Pack URL pulled by Thinkrr     |
+| `POST /webhooks/thinkrr/:secret/call-completed`              | Call-completion webhook (URL secret)     |
+| `POST /webhooks/thinkrr/call-completed`                      | Legacy unsecured route (dev only)        |
+
+### Tenant-authenticated agent endpoints (`X-Tenant-API-Key`)
+
+| Verb / Path                                       | Purpose                                              |
+|---------------------------------------------------|------------------------------------------------------|
+| `GET  /v1/ai-connect/transfer-route`              | Active dispatch transfer rule                        |
+| `GET  /v1/ai-connect/lookup/by-phone?phone=…`     | Find an active Towbook/AAA job by caller phone       |
+| `GET  /v1/ai-connect/eta?lat=…&lng=…`             | Default ETA (driver-GPS deferred — see ASSUMPTIONS)  |
+| `GET  /v1/ai-connect/services`                    | Service list (merged toggles + knowledge pack)       |
+| `POST /v1/ai-connect/dispatch-request`            | Create dispatch ticket + SMS the dispatcher          |
+| `POST /v1/ai-connect/smart-action`                | Generic command pipe (CREATE_DISPATCH, TRANSFER_TO_HUMAN, …) |
+| `POST /v1/ai-connect/log-interaction`             | Append to the legacy aggregated interaction_logs     |
+
+### Admin endpoints (placeholder `x-tenant-id` header)
+
+| Verb / Path                                  | Purpose                                                |
+|----------------------------------------------|--------------------------------------------------------|
+| `GET /v1/admin/interaction-logs`             | Aggregated, categorized call list (existing screen)    |
+| `GET /v1/admin/call-interactions`            | Raw Thinkrr payloads w/ transcript, summary, match    |
+| `GET /v1/admin/smart-actions`                | Audit log of agent-issued Smart Actions               |
+| `GET /v1/admin/dispatch-requests`            | New tow requests created by the agent                 |
+
+### Operational endpoints
+
+| Verb / Path                          | Purpose                                            |
+|--------------------------------------|----------------------------------------------------|
+| `GET  /health`                       | Liveness — 200 once Nest finished booting          |
+| `GET  /health/ready`                 | Readiness — 200 only when Postgres + Redis are up  |
+| `POST /webhooks/twilio/flip-response`<br>`POST /webhooks/twilio/convini-response`<br>`POST /webhooks/twilio/call-status` | Twilio TwiML callbacks (HMAC-SHA1 signature required when `TWILIO_AUTH_TOKEN` is set) |
+
+### Smoke test
+
+```bash
+BASE_URL=http://localhost:3001 \
+TENANT_API_KEY=usk_xxxxxxxx... \
+THINKRR_SECRET=<value from .env> \
+scripts/smoke-test.sh
+```
+
 ## Build Sessions
 
-This project is built in 10 sequential sessions. See `docs/BUILD_SESSIONS.md` for the exact engineering prompts for each session.
+This project is built in sequential sessions. See `docs/BUILD_SESSIONS.md` for the engineering prompts and `docs/THINKRR_INTEGRATION.md` for the Session-23 Thinkrr runbook.

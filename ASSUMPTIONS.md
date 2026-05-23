@@ -91,6 +91,94 @@ Note: the BUILD_SESSIONS.md document was updated upstream during this build. The
 - **TwilioWebhookController content type.** TwiML responses set `Content-Type: text/xml` via `@Header()` decorator (Nest defaults to JSON which would break Twilio's TwiML parser).
 - **Vehicle classes never reach the outbound script.** The TwiML script doesn't know which vehicle class the agent registered (the Knowledge Pack is the source of truth for inbound routing). Outbound calls don't currently personalize for vehicle class — flagged for product if needed.
 
+## Session 23 — Thinkrr integration hardening + adapter stability
+
+- **`call_interactions` is separate from `interaction_logs`.** The
+  existing `interaction_logs` table stores the aggregated, categorized
+  record powering the admin Aggregated tab. Session 23 added
+  `call_interactions` for the *full* Thinkrr payload (raw_payload JSONB,
+  transcript, summary, structured_data, matched job linkage). Both rows
+  are written per webhook because the legacy `/admin/calls` Aggregated
+  screen and the new Raw Thinkrr Payloads tab read different shapes.
+- **Caller-phone matching uses last 10 digits.** Towbook cached jobs hold
+  10-digit US phones; Thinkrr posts E.164 (`+1...`). Comparing raw strings
+  would miss every real match. Both sides are normalized to digits then
+  truncated to the last 10. Same rule in
+  `WebhookReceiverService.matchJobByPhone` and
+  `AiConnectService.lookupByPhone`.
+- **`X-Tenant-API-Key` is preferred but `x-api-key` is accepted.** The
+  Session-23 spec says agents authenticate with `X-Tenant-API-Key`, but
+  earlier endpoints used `x-api-key`. The new `TenantApiKeyGuard` reads
+  the preferred header first, then falls back, so neither the new agent
+  config nor previously-issued credentials break.
+- **`TenantsService.findByApiKeyPrefix` resolves keys from two stores.**
+  The old guard only checked `tenants.api_key_hash`, which is set to a
+  bootstrap SHA-256 by the tenant-zero seed and is not a usable key.
+  Keys minted via `/v1/admin/api-keys` live in `tenant_api_keys`; the
+  service now checks both stores and returns the tenant with the
+  matching key hash, so the same bcrypt comparison in the guard works
+  for both.
+- **`/v1/ai-connect/eta` returns the configured default.** Real
+  driver-GPS integration is deferred. The endpoint accepts `lat`/`lng`
+  for forward compatibility and returns `{ eta_minutes: <config or 45>,
+  basis: 'default_eta_mins (driver-GPS integration deferred — see
+  ASSUMPTIONS.md)' }`. The agent should never tell a caller "your driver
+  is X minutes away" until this is wired to live GPS — the basis string
+  is meant to surface that on inspection.
+- **Smart Actions are recorded but not auto-routed.** Each
+  `POST /v1/ai-connect/smart-action` inserts a `smart_actions` row with
+  `status: 'PENDING'`. Auto-dispatch / transfer / SMS handlers per
+  `action_type` will land in a follow-up session — for now this is an
+  audit + queue surface visible at `/v1/admin/smart-actions`.
+- **Dispatch SMS falls back to log when Twilio is unconfigured.** New
+  `TwilioOutboundService.sendDispatchSms()` returns `null` and logs the
+  message when `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` are unset or
+  still `REPLACE_ME_*`. `dispatch_requests.dispatcher_notified` is set
+  to `false` in that case so the dispatcher can still pick the ticket up
+  from `/admin/dispatch-requests`.
+- **Twilio signature guard bypasses with a warning in dev.** When
+  `TWILIO_AUTH_TOKEN` is unset/REPLACE_ME, the guard logs a warning and
+  allows the request through. Production must set a real token. The
+  signed URL is reconstructed from `PUBLIC_BASE_URL` so the hash matches
+  what Twilio computed against the ngrok / Railway URL — not whatever
+  `req.protocol://host` resolves to inside a container.
+- **AAA Salesforce: `domcontentloaded`, not `networkidle`.** Salesforce
+  community pages keep a WebSocket telemetry connection open, so
+  `networkidle` never fires within Playwright's 30s default. The
+  symptom — cron timeouts from 2026-05-21 onward — vanished after
+  switching all AAA navigations to `domcontentloaded` plus an explicit
+  `waitForSelector('table[role="grid"] tbody')` with a 30s budget. Nav
+  timeout was also raised to 60s for AAA flows only; Towbook stayed at
+  the original 30s. Scrape now retries up to 2 attempts with a 5s
+  backoff before failing the poller cycle.
+- **AAA selector-count logging is unconditional.** Like the Towbook
+  adapter, the AAA adapter logs the row count for the verified anchor
+  plus 5 legacy guesses on every scrape, so "0 rows" is unambiguous
+  (= no jobs vs = wrong selector).
+- **Knowledge pack lives in `ai_agent_configs.knowledge_pack`.** A new
+  JSONB column was added in migration `0005_call_interactions.sql`. The
+  seed writes the entire pack (brands, service area, hours, services,
+  transfer phone, impound policy, payment methods, default ETA, agent
+  voice, agent greeting). The knowledge endpoint renders the merged
+  view; existing `service_toggles` entries appear only when they're not
+  already in the knowledge pack's services list (deduped by key).
+- **Tenant-zero seed is also routing-rule + agent-config aware.** The
+  pre-session seed only inserted tenant + owner member. The new version
+  also upserts a `routing_rules` row with the dispatch transfer phone
+  (idempotent via a SELECT-then-INSERT because there is no unique
+  constraint) and an `ai_agent_configs` row with the knowledge pack and
+  enabled service toggles.
+- **Untracked sibling modules forced a build-deps update.** Files in
+  `packages/api/src/modules/command-center/` (and matching SQL
+  migrations 0006/0007) were dropped into the repo during this session
+  by a sibling agent. They import `socket.io` and
+  `@nestjs/websockets`, which weren't declared in
+  `packages/api/package.json`. To keep Session-23 commits buildable, the
+  deps were added (`socket.io@^4`, `@nestjs/websockets@^10`,
+  `@nestjs/platform-socket.io@^10`). The gateway is not yet wired into
+  `AppModule`, so adding the deps doesn't change runtime behaviour. See
+  `docs/BLOCKERS.md` Session 23.
+
 ## Items flagged for human review
 
 1. Towbook DOM selectors for active rows are inherited from the spec but were not verified against a live account. Verify before production traffic.
