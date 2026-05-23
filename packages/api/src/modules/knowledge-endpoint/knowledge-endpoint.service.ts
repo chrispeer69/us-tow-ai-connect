@@ -8,6 +8,20 @@ type ServiceToggleEntry = {
   classes?: Record<string, string>;
 };
 
+interface KnowledgePackBlob {
+  brands?: string[];
+  service_area?: { region?: string; counties?: string[] };
+  hours?: string;
+  services?: Array<{ key: string; label: string }>;
+  transfer_phone?: string;
+  transfer_label?: string;
+  impound_policy?: string;
+  default_eta_minutes?: number;
+  payment_methods?: string[];
+  agent_voice?: string;
+  agent_greeting?: string;
+}
+
 @Injectable()
 export class KnowledgeEndpointService {
   private readonly logger = new Logger(KnowledgeEndpointService.name);
@@ -28,6 +42,7 @@ export class KnowledgeEndpointService {
     if (!tenant || !tenant.isActive) return null;
 
     const config = tenant.agentConfig;
+    const kp = ((config?.knowledgePack ?? {}) as KnowledgePackBlob) || {};
 
     const activeRule =
       tenant.routingRules?.find((r) => r.isActiveNow) ??
@@ -40,32 +55,73 @@ export class KnowledgeEndpointService {
           .limit(1)
       )[0];
 
-    const services = (config?.serviceToggles ?? {}) as Record<string, ServiceToggleEntry>;
-    const serviceLines = Object.entries(services)
-      .filter(([, val]) => val?.enabled)
-      .map(([name, val]) => {
-        const classes = Object.entries(val.classes ?? {})
-          .map(([cls, handling]) => `  - ${cls}: ${handling}`)
-          .join('\n');
-        return classes ? `- ${name}\n${classes}` : `- ${name}`;
-      })
-      .join('\n');
+    // Prefer the knowledge-pack service list (richer labels). Fall back to
+    // service_toggles if no KP services are present. Dedupe so a service
+    // present in both blobs doesn't render twice.
+    const kpServiceKeys = new Set((kp.services ?? []).map((s) => s.key));
+    const kpServices = (kp.services ?? []).map(
+      (s) => `- ${s.label} (${s.key})`,
+    );
+    const toggleServices = Object.entries(
+      (config?.serviceToggles ?? {}) as Record<string, ServiceToggleEntry>,
+    )
+      .filter(([key, val]) => val?.enabled && !kpServiceKeys.has(key))
+      .map(([name]) => `- ${name}`);
 
-    const transferTarget = activeRule?.phoneNumber ?? 'the dispatch team';
-    const transferLabel = activeRule?.ruleName ?? 'Dispatch';
+    const serviceBlock =
+      [...kpServices, ...toggleServices].join('\n') ||
+      '- Contact dispatch for service availability';
+
+    const transferTarget =
+      kp.transfer_phone ?? activeRule?.phoneNumber ?? 'the dispatch team';
+    const transferLabel =
+      kp.transfer_label ?? activeRule?.ruleName ?? 'Dispatch';
+
+    const brandsLine =
+      kp.brands && kp.brands.length > 0
+        ? `- Brands operating under this tenant: ${kp.brands.join(', ')}`
+        : '';
+
+    const serviceAreaBlock = kp.service_area
+      ? `## Service Area
+- Region: ${kp.service_area.region ?? 'Local'}
+- Counties served: ${(kp.service_area.counties ?? []).join(', ') || 'Local area'}`
+      : '';
+
+    const hoursLine = kp.hours ?? '24/7';
+    const eta = kp.default_eta_minutes ?? config?.defaultEtaMins ?? 45;
+
+    const paymentBlock =
+      kp.payment_methods && kp.payment_methods.length > 0
+        ? `## Accepted Payment Methods
+${kp.payment_methods.map((m) => `- ${m}`).join('\n')}`
+        : '';
+
+    const greeting = kp.agent_greeting ?? config?.greetingMessage ?? 'Thank you for calling.';
+    const impoundLine = kp.impound_policy
+      ? kp.impound_policy
+      : config?.impoundEnabled
+        ? 'Available — ask for details'
+        : 'Not available at this location';
 
     return `# ${tenant.companyName}
 
 ## Company Information
 - Company: ${tenant.companyName}
 - Timezone: ${tenant.timezone}
+- Hours of operation: ${hoursLine}
 - Status: Active
+${brandsLine ? `${brandsLine}\n` : ''}
+## Greeting
+${greeting}
+
+${serviceAreaBlock}
 
 ## Services Offered
-${serviceLines || '- Contact dispatch for service availability'}
+${serviceBlock}
 
 ## Typical Response Times
-- Default estimated arrival: ${config?.defaultEtaMins ?? 45} minutes
+- Default estimated arrival: ${eta} minutes
 - Response times vary based on location, traffic, and driver availability
 
 ## Call Transfer
@@ -73,7 +129,9 @@ ${serviceLines || '- Contact dispatch for service availability'}
 - Transfer label: ${transferLabel}
 
 ## Impound Inquiries
-- Impound service: ${config?.impoundEnabled ? 'Available — ask for details' : 'Not available at this location'}
+- ${impoundLine}
+
+${paymentBlock}
 
 ## Important Notes
 - Always confirm the caller's name, phone number, vehicle details, and location
