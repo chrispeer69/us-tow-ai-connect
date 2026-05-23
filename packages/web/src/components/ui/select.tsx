@@ -44,17 +44,17 @@ export function Select({ value, onValueChange, children }: SelectProps) {
           value={value}
           onChange={(e) => onValueChange(e.target.value)}
           className={cn(
-            'h-10 w-full appearance-none rounded-md border border-zinc-700 bg-zinc-900 px-3 pr-9 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500',
+            'h-10 w-full appearance-none rounded-[12px] border border-[var(--border-strong)] bg-[var(--surface-card)] px-3 pr-9 text-sm text-[var(--text-main)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--alliance-blue)] focus-visible:border-[var(--alliance-blue)]',
           )}
         >
           {items.map((it) => (
-            <option key={it.value} value={it.value} className="bg-zinc-900 text-zinc-100">
+            <option key={it.value} value={it.value} className="bg-[var(--surface-card)] text-[var(--text-main)]">
               {it.label}
             </option>
           ))}
         </select>
         {trigger}
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
           ▾
         </span>
       </div>

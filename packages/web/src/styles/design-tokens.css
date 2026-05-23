@@ -1,0 +1,122 @@
+/* ============================================================
+ * ustowalliance.com design system — extracted tokens
+ * Source: live homepage (light) + /ai-is-here/ (dark).
+ * See docs/diagnostics/design-tokens.md for the full inventory.
+ * ============================================================ */
+
+:root {
+  /* ---- Brand palette (light / public-site primary) ---- */
+  --alliance-navy: #05162b; /* primary brand, hero/dark sections */
+  --alliance-navy-2: #00174b; /* hero gradient end */
+  --hero-gradient: linear-gradient(135deg, #05162b 0%, #00174b 100%);
+  --alliance-blue: #2563eb; /* primary CTA */
+  --alliance-blue-dark: #003ea8; /* CTA hover */
+  --alliance-blue-bright: #0053db;
+  --alliance-green: #4ade80; /* verified / success accent */
+  --alliance-amber: #f59e0b; /* accent / AI */
+  --alliance-amber-light: #fbbf24;
+  --alliance-purple: #7c3aed;
+  --alliance-red: #ef4444;
+
+  /* ---- Surfaces (light) ---- */
+  --surface-bg: #faf8ff; /* page background (lavender-white) */
+  --surface-card: #ffffff; /* cards / lowest surface */
+  --surface-low: #f2f3ff; /* subtle fill / input */
+  --surface: #eaedff; /* container */
+  --surface-high: #e3e7ff; /* elevated fill */
+  --glass-bg: rgba(255, 255, 255, 0.8); /* navbar */
+
+  /* ---- Text ---- */
+  --text-main: #151b2d;
+  --text-secondary: #44474d;
+  --text-muted: #6b7280;
+
+  /* ---- Borders ---- */
+  --border-color: #e3e4ee;
+  --border-strong: #d3d5e3;
+  --border-ghost: rgba(197, 198, 205, 0.35);
+
+  /* ---- Radius ---- */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* ---- Shadow ---- */
+  --shadow-ambient: 0 4px 40px rgba(21, 27, 45, 0.08);
+  --shadow-sm: 0 1px 2px rgba(21, 27, 45, 0.06);
+  --shadow-md: 0 4px 16px rgba(21, 27, 45, 0.08);
+  --shadow-lg: 0 18px 40px rgba(21, 27, 45, 0.12);
+
+  /* ---- Layout ---- */
+  --container-max: 1400px;
+  --header-h: 70px;
+
+  /* ---- Per-tenant branding (BrandingProvider overrides these) ---- */
+  --brand-primary: var(--alliance-blue);
+  --brand-secondary: var(--alliance-navy);
+  --brand-accent: var(--alliance-amber);
+}
+
+/* ---- Dark theme parity (mirrors /ai-is-here/ "aih-*" tokens) ---- */
+[data-theme='dark'] {
+  --surface-bg: #000e23;
+  --surface-card: #0a1f3d;
+  --surface-low: #0d2547;
+  --surface: #102a52;
+  --surface-high: #163364;
+  --glass-bg: rgba(10, 31, 61, 0.8);
+  --text-main: #ffffff;
+  --text-secondary: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border-color: rgba(59, 130, 246, 0.18);
+  --border-strong: rgba(59, 130, 246, 0.45);
+  --alliance-blue: #3b82f6;
+  --alliance-green: #34d399;
+}
+
+/* ============================================================
+ * Admin compatibility remap.
+ * The ~32 admin pages were authored in a zinc-* dark palette.
+ * Scoping these overrides to `.admin-shell` re-skins every legacy
+ * page to the alliance light system in one shot, while new
+ * components below use the tokens directly. Specificity (0,2,0)
+ * beats the (0,1,0) Tailwind utility, so no !important needed.
+ * ============================================================ */
+.admin-shell .bg-zinc-950 { background-color: var(--surface-bg); }
+.admin-shell .bg-zinc-900 { background-color: var(--surface-card); }
+.admin-shell .bg-zinc-800 { background-color: var(--surface-low); }
+.admin-shell .bg-zinc-700 { background-color: var(--surface); }
+.admin-shell .bg-zinc-600 { background-color: var(--surface-high); }
+.admin-shell .bg-zinc-500 { background-color: #c7cad8; }
+.admin-shell .bg-slate-700 { background-color: var(--surface); }
+
+.admin-shell .text-zinc-50,
+.admin-shell .text-zinc-100,
+.admin-shell .text-zinc-200,
+.admin-shell .text-slate-200 { color: var(--text-main); }
+.admin-shell .text-zinc-300 { color: #2b2f3a; }
+.admin-shell .text-zinc-400 { color: var(--text-secondary); }
+.admin-shell .text-zinc-500 { color: var(--text-muted); }
+
+.admin-shell .border-zinc-900 { border-color: var(--surface); }
+.admin-shell .border-zinc-800 { border-color: var(--border-color); }
+.admin-shell .border-zinc-700 { border-color: var(--border-strong); }
+.admin-shell .divide-zinc-800 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border-color);
+}
+
+/* hover variants used in legacy nav/buttons */
+.admin-shell .hover\:bg-zinc-800:hover { background-color: var(--surface-low); }
+.admin-shell .hover\:bg-zinc-700:hover { background-color: var(--surface); }
+.admin-shell .hover\:text-zinc-100:hover,
+.admin-shell .hover\:text-white:hover { color: var(--text-main); }
+
+/* legacy emerald accent (old Button default) → alliance blue */
+.admin-shell .bg-emerald-600 { background-color: var(--alliance-blue); }
+.admin-shell .hover\:bg-emerald-500:hover { background-color: var(--alliance-blue-dark); }
+.admin-shell .text-emerald-400,
+.admin-shell .text-emerald-500 { color: var(--alliance-blue); }
+
+/* keep semantic status colors readable on light surfaces */
+.admin-shell .text-yellow-300 { color: #b45309; }

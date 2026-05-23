@@ -21,7 +21,7 @@ export function Switch({ checked, onCheckedChange, disabled, className, id }: Sw
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-        checked ? 'bg-emerald-500' : 'bg-zinc-700',
+        checked ? 'bg-[var(--alliance-blue)]' : 'bg-[var(--border-strong)]',
         disabled && 'opacity-50 cursor-not-allowed',
         className,
       )}

@@ -846,3 +846,32 @@ Full API suite goes from **133 → 145** passing, no regressions.
 fallback chain. Not on the 6-route hit list and the guard there will
 still reject non-UUID, but worth a follow-up to delete the redundant
 read. Logged in BLOCKERS so future visibility is preserved.
+
+## 2026-05-23 — Admin visual refresh: duplicate ustowalliance.com design system
+
+Design source: live `ustowalliance.com` (homepage = light theme, `/ai-is-here/`
+= dark theme). Tokens extracted into `docs/diagnostics/design-tokens.md`.
+
+1. **The admin shell flips from dark to LIGHT.** The prior admin chrome was
+   dark-themed/desktop-first (per Session 25 notes). The public alliance site's
+   primary surface is light (lavender-white `#faf8ff`, white cards, navy text,
+   blue CTAs), so the re-skin makes light the admin default. The dark `aih-*`
+   palette is preserved under `[data-theme="dark"]` for parity.
+
+2. **Base component CSS (.btn/.card/.hero-*) is JS-injected at runtime** on the
+   live site and absent from static HTML. Extracted exact `:root` token values +
+   critical/responsive rules; reconstructed component styling (padding, weight,
+   radius) to match the visual language rather than copy unseen rules verbatim.
+
+3. **Existing UI primitives** (`packages/web/src/components/ui/*.tsx`) were
+   restyled in place to consume new tokens rather than replaced, to avoid
+   breaking the ~18 admin pages importing them. New primitives (`StatTile`,
+   `PageHeader`) added alongside.
+
+4. **Glass navbar** reproduced: `rgba(255,255,255,0.8)` + `backdrop-blur`,
+   70px min-height, logo-left / nav-center / account-right.
+
+5. **Mono font**: alliance declares none; kept the system mono stack.
+
+6. **"Powered by Blue Collar AI"** byline already existed
+   (`PoweredByFooter.tsx`); restyled to match the alliance footer treatment.

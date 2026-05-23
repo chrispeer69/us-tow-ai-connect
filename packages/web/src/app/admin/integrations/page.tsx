@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { api } from '@/lib/utils';
 
 type Status = 'CONNECTED' | 'DISCONNECTED' | 'TESTING' | 'FAILED';
@@ -102,13 +103,13 @@ export default function IntegrationsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <header>
-        <h1 className="text-3xl font-bold">Towing Software Integration</h1>
-        <p className="text-zinc-400 mt-1">
-          Connect your dispatch software to enable AI-powered ETA lookups.
-        </p>
-      </header>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        variant="hero"
+        eyebrow="Configuration"
+        title="Towing Software Integration"
+        subtitle="Connect your dispatch software to enable AI-powered ETA lookups."
+      />
 
       <Card>
         <CardHeader>

@@ -1,20 +1,43 @@
+@import '../styles/design-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ============ Tenant branding CSS variables ============
- * BrandingProvider sets these on :root at runtime when a tenant
- * branding blob is loaded. The defaults below match the existing
- * zinc-950 / blue-500 / yellow-300 palette so SSR HTML renders
+ * BrandingProvider sets --brand-primary/secondary/accent on :root
+ * at runtime when a tenant branding blob is loaded. Defaults live
+ * in design-tokens.css (alliance palette) so SSR HTML renders
  * correctly before hydration. */
-:root {
-  --brand-primary: #3b82f6;
-  --brand-secondary: #1e293b;
-  --brand-accent: #facc15;
-  --brand-font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
-    'Segoe UI', Roboto, sans-serif;
-}
 
 body {
-  font-family: var(--brand-font);
+  font-family: var(--font-body, 'Inter', system-ui, sans-serif);
+  background-color: var(--surface-bg);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Alliance typography defaults */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display, 'Manrope', 'Inter', system-ui, sans-serif);
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: var(--alliance-blue);
+}
+a:hover {
+  color: var(--alliance-blue-dark);
+}
+
+.font-label {
+  font-family: var(--font-label, 'Work Sans', system-ui, sans-serif);
+}
+
+/* Glass navbar treatment (matches alliance .navbar) */
+.alliance-navbar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }

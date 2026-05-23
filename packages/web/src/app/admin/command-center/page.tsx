@@ -166,12 +166,15 @@ export default function CommandCenterPage() {
   }
 
   return (
-    <div className="-mx-10 -my-10 flex h-screen flex-col bg-zinc-950">
-      <div className="border-b border-zinc-800 p-4">
+    <div className="-mx-5 -my-8 flex h-[calc(100vh-70px)] flex-col bg-[var(--surface-bg)] sm:-mx-8">
+      <div className="border-b border-[var(--border-color)] bg-[var(--surface-card)] p-4">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-100">Command Center</h1>
-            <p className="text-sm text-zinc-400">
+            <div className="font-label text-xs font-semibold uppercase tracking-[0.18em] text-[var(--alliance-blue)]">
+              Operations
+            </div>
+            <h1 className="font-display text-2xl font-extrabold text-[var(--text-main)]">Command Center</h1>
+            <p className="text-sm text-[var(--text-secondary)]">
               Live dispatch board across every connected source.
             </p>
           </div>
