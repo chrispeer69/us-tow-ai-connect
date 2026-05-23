@@ -7,6 +7,11 @@ import { REDIS_CLIENT } from '../../common/redis/redis.module';
 
 type CheckResult = { ok: boolean; latencyMs?: number; error?: string };
 
+interface ServiceStatus {
+  configured: boolean;
+  detail?: string;
+}
+
 const CHECK_TIMEOUT_MS = 2000;
 
 async function withTimeout<T>(label: string, fn: () => Promise<T>): Promise<CheckResult> {
@@ -51,10 +56,17 @@ export class HealthController {
       withTimeout('redis', () => this.redis.ping()),
     ]);
 
+    const email = this.emailServiceStatus();
+    const sms = this.smsServiceStatus();
+
+    // Email + SMS are reported but do NOT block readiness — both have a
+    // logged_only fallback path that keeps the API serving requests even
+    // when the provider is unset. Operators watching the body see the
+    // degradation without losing the deploy.
     const allOk = dbCheck.ok && redisCheck.ok;
     const body = {
       status: allOk ? 'ready' : 'not_ready',
-      checks: { db: dbCheck, redis: redisCheck },
+      checks: { db: dbCheck, redis: redisCheck, email, sms },
       timestamp: new Date().toISOString(),
     };
 
@@ -66,5 +78,25 @@ export class HealthController {
       return;
     }
     res.status(200).json(body);
+  }
+
+  private emailServiceStatus(): ServiceStatus {
+    const key = process.env.SENDGRID_API_KEY;
+    if (!key || key.startsWith('REPLACE_ME')) {
+      return { configured: false, detail: 'SENDGRID_API_KEY not set — emails will log_only' };
+    }
+    return { configured: true };
+  }
+
+  private smsServiceStatus(): ServiceStatus {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || sid.startsWith('REPLACE_ME') || !token || token.startsWith('REPLACE_ME')) {
+      return { configured: false, detail: 'Twilio credentials not set — SMS will log_only' };
+    }
+    if (!process.env.TWILIO_PHONE_NUMBER) {
+      return { configured: false, detail: 'TWILIO_PHONE_NUMBER unset' };
+    }
+    return { configured: true };
   }
 }

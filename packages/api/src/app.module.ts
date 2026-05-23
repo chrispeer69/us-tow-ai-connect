@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { RedisModule } from './common/redis/redis.module';
 import { EncryptionModule } from './common/utils/encryption.module';
 import { DbModule } from './db/db.module';
@@ -24,6 +25,7 @@ import { ConviniModule } from './modules/convini/convini.module';
 import { RateLimitingModule } from './modules/rate-limiting/rate-limiting.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AdminDigestModule } from './modules/admin-digest/admin-digest.module';
+import { AdminSystemModule } from './modules/admin-system/admin-system.module';
 import { TenantOnboardingModule } from './modules/tenant-onboarding/tenant-onboarding.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -54,8 +56,13 @@ import { HealthController } from './modules/health/health.controller';
     RateLimitingModule,
     AuditLogModule,
     AdminDigestModule,
+    AdminSystemModule,
     TenantOnboardingModule,
   ],
   controllers: [HealthController],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}
