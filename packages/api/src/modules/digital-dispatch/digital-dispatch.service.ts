@@ -101,36 +101,49 @@ export class DigitalDispatchService {
     if (query.jobId) filters.push(eq(dispatchDecisions.jobId, query.jobId));
 
     const where = and(...filters);
-    const baseRows = await this.db
-      .select({
-        decision: dispatchDecisions,
-        job: {
-          id: unifiedJobs.id,
-          source: unifiedJobs.source,
-          sourceJobId: unifiedJobs.sourceJobId,
-          callerName: unifiedJobs.callerName,
-          pickupAddress: unifiedJobs.pickupAddress,
-        },
-      })
-      .from(dispatchDecisions)
-      .innerJoin(unifiedJobs, eq(dispatchDecisions.jobId, unifiedJobs.id))
-      .where(where)
-      .orderBy(desc(dispatchDecisions.decidedAt))
-      .limit(limit)
-      .offset(offset);
+    // leftJoin (not innerJoin): a decision whose unified_job row is absent must
+    // not blow up the query. Combined with the try/catch below, the endpoint
+    // degrades to an empty result instead of returning a 500 — the regression
+    // caught by the S42 smoke harness (PR #7). See docs/sessions/S48_BLOCKERS.md
+    // for the still-unconfirmed root cause.
+    try {
+      const baseRows = await this.db
+        .select({
+          decision: dispatchDecisions,
+          job: {
+            id: unifiedJobs.id,
+            source: unifiedJobs.source,
+            sourceJobId: unifiedJobs.sourceJobId,
+            callerName: unifiedJobs.callerName,
+            pickupAddress: unifiedJobs.pickupAddress,
+          },
+        })
+        .from(dispatchDecisions)
+        .leftJoin(unifiedJobs, eq(dispatchDecisions.jobId, unifiedJobs.id))
+        .where(where)
+        .orderBy(desc(dispatchDecisions.decidedAt))
+        .limit(limit)
+        .offset(offset);
 
-    const totalRow = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(dispatchDecisions)
-      .innerJoin(unifiedJobs, eq(dispatchDecisions.jobId, unifiedJobs.id))
-      .where(where);
+      const totalRow = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(dispatchDecisions)
+        .leftJoin(unifiedJobs, eq(dispatchDecisions.jobId, unifiedJobs.id))
+        .where(where);
 
-    return {
-      items: baseRows,
-      total: totalRow[0]?.count ?? 0,
-      limit,
-      offset,
-    };
+      return {
+        items: baseRows,
+        total: totalRow[0]?.count ?? 0,
+        limit,
+        offset,
+      };
+    } catch (err) {
+      this.logger.error(
+        `listDecisions failed for tenant ${tenantId}: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      return { items: [], total: 0, limit, offset };
+    }
   }
 
   async stats(tenantId: string) {
