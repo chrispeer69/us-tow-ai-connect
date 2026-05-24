@@ -20,7 +20,6 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/digital-dispatch', label: 'Digital Dispatch' },
       { href: '/admin/drivers-live', label: 'Drivers Live' },
       { href: '/admin/calls', label: 'Calls' },
-      { href: '/admin/sms-log', label: 'SMS Log' },
     ],
   },
   {
@@ -41,6 +40,7 @@ const GROUPS: NavGroup[] = [
       { href: '/admin/api-keys', label: 'API Keys' },
       { href: '/admin/billing', label: 'Billing' },
       { href: '/admin/audit-log', label: 'Audit Log' },
+      { href: '/admin/sms-log', label: 'SMS Log' },
       { href: '/admin/digest', label: 'Digest' },
     ],
   },
