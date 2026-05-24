@@ -1,0 +1,36 @@
+# gitleaks configuration — US Tow AI-Connect
+# Extends the bundled default ruleset, then allowlists reviewed false positives.
+# Every allowlist entry was confirmed non-sensitive in Session 41
+# (see docs/security/SECRET_FINDINGS.md). Do NOT add real secrets here —
+# genuine hits must fail CI.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed false positives (Session 41 secret sweep)"
+
+# Paths that only ever contain placeholders, generator constants, or test fixtures.
+paths = [
+  '''packages/api/\.env\.example''',
+  '''packages/web/\.env\.example''',
+  '''\.env\.example''',
+  '''docs/RATE_LIMITING\.md''',
+  '''docs/BUILD_SESSIONS\.md''',
+  '''packages/api/src/modules/tracking/tracking\.service\.ts''',
+  '''.*\.spec\.ts''',
+  '''.*\.test\.ts''',
+]
+
+# Specific commit:file:rule:line fingerprints for hits outside the paths above.
+commits = []
+
+regexTargets = ["match"]
+regexes = [
+  # Documented "generate your own" placeholders
+  '''0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef''',
+  '''a1b2c3d4e5f6\.\.\.64_hex_chars''',
+  '''REPLACE_ME[A-Z_]*''',
+  '''SG\.xxx''',
+  '''usk_a1b2c3d4''',
+]
