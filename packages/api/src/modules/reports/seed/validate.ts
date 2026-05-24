@@ -124,16 +124,14 @@ async function main() {
 
   // ── cache (5-min TTL) ──
   log('redis cache (5-min TTL)');
-  const cacheKey = `reports:${TENANT_ID}:jobs-per-day:90d:${resolveRange({ range: '90d' }).fromIso}:${resolveRange({ range: '90d' }).toIso}`;
-  // fromIso/toIso embed `now`, so recompute the exact key the service used by
-  // scanning instead — simplest: just confirm SOME jobs-per-day key exists + TTL.
+  // fromIso/toIso embed `now`, so rather than reconstruct the exact key, confirm
+  // a jobs-per-day key exists after the read above and carries the 300s TTL.
   const keys = await redis.keys(`reports:${TENANT_ID}:jobs-per-day:90d:*`);
   check('jobs-per-day cached after read', keys.length >= 1, `${keys.length} key(s)`);
   if (keys.length) {
     const ttl = await redis.ttl(keys[0]);
     check('TTL ≈ 300s (≤300, >0)', ttl > 0 && ttl <= 300, `ttl=${ttl}s`);
   }
-  void cacheKey;
 
   // ── CSV exports ──
   log('CSV exports (headers + RFC-4180 CRLF)');
