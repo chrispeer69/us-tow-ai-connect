@@ -10,6 +10,7 @@ import {
   numeric,
   index,
   uniqueIndex,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -239,11 +240,35 @@ export const tenantMembers = pgTable('tenant_members', {
     .references(() => tenants.id, { onDelete: 'cascade' }),
   email: varchar('email', { length: 255 }).notNull(),
   name: varchar('name', { length: 255 }),
-  role: varchar('role', { length: 20 }).notNull().default('MEMBER'),
+  // RBAC role (Session 45). UPPERCASE to match existing rows + the onboarding
+  // writer. Allowed set enforced by a CHECK constraint in 0022_members_rbac.sql:
+  // OWNER | DISPATCHER | DRIVER | ACCOUNTING | VIEWER.
+  role: varchar('role', { length: 20 }).notNull().default('VIEWER'),
   status: varchar('status', { length: 20 }).notNull().default('INVITED'),
+  invitedBy: varchar('invited_by', { length: 255 }),
   invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  inviteToken: varchar('invite_token', { length: 255 }),
+  inviteTokenExpiresAt: timestamp('invite_token_expires_at', { withTimezone: true }),
 });
+
+// ============ ROLE PERMISSIONS (Session 45 — RBAC matrix) ============
+// Composite (role, permission_key). OWNER is the single wildcard row
+// ('OWNER', '*'). Keys are '<resource>.<action>' with action read|write.
+// Seeded in 0022_members_rbac.sql; see docs/sessions/S45_RBAC_MATRIX.md.
+export const rolePermissions = pgTable(
+  'role_permissions',
+  {
+    role: varchar('role', { length: 20 }).notNull(),
+    permissionKey: text('permission_key').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.role, t.permissionKey] }),
+  }),
+);
+export type RolePermissionRow = typeof rolePermissions.$inferSelect;
 
 // ============ OUTBOUND CALL LOGS (Session 9 — included for schema completeness) ============
 export const outboundCallLogs = pgTable('outbound_call_logs', {

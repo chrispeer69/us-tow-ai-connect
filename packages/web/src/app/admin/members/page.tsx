@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { api } from '@/lib/utils';
 
-type Role = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
+type Role = 'OWNER' | 'DISPATCHER' | 'DRIVER' | 'ACCOUNTING' | 'VIEWER';
 type Status = 'ACTIVE' | 'INVITED' | 'SUSPENDED';
 
 interface Member {
@@ -27,7 +27,7 @@ interface Member {
   lastActiveAt: string | null;
 }
 
-const ROLES: Role[] = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
+const ROLES: Role[] = ['OWNER', 'DISPATCHER', 'DRIVER', 'ACCOUNTING', 'VIEWER'];
 
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -35,7 +35,7 @@ export default function MembersPage() {
   const [inviting, setInviting] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
-  const [newRole, setNewRole] = useState<Role>('MEMBER');
+  const [newRole, setNewRole] = useState<Role>('VIEWER');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function MembersPage() {
       });
       setNewEmail('');
       setNewName('');
-      setNewRole('MEMBER');
+      setNewRole('VIEWER');
       await fetchMembers();
     } catch (err) {
       setError((err as Error).message);
@@ -84,7 +84,7 @@ export default function MembersPage() {
   async function changeRole(id: string, role: Role) {
     setError(null);
     try {
-      await api(`/v1/admin/members/${id}`, { method: 'PUT', json: { role } });
+      await api(`/v1/admin/members/${id}`, { method: 'PATCH', json: { role } });
       await fetchMembers();
     } catch (err) {
       setError((err as Error).message);

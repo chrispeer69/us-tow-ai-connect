@@ -14,6 +14,8 @@ import {
 import { z } from 'zod';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { PermissionGuard } from '../members/permission.guard';
+import { RequirePermission } from '../members/require-permission.decorator';
 import { DigitalDispatchService } from './digital-dispatch.service';
 
 const ConditionSchema = z.union([
@@ -49,23 +51,30 @@ const TestSchema = z.object({
   job_id: z.string().uuid(),
 });
 
+// Session 45: example RBAC enforcement. PermissionGuard runs after
+// AdminAuthGuard (which sets req.tenantId). Reads/tests require
+// 'digital-dispatch.read'; mutations require 'digital-dispatch.write'.
+// Full rollout to other controllers is a follow-up session.
 @Controller('v1/admin/digital-dispatch')
-@UseGuards(AdminAuthGuard)
+@UseGuards(AdminAuthGuard, PermissionGuard)
 export class DigitalDispatchController {
   constructor(private readonly service: DigitalDispatchService) {}
 
   @Get('rules')
+  @RequirePermission('digital-dispatch.read')
   listRules(@Req() req: AdminRequest) {
     return this.service.listRules(req.tenantId);
   }
 
   @Post('rules')
+  @RequirePermission('digital-dispatch.write')
   @UsePipes(new ZodValidationPipe(RuleCreateSchema))
   createRule(@Req() req: AdminRequest, @Body() body: z.infer<typeof RuleCreateSchema>) {
     return this.service.createRule(req.tenantId, body);
   }
 
   @Put('rules/:id')
+  @RequirePermission('digital-dispatch.write')
   @UsePipes(new ZodValidationPipe(RuleUpdateSchema))
   updateRule(
     @Req() req: AdminRequest,
@@ -76,12 +85,14 @@ export class DigitalDispatchController {
   }
 
   @Delete('rules/:id')
+  @RequirePermission('digital-dispatch.write')
   async deleteRule(@Req() req: AdminRequest, @Param('id') id: string) {
     await this.service.deleteRule(req.tenantId, id);
     return { deleted: true };
   }
 
   @Post('rules/:id/test')
+  @RequirePermission('digital-dispatch.read')
   @UsePipes(new ZodValidationPipe(TestSchema))
   testRule(
     @Req() req: AdminRequest,
@@ -92,6 +103,7 @@ export class DigitalDispatchController {
   }
 
   @Get('decisions')
+  @RequirePermission('digital-dispatch.read')
   listDecisions(@Req() req: AdminRequest, @Query() q: Record<string, string | undefined>) {
     return this.service.listDecisions(req.tenantId, {
       decision: q.decision,
@@ -103,6 +115,7 @@ export class DigitalDispatchController {
   }
 
   @Get('stats')
+  @RequirePermission('digital-dispatch.read')
   stats(@Req() req: AdminRequest) {
     return this.service.stats(req.tenantId);
   }
