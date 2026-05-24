@@ -2,85 +2,72 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { Icon } from '@/components/ui/icons';
+import { useBranding } from '@/components/branding/BrandingProvider';
+import { NAV_GROUPS, isActiveHref } from './nav-config';
 
-interface NavItem {
-  href: string;
-  label: string;
-}
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'v0.1.0';
 
-const GROUPS: NavGroup[] = [
-  {
-    title: 'Operations',
-    items: [
-      { href: '/admin/command-center', label: 'Command Center' },
-      { href: '/admin/digital-dispatch', label: 'Digital Dispatch' },
-      { href: '/admin/drivers-live', label: 'Drivers Live' },
-      { href: '/admin/calls', label: 'Calls' },
-    ],
-  },
-  {
-    title: 'Configuration',
-    items: [
-      { href: '/admin/integrations', label: 'Integrations' },
-      { href: '/admin/routing', label: 'Routing' },
-      { href: '/admin/ai-agent', label: 'AI Agent' },
-      { href: '/admin/knowledge-pack', label: 'Knowledge Pack' },
-      { href: '/admin/branding', label: 'Branding' },
-    ],
-  },
-  {
-    title: 'Account',
-    items: [
-      { href: '/admin/company', label: 'Company' },
-      { href: '/admin/members', label: 'Members' },
-      { href: '/admin/api-keys', label: 'API Keys' },
-      { href: '/admin/billing', label: 'Billing' },
-      { href: '/admin/audit-log', label: 'Audit Log' },
-      { href: '/admin/sms-log', label: 'SMS Log' },
-      { href: '/admin/digest', label: 'Digest' },
-    ],
-  },
-  {
-    title: 'Platform',
-    items: [{ href: '/admin/tenants', label: 'Tenants' }],
-  },
-];
-
+/**
+ * Desktop admin sidebar (Session 47 polish). Grouped nav with per-item icons,
+ * a left-border accent + bold weight on the active route, subtle hover bg, and
+ * a footer crediting Blue Collar AI with the build version + tenant name. The
+ * mobile equivalent is AdminMobileNav (drawer), sharing nav-config so the two
+ * never drift.
+ */
 export function Sidebar() {
   const pathname = usePathname();
+  const { branding } = useBranding();
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--surface-card)] lg:block">
+    <aside className="hidden w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--surface-card)] lg:flex lg:flex-col">
       <nav className="sticky top-[70px] flex max-h-[calc(100vh-70px)] flex-col gap-6 overflow-y-auto p-5">
-        {GROUPS.map((group) => (
+        {NAV_GROUPS.map((group) => (
           <div key={group.title} className="flex flex-col gap-1">
             <div className="px-3 pb-1 font-label text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
               {group.title}
             </div>
             {group.items.map((item) => {
-              const active =
-                pathname === item.href || pathname?.startsWith(item.href + '/');
+              const active = isActiveHref(pathname, item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'rounded-[10px] px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-[10px] border-l-2 px-3 py-2 text-sm transition-colors',
                     active
-                      ? 'bg-[var(--surface)] text-[var(--alliance-blue)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--surface-low)] hover:text-[var(--text-main)]',
+                      ? 'border-[var(--alliance-blue)] bg-[var(--surface)] font-semibold text-[var(--alliance-blue)]'
+                      : 'border-transparent font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-low)] hover:text-[var(--text-main)]',
                   )}
                 >
-                  {item.label}
+                  <Icon
+                    name={item.icon}
+                    size={18}
+                    className={cn('shrink-0', active ? 'opacity-100' : 'opacity-70')}
+                  />
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}
           </div>
         ))}
+
+        <SidebarFooter tenantName={branding.companyDisplayName} />
       </nav>
     </aside>
+  );
+}
+
+export function SidebarFooter({ tenantName }: { tenantName?: string | null }) {
+  return (
+    <div className="mt-auto flex flex-col gap-1 border-t border-[var(--border-color)] px-3 pt-4 pb-1">
+      <span className="font-label text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+        Powered by Blue Collar AI
+      </span>
+      <span className="text-[11px] text-[var(--text-secondary)]">
+        {tenantName ? `${tenantName} · ` : ''}
+        {APP_VERSION}
+      </span>
+    </div>
   );
 }
