@@ -6,6 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { initSentry } from './common/observability/sentry';
+import { buildOriginMatcher, resolveAllowedOrigins } from './common/utils/allowed-domains';
 
 // Routes that must NOT enforce the CORS allow-list. Webhook providers
 // (Thinkrr, Twilio) and the public Knowledge Pack consumer (Thinkrr's
@@ -17,11 +18,11 @@ import { initSentry } from './common/observability/sentry';
 const CORS_EXEMPT_PATH_PREFIXES = ['/webhooks/', '/public/', '/health'];
 
 function buildCorsOriginValidator(allowList: string[]) {
-  const allowed = new Set(allowList.filter(Boolean));
+  const matches = buildOriginMatcher(allowList);
   return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Server-to-server callers + same-origin requests have no Origin header.
     if (!origin) return callback(null, true);
-    if (allowed.has(origin)) return callback(null, true);
+    if (matches(origin)) return callback(null, true);
     callback(new Error(`CORS: origin ${origin} not in allow-list`));
   };
 }
@@ -46,15 +47,12 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   warnIfLocalhostInProd(logger);
 
-  // CORS allow-list. The web app's public origin is the primary entry; any
-  // extra origins (staging deploys, internal tooling) come through the
-  // CORS_EXTRA_ORIGINS env as a comma-separated list.
-  const webOrigin = process.env.WEB_PUBLIC_URL ?? 'http://localhost:3000';
-  const extra = (process.env.CORS_EXTRA_ORIGINS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const allowList = [webOrigin, ...extra];
+  // CORS allow-list, resolved from ALLOWED_DOMAINS (comma-separated origins,
+  // supports `scheme://*.suffix` wildcards). Legacy WEB_PUBLIC_URL +
+  // CORS_EXTRA_ORIGINS are merged in for back-compat; when nothing is set we
+  // fall back to localhost + *.up.railway.app so a fresh deploy is reachable.
+  // Bringing a custom domain online is a one-variable change, no code edit.
+  const allowList = resolveAllowedOrigins(process.env);
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // CORS configured below so we can use the exempt-prefix middleware
