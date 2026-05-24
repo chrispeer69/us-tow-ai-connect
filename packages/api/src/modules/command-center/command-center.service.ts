@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -13,6 +13,7 @@ import {
 } from '../../db/schema';
 import { CommandCenterGateway } from './command-center.gateway';
 import { GeocoderService } from './geocoder.service';
+import { BillingService } from '../billing/billing.service';
 import type { UnifiedJobInput, UnifiedJobStatus } from './normalizers/types';
 
 type EnrichedJob = UnifiedJobRow & {
@@ -60,6 +61,10 @@ export class CommandCenterService {
     @Inject(DB_CLIENT) private readonly db: DbClient,
     private readonly geocoder: GeocoderService,
     private readonly gateway: CommandCenterGateway,
+    // Optional: present only when BillingModule is wired (it always is in the
+    // running app). Optional injection keeps unit tests that construct the
+    // service directly from breaking. Session 28.
+    @Optional() private readonly billing?: BillingService,
   ) {}
 
   async listJobs(tenantId: string, query: JobsListQuery) {
@@ -448,6 +453,7 @@ export class CommandCenterService {
     if (created) {
       await this.writeEvent(row.id, 'created', { source: input.source });
       this.broadcast(input.tenantId, 'job.created', row);
+      await this.chargeJobCredit(input.tenantId, row.id);
     } else if (statusChanged) {
       await this.writeEvent(row.id, 'status_changed', {
         from: existing!.status,
@@ -524,6 +530,29 @@ export class CommandCenterService {
       this.gateway.broadcast(tenantId, event, payload);
     } catch (err) {
       this.logger.debug(`broadcast ${event} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Deduct one per-job credit when a new job lands (Session 28). No-op for
+   * tenants not on per-job billing. When the balance hits zero the tenant is
+   * hard-gated and we emit a billing.blocked alert over the socket. Best
+   * effort — a billing failure must never drop a tow job.
+   */
+  private async chargeJobCredit(tenantId: string, jobId: string) {
+    if (!this.billing) return;
+    try {
+      const result = await this.billing.deductCreditForJob(tenantId);
+      if (result.blocked) {
+        this.broadcast(tenantId, 'billing.blocked', {
+          tenantId,
+          jobId,
+          creditBalance: result.creditBalance,
+        });
+        this.logger.warn(`Tenant ${tenantId} out of job credits (job ${jobId}) — billing blocked`);
+      }
+    } catch (err) {
+      this.logger.warn(`chargeJobCredit failed for tenant ${tenantId}: ${(err as Error).message}`);
     }
   }
 }

@@ -5,8 +5,10 @@ import { CommandCenterService } from './command-center.service';
 import { GeocoderService } from './geocoder.service';
 import { AaaNormalizer } from './normalizers/aaa.normalizer';
 import { TowbookNormalizer } from './normalizers/towbook.normalizer';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
+  imports: [BillingModule],
   controllers: [CommandCenterController],
   providers: [
     CommandCenterService,
