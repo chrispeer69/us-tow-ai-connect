@@ -14,6 +14,7 @@ import {
 import { CommandCenterGateway } from './command-center.gateway';
 import { GeocoderService } from './geocoder.service';
 import { BillingService } from '../billing/billing.service';
+import { PushService } from '../push/push.service';
 import type { UnifiedJobInput, UnifiedJobStatus } from './normalizers/types';
 
 type EnrichedJob = UnifiedJobRow & {
@@ -65,6 +66,7 @@ export class CommandCenterService {
     // running app). Optional injection keeps unit tests that construct the
     // service directly from breaking. Session 28.
     @Optional() private readonly billing?: BillingService,
+    private readonly push: PushService,
   ) {}
 
   async listJobs(tenantId: string, query: JobsListQuery) {
@@ -156,6 +158,23 @@ export class CommandCenterService {
 
     await this.writeEvent(jobId, 'assigned', { driverId, truckId, prevDriverId: existing.assignedDriverId });
     this.broadcast(tenantId, 'job.updated', updated);
+
+    // Notify the driver's devices on a *new* assignment. Fire-and-forget:
+    // push delivery must never block or fail the assignment write.
+    if (driverId && driverId !== existing.assignedDriverId) {
+      const where = updated.pickupAddress ? ` — ${updated.pickupAddress}` : '';
+      const service = updated.serviceType ?? 'Service call';
+      this.push
+        .sendToDriver(tenantId, driverId, {
+          title: 'New job assigned',
+          body: `${service}${where}`,
+          url: `/driver?job=${jobId}`,
+          tag: `job-${jobId}`,
+          jobId,
+        })
+        .catch((err) => this.logger.error(`push sendToDriver failed: ${(err as Error).message}`));
+    }
+
     return updated;
   }
 

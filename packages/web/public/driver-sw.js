@@ -8,7 +8,7 @@
  * no auto-update mechanism — the page reload uses `skipWaiting()` to
  * activate the new SW on first navigation after deploy.
  */
-const CACHE = 'roadside-driver-v1';
+const CACHE = 'roadside-driver-v2';
 const SHELL = [
   '/driver',
   '/driver/map',
@@ -65,8 +65,9 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// Web-push handler scaffolding — VAPID keys are not configured yet so this
-// will never fire in production. Documented in docs/ASSUMPTIONS.md.
+// Web-push handler (Session 29). Payload is JSON sent by the API PushService:
+// { title, body, url, tag, jobId }. Delivery requires VAPID keys to be set on
+// the API — see docs/sessions/S29_OPERATOR_TODO.md.
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   let payload = { title: 'Roadside', body: 'New dispatch' };
@@ -79,12 +80,27 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title || 'Roadside', {
       body: payload.body || '',
       icon: '/driver-icon.svg',
+      badge: '/driver-icon.svg',
+      tag: payload.tag || undefined,
+      renotify: Boolean(payload.tag),
       data: payload,
     }),
   );
 });
 
+// Tap → focus an open driver tab (and navigate it) or open the job URL.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(self.clients.openWindow('/driver'));
+  const target = (event.notification.data && event.notification.data.url) || '/driver';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes('/driver') && 'focus' in client) {
+          if ('navigate' in client) client.navigate(target).catch(() => undefined);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
 });

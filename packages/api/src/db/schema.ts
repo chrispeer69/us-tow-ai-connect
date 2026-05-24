@@ -715,6 +715,8 @@ export const driverPushSubscriptions = pgTable(
     userAgent: text('user_agent'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    // Session 29: last successful web-push delivery (null until first send).
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   },
   (t) => ({
     endpointUniq: uniqueIndex('driver_push_subs_endpoint_uniq').on(t.tenantId, t.endpoint),
