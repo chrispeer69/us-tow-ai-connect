@@ -14,6 +14,7 @@ import { JobPollerModule } from './modules/job-poller/job-poller.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { AiConnectModule } from './modules/ai-connect/ai-connect.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { MembersModule } from './modules/members/members.module';
 import { CommandCenterModule } from './modules/command-center/command-center.module';
 import { DigitalDispatchModule } from './modules/digital-dispatch/digital-dispatch.module';
 import { KnowledgeEndpointModule } from './modules/knowledge-endpoint/knowledge-endpoint.module';
@@ -52,6 +53,7 @@ import { HealthController } from './modules/health/health.controller';
     TenantsModule,
     AiConnectModule,
     AdminModule,
+    MembersModule,
     CommandCenterModule,
     DigitalDispatchModule,
     KnowledgeEndpointModule,

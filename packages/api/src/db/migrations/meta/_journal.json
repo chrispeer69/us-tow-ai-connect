@@ -148,6 +148,13 @@
       "when": 1749060000000,
       "tag": "0021_billing_stripe_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1749070000000,
+      "tag": "0022_members_rbac",
+      "breakpoints": true
     }
   ]
 }
