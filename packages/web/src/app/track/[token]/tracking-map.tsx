@@ -11,9 +11,17 @@ interface Props {
   pickupLng: number | null;
   driverLat: number | null;
   driverLng: number | null;
+  /** Tenant brand color for the driver marker + route line. */
+  accentColor?: string;
 }
 
-export function TrackingMap({ pickupLat, pickupLng, driverLat, driverLng }: Props) {
+export function TrackingMap({
+  pickupLat,
+  pickupLng,
+  driverLat,
+  driverLng,
+  accentColor = '#2563eb',
+}: Props) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const { isLoaded } = useJsApiLoader({
@@ -29,10 +37,9 @@ export function TrackingMap({ pickupLat, pickupLng, driverLat, driverLng }: Prop
 
   if (!apiKey) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-zinc-800/60 text-xs text-zinc-400">
+      <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs text-slate-500">
         <span className="px-4 text-center">
-          Map preview unavailable — Google Maps key not configured. Your tracking still updates
-          below.
+          Map preview unavailable — your tracking still updates below.
         </span>
       </div>
     );
@@ -40,7 +47,7 @@ export function TrackingMap({ pickupLat, pickupLng, driverLat, driverLng }: Prop
 
   if (!isLoaded) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-zinc-800/60 text-xs text-zinc-400">
+      <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs text-slate-500">
         Loading map…
       </div>
     );
@@ -70,9 +77,9 @@ export function TrackingMap({ pickupLat, pickupLng, driverLat, driverLng }: Prop
             typeof google !== 'undefined' && google.maps
               ? {
                   path: 'M -6 0 L 0 -10 L 6 0 L 0 4 z',
-                  fillColor: '#10b981',
+                  fillColor: accentColor,
                   fillOpacity: 1,
-                  strokeColor: '#064e3b',
+                  strokeColor: '#ffffff',
                   strokeWeight: 1.5,
                   scale: 1.6,
                 }
@@ -86,7 +93,7 @@ export function TrackingMap({ pickupLat, pickupLng, driverLat, driverLng }: Prop
             { lat: driverLat, lng: driverLng },
             { lat: pickupLat, lng: pickupLng },
           ]}
-          options={{ strokeColor: '#10b981', strokeWeight: 4, strokeOpacity: 0.85 }}
+          options={{ strokeColor: accentColor, strokeWeight: 4, strokeOpacity: 0.85 }}
         />
       )}
     </GoogleMap>

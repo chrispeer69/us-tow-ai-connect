@@ -3,7 +3,7 @@ import { TrackingClient } from './tracking-client';
 
 export const metadata: Metadata = {
   title: 'Live tow tracking',
-  description: 'Track your tow live with Roadside Towing.',
+  description: 'Track your tow live, in real time.',
 };
 
 export const viewport: Viewport = {
