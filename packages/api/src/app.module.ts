@@ -35,6 +35,7 @@ import { KnowledgePackModule } from './modules/knowledge-pack/knowledge-pack.mod
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { PushModule } from './modules/push/push.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -71,6 +72,7 @@ import { HealthController } from './modules/health/health.controller';
     SuperAdminModule,
     PartnerModule,
     ReportsModule,
+    PushModule,
   ],
   controllers: [HealthController],
   providers: [

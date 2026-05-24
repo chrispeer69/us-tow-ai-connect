@@ -12,6 +12,7 @@ import {
   type DriverJob,
   type DriverJobAction,
 } from './_lib/driver-api';
+import { enablePush, getPushState, type PushState } from './_lib/push-client';
 
 interface ApiJobResp {
   status: string;
@@ -32,6 +33,8 @@ export default function DriverHome() {
   const [geoError, setGeoError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pushState, setPushState] = useState<PushState>('default');
+  const [pushBusy, setPushBusy] = useState(false);
 
   // Re-read profile after profile-page edits.
   useEffect(() => {
@@ -113,6 +116,34 @@ export default function DriverHome() {
     },
     [active?.job_id, profile.driver_phone, lastSample, refresh],
   );
+
+  // Reflect current push state on mount (no prompt).
+  useEffect(() => {
+    let alive = true;
+    getPushState().then((s) => alive && setPushState(s));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleEnablePush = useCallback(async () => {
+    setPushBusy(true);
+    try {
+      const next = await enablePush(profile.driver_phone);
+      setPushState(next);
+      setToast(
+        next === 'enabled'
+          ? 'Push notifications enabled'
+          : next === 'denied'
+            ? 'Notifications blocked in browser settings'
+            : 'Push not enabled',
+      );
+    } catch (err) {
+      setToast(`Push setup failed: ${(err as Error).message}`);
+    } finally {
+      setPushBusy(false);
+    }
+  }, [profile.driver_phone]);
 
   const lastPingAgeSec = useMemo(() => {
     if (!lastSample) return null;
@@ -218,6 +249,31 @@ export default function DriverHome() {
             <p>Waiting for first GPS fix…</p>
           )}
         </section>
+
+        {pushState !== 'unsupported' && (
+          <section className="px-1" data-testid="push-status">
+            {pushState === 'enabled' ? (
+              <p className="text-xs text-emerald-400" data-testid="push-enabled">
+                🔔 Push enabled — you&apos;ll be alerted when a job is assigned.
+              </p>
+            ) : pushState === 'denied' ? (
+              <p className="text-xs text-zinc-500">
+                Notifications are blocked. Enable them in your browser settings to get job
+                alerts.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnablePush}
+                disabled={pushBusy || !profile.driver_phone}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 disabled:opacity-50"
+                data-testid="push-enable-btn"
+              >
+                {pushBusy ? 'Enabling…' : '🔔 Enable job notifications'}
+              </button>
+            )}
+          </section>
+        )}
       </main>
 
       {toast && (
