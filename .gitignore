@@ -9,3 +9,14 @@ dist/
 coverage/
 .turbo/
 *.tsbuildinfo
+
+# ---- Session 41: security sweep ----
+# Diagnostic screenshots may contain portal/session data
+docs/diagnostics/*.png
+# Explicit (already covered by .env.* above; listed for clarity)
+.env.local
+# Scheduler lock — local runtime artifact, never commit
+.claude/scheduled_tasks.lock
+# gitleaks binary + raw report (report embeds matched strings)
+scripts/security/bin/
+docs/security/gitleaks-report.json
