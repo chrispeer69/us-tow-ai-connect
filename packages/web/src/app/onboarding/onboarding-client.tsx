@@ -4,6 +4,16 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { StepProgress } from '@/components/onboarding/StepProgress';
+import styles from '@/components/onboarding/onboarding.module.css';
 
 type StepNumber = 1 | 2 | 3 | 4;
 
@@ -33,6 +43,29 @@ interface Step4 {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+
+const STEP_META: Record<StepNumber, { eyebrow: string; title: string; subtitle: string }> = {
+  1: {
+    eyebrow: 'Step 1 of 4',
+    title: 'Company info',
+    subtitle: 'Tell us who you are so your AI dispatcher answers in your name.',
+  },
+  2: {
+    eyebrow: 'Step 2 of 4',
+    title: 'Contact info',
+    subtitle: 'Where we reach you for account, billing, and escalation matters.',
+  },
+  3: {
+    eyebrow: 'Step 3 of 4',
+    title: 'Integrations',
+    subtitle: 'Optional — connect your dispatch software for live ETA lookups.',
+  },
+  4: {
+    eyebrow: 'Step 4 of 4',
+    title: 'AI agent config',
+    subtitle: 'Shape how your AI greets callers and routes the tough ones.',
+  },
+};
 
 function detectTimezone(): string {
   try {
@@ -212,263 +245,254 @@ export function OnboardingClient() {
   }, [step, draftId, step1.companyName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (result) {
-    return (
-      <div className="mx-auto max-w-2xl p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Welcome aboard, {step1.companyName}!</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <p>Your AI dispatcher is provisioned. Save these credentials — the API key is only shown once.</p>
-            <pre
-              data-testid="onboarding-result"
-              className="overflow-x-auto rounded-md bg-zinc-950 p-4 text-xs"
-            >{`tenantId:        ${result.tenantId}
-apiKey:          ${result.apiKey}
-knowledgePack:   ${result.knowledgePackUrl}
-adminDashboard:  ${result.adminUrl}`}</pre>
-            <div className="flex gap-2">
-              <a href={result.adminUrl}>
-                <Button>Open admin dashboard</Button>
-              </a>
-              <a href={result.knowledgePackUrl} target="_blank" rel="noreferrer">
-                <Button variant="outline">View Knowledge Pack</Button>
-              </a>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <SuccessState companyName={step1.companyName} result={result} />;
   }
 
+  const meta = STEP_META[step];
+  const isSuccessBanner = error?.startsWith('✓') ?? false;
+
   return (
-    <div className="mx-auto max-w-2xl p-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-zinc-100">Create your AI dispatcher</h1>
-        <p className="text-sm text-zinc-400">A 4-step setup — under 5 minutes.</p>
-      </div>
-      <StepIndicator current={step} />
+    <div className="space-y-8">
+      {step === 1 ? (
+        <PageHeader
+          variant="hero"
+          eyebrow="Welcome"
+          title="Welcome to US Tow AI-Connect"
+          subtitle="Stand up your always-on AI dispatcher in four short steps — under five minutes."
+        />
+      ) : (
+        <PageHeader eyebrow={meta.eyebrow} title={meta.title} subtitle={meta.subtitle} />
+      )}
+
+      <StepProgress current={step} />
+
       {error && (
         <div
-          className={`rounded-md border p-3 text-sm ${
-            error.startsWith('✓')
-              ? 'border-emerald-700 bg-emerald-950/50 text-emerald-300'
-              : 'border-red-800 bg-red-950/50 text-red-200'
+          role="status"
+          className={`rounded-[12px] border p-3 text-sm ${
+            isSuccessBanner
+              ? 'border-[var(--alliance-green)] bg-[#ecfdf5] text-[#065f46]'
+              : 'border-[var(--alliance-red)] bg-[#fef2f2] text-[#991b1b]'
           }`}
         >
           {error}
         </div>
       )}
+
       <Card>
         <CardHeader>
           <CardTitle>
-            Step {step} of 4 —{' '}
-            {step === 1
-              ? 'Company info'
-              : step === 2
-                ? 'Contact info'
-                : step === 3
-                  ? 'Integrations'
-                  : 'AI agent config'}
+            {step === 1 ? meta.title : `${meta.eyebrow} — ${meta.title}`}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {step === 1 && (
-            <div className="space-y-4">
-              <Field label="Company name">
-                <Input
-                  data-testid="company-name"
-                  value={step1.companyName}
-                  onChange={(e) => setStep1({ ...step1, companyName: e.target.value })}
-                  placeholder="Roadside Towing"
-                />
-              </Field>
-              <Field label="Brand names operating under this company">
-                {step1.brandNames.map((name, idx) => (
-                  <div key={idx} className="flex gap-2 mb-2">
-                    <Input
-                      value={name}
-                      onChange={(e) => {
-                        const next = [...step1.brandNames];
-                        next[idx] = e.target.value;
-                        setStep1({ ...step1, brandNames: next });
-                      }}
-                      placeholder={idx === 0 ? 'Roadside Towing' : 'Optional sister brand'}
-                    />
-                    {idx === step1.brandNames.length - 1 && (
-                      <Button
-                        variant="outline"
-                        type="button"
-                        onClick={() =>
-                          setStep1({ ...step1, brandNames: [...step1.brandNames, ''] })
-                        }
-                      >
-                        +
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </Field>
-              <Field label="Service area description">
-                <Textarea
-                  value={step1.serviceAreaDescription}
-                  onChange={(e) =>
-                    setStep1({ ...step1, serviceAreaDescription: e.target.value })
-                  }
-                  placeholder="e.g., Franklin, Delaware, Licking counties in Central Ohio"
-                  rows={3}
-                />
-              </Field>
-              <Field label="Timezone (autodetected — edit if needed)">
-                <Input
-                  value={step1.timezone}
-                  onChange={(e) => setStep1({ ...step1, timezone: e.target.value })}
-                  placeholder="America/New_York"
-                />
-              </Field>
-            </div>
-          )}
-          {step === 2 && (
-            <div className="space-y-4">
-              <Field label="Primary admin email">
-                <Input
-                  type="email"
-                  data-testid="admin-email"
-                  value={step2.adminEmail}
-                  onChange={(e) => setStep2({ ...step2, adminEmail: e.target.value })}
-                  placeholder="owner@yourtowing.com"
-                />
-              </Field>
-              <Field label="Admin phone (E.164)">
-                <Input
-                  value={step2.adminPhone}
-                  onChange={(e) => setStep2({ ...step2, adminPhone: e.target.value })}
-                  placeholder="+16145551234"
-                />
-              </Field>
-              <Field label="Billing email">
-                <Input
-                  type="email"
-                  value={step2.billingEmail}
-                  onChange={(e) => setStep2({ ...step2, billingEmail: e.target.value })}
-                  placeholder="billing@yourtowing.com"
-                />
-              </Field>
-            </div>
-          )}
-          {step === 3 && (
-            <div className="space-y-6">
-              <p className="text-xs text-zinc-400">
-                Optional. Skip if you don&apos;t use either yet — you can add credentials later from
-                the admin dashboard.
-              </p>
-              <div className="space-y-3 rounded-md border border-zinc-800 p-4">
-                <div className="text-sm font-medium text-zinc-200">Towbook</div>
-                <Input
-                  value={step3.towbookUsername}
-                  onChange={(e) => setStep3({ ...step3, towbookUsername: e.target.value })}
-                  placeholder="Towbook username"
-                />
-                <Input
-                  type="password"
-                  value={step3.towbookPassword}
-                  onChange={(e) => setStep3({ ...step3, towbookPassword: e.target.value })}
-                  placeholder="Towbook password"
-                />
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => handleTestCreds('TOWBOOK')}
-                  disabled={submitting}
-                >
-                  Test Towbook credentials
-                </Button>
-              </div>
-              <div className="space-y-3 rounded-md border border-zinc-800 p-4">
-                <div className="text-sm font-medium text-zinc-200">AAA Salesforce portal</div>
-                <Input
-                  value={step3.aaaUsername}
-                  onChange={(e) => setStep3({ ...step3, aaaUsername: e.target.value })}
-                  placeholder="AAA portal username"
-                />
-                <Input
-                  type="password"
-                  value={step3.aaaPassword}
-                  onChange={(e) => setStep3({ ...step3, aaaPassword: e.target.value })}
-                  placeholder="AAA portal password"
-                />
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => handleTestCreds('AAA_PORTAL')}
-                  disabled={submitting}
-                >
-                  Test AAA credentials
-                </Button>
-              </div>
-            </div>
-          )}
-          {step === 4 && (
-            <div className="space-y-4">
-              <Field label="Greeting message">
-                <Textarea
-                  data-testid="greeting"
-                  value={step4.greetingMessage}
-                  onChange={(e) =>
-                    setStep4({ ...step4, greetingMessage: e.target.value })
-                  }
-                  rows={3}
-                />
-                <div className="mt-2 rounded-md bg-zinc-950 p-3 text-xs text-zinc-300">
-                  Preview: <span className="text-zinc-100">&quot;{greetingPreview}&quot;</span>
-                </div>
-              </Field>
-              <Field label="Voice preference">
-                <select
-                  data-testid="voice"
-                  value={step4.voicePreference}
-                  onChange={(e) =>
-                    setStep4({ ...step4, voicePreference: e.target.value as Step4['voicePreference'] })
-                  }
-                  className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                >
-                  <option value="Polly.Joanna">Joanna (US female)</option>
-                  <option value="Polly.Matthew">Matthew (US male)</option>
-                  <option value="Polly.Amy">Amy (UK female)</option>
-                  <option value="Polly.Brian">Brian (UK male)</option>
-                </select>
-              </Field>
-              <Field label="Transfer-to-human phone (E.164)">
-                <Input
-                  data-testid="transfer-number"
-                  value={step4.transferNumber}
-                  onChange={(e) => setStep4({ ...step4, transferNumber: e.target.value })}
-                  placeholder="+16148326197"
-                />
-              </Field>
-              <Field label="Default ETA minutes">
-                <Input
-                  type="number"
-                  min={5}
-                  max={600}
-                  value={step4.defaultEtaMins}
-                  onChange={(e) => setStep4({ ...step4, defaultEtaMins: Number(e.target.value) })}
-                />
-              </Field>
-              {captchaRequired && (
-                <Field label="Captcha token (paste from widget)">
+          <div key={step} className={styles.stepEnter}>
+            {step === 1 && (
+              <div className="space-y-5">
+                <Field label="Company name">
                   <Input
-                    value={captchaToken}
-                    onChange={(e) => setCaptchaToken(e.target.value)}
-                    placeholder="cf-turnstile token..."
+                    data-testid="company-name"
+                    value={step1.companyName}
+                    onChange={(e) => setStep1({ ...step1, companyName: e.target.value })}
+                    placeholder="Roadside Towing"
                   />
                 </Field>
-              )}
-            </div>
-          )}
+                <Field label="Brand names operating under this company">
+                  {step1.brandNames.map((name, idx) => (
+                    <div key={idx} className="mb-2 flex gap-2">
+                      <Input
+                        value={name}
+                        onChange={(e) => {
+                          const next = [...step1.brandNames];
+                          next[idx] = e.target.value;
+                          setStep1({ ...step1, brandNames: next });
+                        }}
+                        placeholder={idx === 0 ? 'Roadside Towing' : 'Optional sister brand'}
+                      />
+                      {idx === step1.brandNames.length - 1 && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          type="button"
+                          aria-label="Add another brand name"
+                          onClick={() =>
+                            setStep1({ ...step1, brandNames: [...step1.brandNames, ''] })
+                          }
+                        >
+                          +
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </Field>
+                <Field label="Service area description">
+                  <Textarea
+                    value={step1.serviceAreaDescription}
+                    onChange={(e) =>
+                      setStep1({ ...step1, serviceAreaDescription: e.target.value })
+                    }
+                    placeholder="e.g., Franklin, Delaware, Licking counties in Central Ohio"
+                    rows={3}
+                  />
+                </Field>
+                <Field label="Timezone (autodetected — edit if needed)">
+                  <Input
+                    value={step1.timezone}
+                    onChange={(e) => setStep1({ ...step1, timezone: e.target.value })}
+                    placeholder="America/New_York"
+                  />
+                </Field>
+              </div>
+            )}
+            {step === 2 && (
+              <div className="space-y-5">
+                <Field label="Primary admin email">
+                  <Input
+                    type="email"
+                    data-testid="admin-email"
+                    value={step2.adminEmail}
+                    onChange={(e) => setStep2({ ...step2, adminEmail: e.target.value })}
+                    placeholder="owner@yourtowing.com"
+                  />
+                </Field>
+                <Field label="Admin phone (E.164)">
+                  <Input
+                    value={step2.adminPhone}
+                    onChange={(e) => setStep2({ ...step2, adminPhone: e.target.value })}
+                    placeholder="+16145551234"
+                  />
+                </Field>
+                <Field label="Billing email">
+                  <Input
+                    type="email"
+                    value={step2.billingEmail}
+                    onChange={(e) => setStep2({ ...step2, billingEmail: e.target.value })}
+                    placeholder="billing@yourtowing.com"
+                  />
+                </Field>
+              </div>
+            )}
+            {step === 3 && (
+              <div className="space-y-5">
+                <p className="text-sm text-[var(--text-muted)]">
+                  Optional. Skip if you don&apos;t use either yet — you can add credentials later
+                  from the admin dashboard.
+                </p>
+                <div className="space-y-3 rounded-[12px] border border-[var(--border-color)] bg-[var(--surface-low)] p-4">
+                  <div className="font-display text-sm font-bold text-[var(--text-main)]">
+                    Towbook
+                  </div>
+                  <Input
+                    value={step3.towbookUsername}
+                    onChange={(e) => setStep3({ ...step3, towbookUsername: e.target.value })}
+                    placeholder="Towbook username"
+                  />
+                  <Input
+                    type="password"
+                    value={step3.towbookPassword}
+                    onChange={(e) => setStep3({ ...step3, towbookPassword: e.target.value })}
+                    placeholder="Towbook password"
+                  />
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => handleTestCreds('TOWBOOK')}
+                    disabled={submitting}
+                  >
+                    Test Towbook credentials
+                  </Button>
+                </div>
+                <div className="space-y-3 rounded-[12px] border border-[var(--border-color)] bg-[var(--surface-low)] p-4">
+                  <div className="font-display text-sm font-bold text-[var(--text-main)]">
+                    AAA Salesforce portal
+                  </div>
+                  <Input
+                    value={step3.aaaUsername}
+                    onChange={(e) => setStep3({ ...step3, aaaUsername: e.target.value })}
+                    placeholder="AAA portal username"
+                  />
+                  <Input
+                    type="password"
+                    value={step3.aaaPassword}
+                    onChange={(e) => setStep3({ ...step3, aaaPassword: e.target.value })}
+                    placeholder="AAA portal password"
+                  />
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => handleTestCreds('AAA_PORTAL')}
+                    disabled={submitting}
+                  >
+                    Test AAA credentials
+                  </Button>
+                </div>
+              </div>
+            )}
+            {step === 4 && (
+              <div className="space-y-5">
+                <Field label="Greeting message">
+                  <Textarea
+                    data-testid="greeting"
+                    value={step4.greetingMessage}
+                    onChange={(e) => setStep4({ ...step4, greetingMessage: e.target.value })}
+                    rows={3}
+                  />
+                  <div className="mt-2 rounded-[12px] border border-[var(--border-color)] bg-[var(--surface-low)] p-3 text-xs text-[var(--text-secondary)]">
+                    Preview:{' '}
+                    <span className="text-[var(--text-main)]">&quot;{greetingPreview}&quot;</span>
+                  </div>
+                </Field>
+                <Field label="Voice preference">
+                  <Select
+                    value={step4.voicePreference}
+                    onValueChange={(v) =>
+                      setStep4({ ...step4, voicePreference: v as Step4['voicePreference'] })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a voice" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Polly.Joanna">Joanna (US female)</SelectItem>
+                      <SelectItem value="Polly.Matthew">Matthew (US male)</SelectItem>
+                      <SelectItem value="Polly.Amy">Amy (UK female)</SelectItem>
+                      <SelectItem value="Polly.Brian">Brian (UK male)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Transfer-to-human phone (E.164)">
+                  <Input
+                    data-testid="transfer-number"
+                    value={step4.transferNumber}
+                    onChange={(e) => setStep4({ ...step4, transferNumber: e.target.value })}
+                    placeholder="+16148326197"
+                  />
+                </Field>
+                <Field label="Default ETA minutes">
+                  <Input
+                    type="number"
+                    min={5}
+                    max={600}
+                    value={step4.defaultEtaMins}
+                    onChange={(e) => setStep4({ ...step4, defaultEtaMins: Number(e.target.value) })}
+                  />
+                </Field>
+                {captchaRequired && (
+                  <Field label="Captcha token (paste from widget)">
+                    <Input
+                      value={captchaToken}
+                      onChange={(e) => setCaptchaToken(e.target.value)}
+                      placeholder="cf-turnstile token..."
+                    />
+                  </Field>
+                )}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
-      <div className="flex justify-between">
+
+      <div className="flex items-center justify-between">
         <Button
           variant="ghost"
           type="button"
@@ -479,6 +503,7 @@ adminDashboard:  ${result.adminUrl}`}</pre>
         </Button>
         {step < 4 ? (
           <Button
+            variant="secondary"
             type="button"
             data-testid="next-step"
             onClick={handleNext}
@@ -488,6 +513,7 @@ adminDashboard:  ${result.adminUrl}`}</pre>
           </Button>
         ) : (
           <Button
+            variant="secondary"
             type="button"
             data-testid="complete-onboarding"
             onClick={handleComplete}
@@ -501,28 +527,75 @@ adminDashboard:  ${result.adminUrl}`}</pre>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function SuccessState({
+  companyName,
+  result,
+}: {
+  companyName: string;
+  result: { tenantId: string; apiKey: string; knowledgePackUrl: string; adminUrl: string };
+}) {
   return (
-    <label className="block text-sm">
-      <div className="mb-1 text-zinc-300">{label}</div>
-      {children}
-    </label>
+    <div className={`mx-auto max-w-2xl ${styles.fadeUp}`}>
+      <Card className="overflow-hidden">
+        <div className="flex flex-col items-center px-6 pt-10 text-center">
+          <span
+            className={`flex h-20 w-20 items-center justify-center rounded-full text-white shadow-[var(--shadow-lg)] ${styles.checkPop}`}
+            style={{ background: 'var(--alliance-green)' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-10 w-10" aria-hidden>
+              <path
+                d="M5 13l4 4L19 7"
+                stroke="currentColor"
+                strokeWidth="2.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <h1 className="mt-6 font-display text-2xl font-extrabold text-[var(--text-main)] sm:text-3xl">
+            You&apos;re all set{companyName ? `, ${companyName}` : ''}!
+          </h1>
+          <p className="mt-2 max-w-md text-sm text-[var(--text-secondary)]">
+            Your AI dispatcher is provisioned. Save these credentials now — the API key is shown
+            only once.
+          </p>
+        </div>
+        <CardContent className="space-y-5 pt-6">
+          <pre
+            data-testid="onboarding-result"
+            className="overflow-x-auto rounded-[12px] border border-[var(--border-color)] bg-[var(--surface-low)] p-4 text-xs leading-relaxed text-[var(--text-main)]"
+          >{`tenantId:        ${result.tenantId}
+apiKey:          ${result.apiKey}
+knowledgePack:   ${result.knowledgePackUrl}
+adminDashboard:  ${result.adminUrl}`}</pre>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <a href={result.adminUrl} className="sm:flex-1">
+              <Button variant="secondary" className="w-full">
+                Open admin dashboard
+              </Button>
+            </a>
+            <a
+              href={result.knowledgePackUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="sm:flex-1"
+            >
+              <Button variant="outline" className="w-full">
+                View Knowledge Pack
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-function StepIndicator({ current }: { current: StepNumber }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-2">
-      {[1, 2, 3, 4].map((n) => (
-        <div
-          key={n}
-          className={`h-2 flex-1 rounded ${
-            n <= current ? 'bg-[var(--brand-primary,#3b82f6)]' : 'bg-zinc-800'
-          }`}
-          data-testid={`step-indicator-${n}`}
-          data-active={n <= current}
-        />
-      ))}
-    </div>
+    <label className="block text-sm">
+      <div className="mb-1.5 font-medium text-[var(--text-secondary)]">{label}</div>
+      {children}
+    </label>
   );
 }
