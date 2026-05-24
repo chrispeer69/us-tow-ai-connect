@@ -67,9 +67,13 @@ describe('evaluateCondition', () => {
     });
     it('rejects when no driver has a recent ping', () => {
       const job = makeJob({ pickupLat: '40.0' as unknown as string, pickupLng: '-83.0' as unknown as string });
-      const old = new Date(Date.now() - 60 * 60 * 1000);
+      // Anchor the stale ping to ctx.now (not real Date.now()), otherwise a
+      // fixed past ctx.now leaves the "1h ago" ping in the future and recent.
+      const now = new Date('2026-05-23T14:30:00-04:00');
+      const old = new Date(now.getTime() - 60 * 60 * 1000);
       const ctx = makeCtx({
         job,
+        now,
         drivers: [
           { id: 'd1', status: 'available', currentLat: '40.05', currentLng: '-83.02', lastPingAt: old },
         ],
