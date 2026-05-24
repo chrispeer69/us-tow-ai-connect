@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/PageHeader';
 import {
   Select,
   SelectContent,
@@ -108,13 +109,15 @@ export default function AdminDigestPage() {
 
   return (
     <div className="space-y-4 p-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Admin Digest</h1>
-        <p className="text-xs text-zinc-500 mt-1">
-          {settings?.companyName ?? 'Loading…'} — daily / weekly summary email of call activity,
-          jobs, and reliability signals.
-        </p>
-      </header>
+      <PageHeader
+        title="Admin Digest"
+        subtitle={
+          <>
+            {settings?.companyName ?? 'Loading…'} — daily / weekly summary email of call activity,
+            jobs, and reliability signals.
+          </>
+        }
+      />
 
       {error && <p className="text-sm text-red-400">{error}</p>}
       {info && <p className="text-sm text-emerald-400">{info}</p>}

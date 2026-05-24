@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 const DEFAULT_TENANT_ID =
@@ -116,12 +117,16 @@ export default function KnowledgePackAdminPage() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-3xl font-bold text-zinc-100">Knowledge Pack (v2)</h1>
-        <p className="text-sm text-zinc-400">
-          The richer, sectioned profile served at <code>/public/knowledge/:id/profile.v2.md</code>
-          {' '}and <code>/profile.json</code>. Edits go to the <b>draft</b>; <b>Publish</b> swaps
-          it into <code>content</code>.
-        </p>
+        <PageHeader
+          title="Knowledge Pack (v2)"
+          subtitle={
+            <>
+              The richer, sectioned profile served at <code>/public/knowledge/:id/profile.v2.md</code>
+              {' '}and <code>/profile.json</code>. Edits go to the <b>draft</b>; <b>Publish</b> swaps
+              it into <code>content</code>.
+            </>
+          }
+        />
         {data && (
           <div className="mt-2 text-xs text-zinc-500">
             Version: {data.version} • Published: {data.published ? 'yes' : 'no'}

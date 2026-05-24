@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { api } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { describeCondition, type Condition, type Rule, type RuleAction } from '@/lib/digital-dispatch-types';
@@ -65,13 +66,10 @@ export default function DigitalDispatchPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold text-zinc-100">Digital Dispatch</h1>
-        <p className="mt-1 text-zinc-400">
-          AI auto-accept rules for motor-club intake (AAA today). Rules fire on every new
-          inbound job in priority order; the first match wins.
-        </p>
-      </header>
+      <PageHeader
+        title="Digital Dispatch"
+        subtitle="AI auto-accept rules for motor-club intake (AAA today). Rules fire on every new inbound job in priority order; the first match wins."
+      />
 
       <nav className="flex gap-1 border-b border-zinc-800">
         {(['rules', 'decisions', 'stats', 'sandbox'] as Tab[]).map((t) => (

@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 const SUPER_ADMIN_EMAIL =
@@ -39,10 +40,10 @@ export default function TenantsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div>
-        <h1 className="text-3xl font-bold text-zinc-100">All tenants</h1>
-        <p className="text-sm text-zinc-400">Super-admin view across the entire platform.</p>
-      </div>
+      <PageHeader
+        title="All tenants"
+        subtitle="Super-admin view across the entire platform."
+      />
       <Card>
         <CardHeader><CardTitle>Identify yourself</CardTitle></CardHeader>
         <CardContent>

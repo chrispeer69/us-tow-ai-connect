@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { api } from '@/lib/utils';
 
 interface RoutingRule {
@@ -86,12 +87,10 @@ export default function RoutingPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <header>
-        <h1 className="text-3xl font-bold">Call Transfer Routing</h1>
-        <p className="text-zinc-400 mt-1">
-          Manage which phone number receives transferred calls.
-        </p>
-      </header>
+      <PageHeader
+        title="Call Transfer Routing"
+        subtitle="Manage which phone number receives transferred calls."
+      />
 
       {active && (
         <Card className="border-emerald-500/40 bg-emerald-500/5">
