@@ -23,7 +23,7 @@ const MOCK_GEO = {
   accuracy: 12,
 };
 
-test.beforeEach(async ({ context, page }) => {
+test.beforeEach(async ({ context }) => {
   await context.addInitScript((coords) => {
     window.localStorage.setItem(
       'ustow.driver.profile',
@@ -37,8 +37,17 @@ test.beforeEach(async ({ context, page }) => {
     Object.defineProperty(navigator, 'geolocation', {
       configurable: true,
       value: {
-        getCurrentPosition: (ok: (p: { coords: typeof coords; timestamp: number }) => void) => {
-          ok({ coords: { ...coords, heading: null, speed: null }, timestamp: Date.now() });
+        getCurrentPosition: (ok: (p: { coords: GeolocationCoordinates; timestamp: number }) => void) => {
+          ok({
+            coords: {
+              ...coords,
+              altitude: null,
+              altitudeAccuracy: null,
+              heading: null,
+              speed: null,
+            } as GeolocationCoordinates,
+            timestamp: Date.now(),
+          });
         },
         watchPosition: () => 0,
         clearWatch: () => {},

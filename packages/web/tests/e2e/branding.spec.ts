@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-const TENANT_ID = '00000000-0000-0000-0000-000000000001';
+// Tenant zero ID: 00000000-0000-0000-0000-000000000001 (used implicitly by
+// the seeded default tenant — kept as a comment for runbook context).
 
 const INITIAL_BRANDING = {
   companyDisplayName: 'Roadside Towing',

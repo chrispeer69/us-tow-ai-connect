@@ -62,11 +62,12 @@ export class CommandCenterService {
     @Inject(DB_CLIENT) private readonly db: DbClient,
     private readonly geocoder: GeocoderService,
     private readonly gateway: CommandCenterGateway,
+    private readonly push: PushService,
     // Optional: present only when BillingModule is wired (it always is in the
     // running app). Optional injection keeps unit tests that construct the
-    // service directly from breaking. Session 28.
+    // service directly from breaking. Session 28. Must be the last parameter
+    // because TS does not allow required parameters after an optional one.
     @Optional() private readonly billing?: BillingService,
-    private readonly push: PushService,
   ) {}
 
   async listJobs(tenantId: string, query: JobsListQuery) {
