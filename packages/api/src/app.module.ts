@@ -34,6 +34,7 @@ import { BrandingModule } from './modules/branding/branding.module';
 import { KnowledgePackModule } from './modules/knowledge-pack/knowledge-pack.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 import { PartnerModule } from './modules/partner/partner.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { PushModule } from './modules/push/push.module';
 import { HealthController } from './modules/health/health.controller';
 
@@ -70,6 +71,7 @@ import { HealthController } from './modules/health/health.controller';
     KnowledgePackModule,
     SuperAdminModule,
     PartnerModule,
+    ReportsModule,
     PushModule,
   ],
   controllers: [HealthController],
