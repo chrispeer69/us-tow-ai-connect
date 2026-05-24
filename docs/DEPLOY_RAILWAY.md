@@ -236,6 +236,11 @@ the `api` service (**Settings → Replicas → 1**).
 
 ## 10. Custom domain (`ustow-aiconnect.com`)
 
+> **Full runbook:** [`docs/CUSTOM_DOMAIN.md`](./CUSTOM_DOMAIN.md) — registrar
+> choice, DNS records, per-service Railway mapping, SSL window, subdomain +
+> email (SPF/DKIM/DMARC) DNS, `ALLOWED_DOMAINS` plumbing, and the
+> `scripts/domain/verify-domain.sh` gate. The quick version is below.
+
 Once the domain is registered (currently *not* purchased — see
 `docs/BLOCKERS.md`):
 
