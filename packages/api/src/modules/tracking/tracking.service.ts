@@ -25,6 +25,9 @@ export interface CreateTrackingLinkResult {
 }
 
 export interface TrackingStatusView {
+  // tenant_id lets the public /track/[token] page resolve white-label branding
+  // from the token alone — no second authenticated call required.
+  tenant_id: string;
   caller_name: string | null;
   status: string;
   assigned_driver_name: string | null;
@@ -33,6 +36,10 @@ export interface TrackingStatusView {
   pickup_lng: number | null;
   driver_lat: number | null;
   driver_lng: number | null;
+  // Masked relay number (Twilio proxy) the caller can dial to reach the driver
+  // without exposing the driver's real phone. null when no driver is assigned
+  // or no relay is configured — the page hides the CTA in that case.
+  driver_call_url: string | null;
   expires_at: string;
   expired: boolean;
   caller_phone_last4: string | null;
@@ -127,6 +134,7 @@ export class TrackingService {
     const last4 = phoneDigits.length >= 4 ? phoneDigits.slice(-4) : null;
 
     return {
+      tenant_id: row.tenantId,
       caller_name: row.callerName,
       status: expired ? 'expired' : row.status,
       assigned_driver_name: row.assignedDriverName,
@@ -135,10 +143,28 @@ export class TrackingService {
       pickup_lng: row.pickupLng != null ? Number(row.pickupLng) : null,
       driver_lat: driverLat,
       driver_lng: driverLng,
+      driver_call_url: this.resolveDriverCallUrl(row.assignedDriverPhone),
       expires_at: row.expiresAt.toISOString(),
       expired,
       caller_phone_last4: last4,
     };
+  }
+
+  /**
+   * Masked relay URL the caller dials to reach the assigned driver. We NEVER
+   * return the raw driver phone — only a configured Twilio proxy/relay number.
+   * Order matters: bail before any relay lookup when no driver is assigned, so
+   * a relay URL is never surfaced without a driver to relay to.
+   *
+   * Source: TWILIO_PROXY_NUMBER (deployment-level relay line). A per-tenant
+   * override is a documented follow-up (S48_BLOCKERS.md) — the branding jsonb is
+   * strictly zod-parsed, so storing it there needs a shared-schema change.
+   */
+  private resolveDriverCallUrl(assignedDriverPhone: string | null): string | null {
+    if (!assignedDriverPhone) return null;
+    const relay = (process.env.TWILIO_PROXY_NUMBER ?? '').trim();
+    if (!relay) return null;
+    return `tel:${relay}`;
   }
 
   async update(tenantId: string, token: string, input: UpdateTrackingLinkInput) {
