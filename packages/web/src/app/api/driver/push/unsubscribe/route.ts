@@ -10,5 +10,5 @@ export async function POST(req: NextRequest) {
   } catch {
     /* upstream will validate */
   }
-  return driverProxyPost('/v1/driver-push/subscribe', body);
+  return driverProxyPost('/v1/driver-push/unsubscribe', body);
 }
