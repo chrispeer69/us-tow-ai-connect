@@ -1,0 +1,105 @@
+{
+  "runId": "smoke-1779646116138",
+  "mode": "prod-readonly",
+  "baseUrl": "https://ustowapi-production.up.railway.app",
+  "tenantId": "00000000-0000-0000-0000-000000000001",
+  "startedAt": "2026-05-24T18:08:36.139Z",
+  "totalMs": 482,
+  "summary": {
+    "pass": 4,
+    "fail": 1,
+    "skip": 7,
+    "total": 12
+  },
+  "steps": [
+    {
+      "id": "S1",
+      "name": "GET /health (liveness)",
+      "status": "PASS",
+      "httpStatus": 200,
+      "detail": "status=ok",
+      "ms": 248
+    },
+    {
+      "id": "S2",
+      "name": "GET /health/ready (db+redis)",
+      "status": "PASS",
+      "httpStatus": 200,
+      "detail": "db=true redis=true sms=false",
+      "ms": 60
+    },
+    {
+      "id": "S3",
+      "name": "GET /public/knowledge/<tz>/profile.md",
+      "status": "PASS",
+      "httpStatus": 200,
+      "detail": "330 bytes of markdown",
+      "ms": 61
+    },
+    {
+      "id": "S4",
+      "name": "GET /v1/admin/audit-log (baseline)",
+      "status": "PASS",
+      "httpStatus": 200,
+      "detail": "baseline total=0",
+      "ms": 60
+    },
+    {
+      "id": "S5",
+      "name": "GET /v1/admin/digital-dispatch/decisions",
+      "status": "FAIL",
+      "httpStatus": 500,
+      "detail": "body={\"statusCode\":500,\"message\":\"Internal server error\"} — see S42_BLOCKERS.md (decisions 500)",
+      "ms": 51
+    },
+    {
+      "id": "S6",
+      "name": "POST /webhooks/thinkrr/<secret>/call-completed",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    },
+    {
+      "id": "S7",
+      "name": "POST /v1/ai-connect/dispatch-request",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    },
+    {
+      "id": "S8",
+      "name": "GET /v1/ai-connect/eta (eta_minutes ≤ 60)",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    },
+    {
+      "id": "S9",
+      "name": "POLL decisions for new row (≤30s)",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    },
+    {
+      "id": "S10",
+      "name": "flip-accept request → SMS YES → history",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    },
+    {
+      "id": "S11",
+      "name": "GET /v1/admin/audit-log (delta ≥ 3)",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    },
+    {
+      "id": "S12",
+      "name": "cleanup (best-effort)",
+      "status": "SKIP",
+      "detail": "prod-readonly: mutating/keyed endpoint not exercised",
+      "ms": 0
+    }
+  ]
+}
