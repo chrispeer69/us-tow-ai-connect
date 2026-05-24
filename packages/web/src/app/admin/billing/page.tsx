@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PageHeader } from '@/components/ui/PageHeader';
 import {
   Table,
   TableBody,
@@ -194,12 +195,10 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <header>
-        <h1 className="text-3xl font-bold">Billing</h1>
-        <p className="text-zinc-400 mt-1">
-          Manage your plan and review usage for the current billing period.
-        </p>
-      </header>
+      <PageHeader
+        title="Billing"
+        subtitle="Manage your plan and review usage for the current billing period."
+      />
 
       {error && <p className="text-sm text-red-400 break-words">{error}</p>}
 

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { useBranding, type Branding, DEFAULT_BRANDING } from '@/components/branding/BrandingProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
@@ -82,13 +83,10 @@ export default function BrandingAdminPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-3xl font-bold text-zinc-100">Branding</h1>
-        <p className="text-sm text-zinc-400">
-          Per-tenant white-label colors, logo, and copy. Saves apply immediately to the
-          admin, driver, and tracking pages.
-        </p>
-      </div>
+      <PageHeader
+        title="Branding"
+        subtitle="Per-tenant white-label colors, logo, and copy. Saves apply immediately to the admin, driver, and tracking pages."
+      />
       {msg && (
         <div className="rounded-md border border-emerald-700 bg-emerald-950/60 p-3 text-sm text-emerald-200">{msg}</div>
       )}

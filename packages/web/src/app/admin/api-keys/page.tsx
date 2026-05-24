@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Icon } from '@/components/ui/icons';
 import { api } from '@/lib/utils';
 
 interface ApiKey {
@@ -102,13 +105,10 @@ export default function ApiKeysPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <header>
-        <h1 className="text-3xl font-bold">API Keys</h1>
-        <p className="text-zinc-400 mt-1">
-          Create and manage API keys for programmatic access to the US Tow
-          AI-Connect API.
-        </p>
-      </header>
+      <PageHeader
+        title="API Keys"
+        subtitle="Create and manage API keys for programmatic access to the US Tow AI-Connect API."
+      />
 
       {error && <p className="text-sm text-red-400 break-words">{error}</p>}
 
@@ -170,9 +170,11 @@ export default function ApiKeysPage() {
               <Spinner /> Loading keys...
             </div>
           ) : keys.length === 0 ? (
-            <p className="text-sm text-zinc-400">
-              No API keys yet. Generate one above to get started.
-            </p>
+            <EmptyState
+              icon={<Icon name="api-keys" size={22} />}
+              title="No API keys yet"
+              description="Generate one above to get started."
+            />
           ) : (
             <ul className="divide-y divide-zinc-800">
               {keys.map((k) => (
