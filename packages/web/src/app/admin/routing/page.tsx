@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Icon } from '@/components/ui/icons';
 import { api } from '@/lib/utils';
 
 interface RoutingRule {
@@ -117,7 +119,11 @@ export default function RoutingPage() {
               <Spinner /> Loading rules...
             </div>
           ) : rules.length === 0 ? (
-            <p className="text-sm text-zinc-400">No rules yet. Add one below.</p>
+            <EmptyState
+              icon={<Icon name="routing" size={22} />}
+              title="No rules yet"
+              description="Add one below to start routing transfers."
+            />
           ) : (
             <ul className="divide-y divide-zinc-800">
               {rules.map((r) => (

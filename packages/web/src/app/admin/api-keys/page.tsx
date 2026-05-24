@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Icon } from '@/components/ui/icons';
 import { api } from '@/lib/utils';
 
 interface ApiKey {
@@ -168,9 +170,11 @@ export default function ApiKeysPage() {
               <Spinner /> Loading keys...
             </div>
           ) : keys.length === 0 ? (
-            <p className="text-sm text-zinc-400">
-              No API keys yet. Generate one above to get started.
-            </p>
+            <EmptyState
+              icon={<Icon name="api-keys" size={22} />}
+              title="No API keys yet"
+              description="Generate one above to get started."
+            />
           ) : (
             <ul className="divide-y divide-zinc-800">
               {keys.map((k) => (
