@@ -9,3 +9,6 @@ dist/
 coverage/
 .turbo/
 *.tsbuildinfo
+
+# S29 — VAPID operator follow-up contains private keys, never commit
+docs/sessions/S29_OPERATOR_TODO.md
