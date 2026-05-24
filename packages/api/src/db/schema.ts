@@ -39,6 +39,9 @@ export const tenants = pgTable('tenants', {
   // Session 27: white-label branding + Thinkrr partner reconciliation.
   branding: jsonb('branding').notNull().default({} as unknown as never),
   partnerAccountId: varchar('partner_account_id', { length: 120 }),
+  // Session 28: hard gate raised when a per-job (credit) tenant runs out of
+  // credits. The job poller / command center checks this before ingesting.
+  billingBlocked: boolean('billing_blocked').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -180,9 +183,37 @@ export const tenantBilling = pgTable('tenant_billing', {
     .defaultNow(),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }).notNull(),
   stripeCustomerId: varchar('stripe_customer_id', { length: 100 }),
+  // Session 28: Stripe subscription pointer + per-job credit accounting.
+  stripeSubscriptionId: varchar('stripe_subscription_id', { length: 100 }),
+  creditBalance: integer('credit_balance').notNull().default(0),
+  // per_job_billing = true → each new unified_job deducts one credit and the
+  // tenant is gated on creditBalance instead of a monthly call cap.
+  perJobBilling: boolean('per_job_billing').notNull().default(false),
   cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ============ BILLING EVENTS (Stripe webhook ledger) ============
+// Append-only idempotency ledger for Stripe webhooks. stripe_event_id is
+// unique; a redelivered event collides and is skipped, so no event is ever
+// applied twice. tenant_id is nullable because some events arrive before the
+// customer is mapped to a tenant.
+export const billingEvents = pgTable(
+  'billing_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+    stripeEventId: varchar('stripe_event_id', { length: 255 }).notNull(),
+    type: varchar('type', { length: 100 }).notNull(),
+    payload: jsonb('payload').notNull().default({}),
+    processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    stripeEventIdUniq: uniqueIndex('billing_events_stripe_event_id_uniq').on(t.stripeEventId),
+    tenantIdx: index('billing_events_tenant_idx').on(t.tenantId),
+  }),
+);
+export type BillingEventRow = typeof billingEvents.$inferSelect;
 
 // ============ TENANT API KEYS ============
 // Per-tenant API tokens issued from the admin dashboard. The plaintext key is

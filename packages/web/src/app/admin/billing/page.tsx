@@ -4,6 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { api } from '@/lib/utils';
 
 type Plan = 'TRIAL' | 'STARTER' | 'PRO' | 'ENTERPRISE';
@@ -29,6 +37,29 @@ interface Billing {
     minutes: number;
     seconds: number;
   };
+}
+
+// Session 28: Stripe credit billing — live status from /v1/admin/billing/status.
+interface BillingInvoice {
+  id: string;
+  number: string | null;
+  amountPaidCents: number;
+  currency: string;
+  status: string | null;
+  createdAt: string;
+  hostedInvoiceUrl: string | null;
+  pdfUrl: string | null;
+}
+
+interface BillingStatus {
+  plan: string;
+  status: string;
+  perJobBilling: boolean;
+  creditBalance: number;
+  billingBlocked: boolean;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  recentInvoices: BillingInvoice[];
 }
 
 const PLAN_ORDER: Plan[] = ['TRIAL', 'STARTER', 'PRO', 'ENTERPRISE'];
@@ -87,8 +118,10 @@ function formatPrice(cents: number, plan: Plan): string {
 
 export default function BillingPage() {
   const [billing, setBilling] = useState<Billing | null>(null);
+  const [status, setStatus] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [changing, setChanging] = useState<Plan | null>(null);
+  const [action, setAction] = useState<'portal' | 'credits' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -99,12 +132,46 @@ export default function BillingPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api<Billing>('/v1/admin/billing');
+      // Legacy plan/usage view + the Stripe-backed status are independent
+      // endpoints; fetch in parallel and tolerate the status endpoint being
+      // unavailable (Stripe not yet configured) without blanking the page.
+      const [data, statusData] = await Promise.all([
+        api<Billing>('/v1/admin/billing'),
+        api<BillingStatus>('/v1/admin/billing/status').catch(() => null),
+      ]);
       setBilling(data);
+      setStatus(statusData);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openPortal() {
+    setAction('portal');
+    setError(null);
+    try {
+      const { url } = await api<{ url: string }>('/v1/admin/billing/portal');
+      window.location.href = url;
+    } catch (err) {
+      setError((err as Error).message);
+      setAction(null);
+    }
+  }
+
+  async function buyCredits() {
+    setAction('credits');
+    setError(null);
+    try {
+      const { url } = await api<{ url: string }>('/v1/admin/billing/checkout', {
+        method: 'POST',
+        json: { kind: 'credit_pack' },
+      });
+      window.location.href = url;
+    } catch (err) {
+      setError((err as Error).message);
+      setAction(null);
     }
   }
 
@@ -279,6 +346,109 @@ export default function BillingPage() {
               )}
             </CardContent>
           </Card>
+
+          {status && (
+            <Card className={status.billingBlocked ? 'border-red-500/40 bg-red-500/5' : ''}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Subscription &amp; Credits</span>
+                  {status.billingBlocked && (
+                    <Badge variant="destructive">● BILLING BLOCKED</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {status.billingBlocked && (
+                  <p className="text-sm text-red-400">
+                    Job credits are exhausted. New jobs are paused until you buy
+                    more credits.
+                  </p>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <UsageStat
+                    label="Plan"
+                    value={status.plan}
+                    hint={status.perJobBilling ? 'Per-job credits' : 'Subscription'}
+                  />
+                  <UsageStat
+                    label="Job Credits"
+                    value={status.creditBalance.toLocaleString()}
+                    hint={status.perJobBilling ? '1 credit / job' : 'Not on per-job billing'}
+                  />
+                  <UsageStat label="Stripe Status" value={status.status} />
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    disabled={action !== null || !status.stripeCustomerId}
+                    onClick={() => void openPortal()}
+                  >
+                    {action === 'portal' ? <Spinner className="mr-2" /> : null}
+                    Manage subscription
+                  </Button>
+                  <Button disabled={action !== null} onClick={() => void buyCredits()}>
+                    {action === 'credits' ? <Spinner className="mr-2" /> : null}
+                    Buy credits
+                  </Button>
+                </div>
+                {!status.stripeCustomerId && (
+                  <p className="text-xs text-zinc-500">
+                    No Stripe customer yet — buying credits or selecting a paid
+                    plan creates one.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {status && status.recentInvoices.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Invoices</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {status.recentInvoices.map((inv) => (
+                      <TableRow key={inv.id}>
+                        <TableCell>
+                          {new Date(inv.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {inv.number ?? inv.id}
+                        </TableCell>
+                        <TableCell>
+                          {`$${(inv.amountPaidCents / 100).toFixed(2)} ${inv.currency.toUpperCase()}`}
+                        </TableCell>
+                        <TableCell>{inv.status ?? '—'}</TableCell>
+                        <TableCell>
+                          {inv.hostedInvoiceUrl ? (
+                            <a
+                              href={inv.hostedInvoiceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-400 hover:underline"
+                            >
+                              View
+                            </a>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>

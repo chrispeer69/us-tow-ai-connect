@@ -52,6 +52,27 @@ export const BillingPlanUpdateSchema = z.object({
 });
 export type BillingPlanUpdateBody = z.infer<typeof BillingPlanUpdateSchema>;
 
+// ── Session 28: Stripe checkout ──────────────────────────────────────────
+// A checkout is either a subscription (one of the paid plans) or a one-off
+// per-job credit pack purchase. The API maps the plan/kind to a configured
+// Stripe price id (STRIPE_PRICE_*) — the client never sends raw price ids.
+export const SubscriptionPlan = z.enum(['STARTER', 'PRO', 'ENTERPRISE']);
+export type SubscriptionPlanType = z.infer<typeof SubscriptionPlan>;
+
+export const CheckoutSessionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('subscription'),
+    plan: SubscriptionPlan,
+  }),
+  z.object({
+    kind: z.literal('credit_pack'),
+    // Optional quantity of credit packs (Stripe line-item quantity). Defaults
+    // to 1 server-side.
+    quantity: z.number().int().min(1).max(100).optional(),
+  }),
+]);
+export type CheckoutSessionBody = z.infer<typeof CheckoutSessionSchema>;
+
 const VehicleClassPolicy = z.enum(['AI_HANDLES', 'TRANSFER', 'NOT_OFFERED']);
 
 export const AgentConfigUpdateSchema = z.object({
