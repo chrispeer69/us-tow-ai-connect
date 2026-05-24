@@ -20,7 +20,8 @@ export class AdminCspMiddleware implements NestMiddleware {
     if (
       path.startsWith('/v1/admin/') ||
       path.startsWith('/v1/partner/') ||
-      path.startsWith('/v1/super-admin/')
+      path.startsWith('/v1/super-admin/') ||
+      path.startsWith('/v1/system/')
     ) {
       res.setHeader(
         'Content-Security-Policy',

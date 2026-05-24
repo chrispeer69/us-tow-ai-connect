@@ -38,6 +38,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PushModule } from './modules/push/push.module';
 import { HealthController } from './modules/health/health.controller';
+import { DomainStatusController } from './modules/health/domain-status.controller';
 
 @Module({
   imports: [
@@ -76,7 +77,7 @@ import { HealthController } from './modules/health/health.controller';
     ReportsModule,
     PushModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, DomainStatusController],
   providers: [
     // Per-tenant admin IP allow-list. The guard self-skips when the
     // tenants.allowed_admin_ips column is empty (default), so this is a
