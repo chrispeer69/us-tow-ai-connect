@@ -1,0 +1,60 @@
+/* Onboarding wizard motion — alliance visual language.
+ * Scoped CSS module so we consume design tokens without touching
+ * the read-only global stylesheets. */
+
+.stepEnter {
+  animation: ob-slide-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes ob-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.checkPop {
+  animation: ob-check-pop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes ob-check-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.fadeUp {
+  animation: ob-fade-up 0.45s ease-out both;
+}
+
+@keyframes ob-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .stepEnter,
+  .checkPop,
+  .fadeUp {
+    animation: none;
+  }
+}
