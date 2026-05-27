@@ -212,3 +212,58 @@ After verification, update `LOGIN_URL`, `DISPATCH_URL`,
    `DECLINE_CONFIRM_NAMES` / `REASON_FIELD` if needed.
 3. Confirm the post-action confirmation indicator (toast text / status change)
    so `confirmationEvidence` captures something meaningful.
+
+## Dispatch Anywhere
+
+Session 53 ships the adapter ahead of selector verification. Discovery script
+(`packages/api/scripts/discover-dispatch-anywhere-selectors.ts`) is in place but
+could not be run live — no `DISPATCHANYWHERE_USERNAME` / `DISPATCHANYWHERE_PASSWORD`
+in any environment we can read. Real creds will be stored encrypted in
+`tenant_credentials` (same pattern as Omadi / TowLogs). All selectors below are
+**best-effort / placeholder** until human verification.
+
+### Login (PLACEHOLDER)
+| Step | Selector | Source |
+|------|----------|--------|
+| username | `input[name="email"], input[type="email"], input[name="username"], #email, #username` | best-effort union |
+| password | `input[type="password"], input[name="password"], #password` | best-effort union |
+| submit | `getByRole('button', { name: /sign in\|log ?in\|login/i })` → fallback `button[type="submit"]` | best-effort |
+| success | URL no longer matches `**/login` | best-effort |
+
+### Dispatch list (PLACEHOLDER)
+- URL guess: `https://app.dispatchanywhere.com/dispatch`
+- Row selector candidates tried in order (first hit wins):
+  `[data-job-id]`, `[data-call-id]`, `[data-dispatch-id]`,
+  `table tbody tr[data-id]`, `tr.dispatch-row`, `.dispatch-row`,
+  `tr.job-row`, `.job-row`, `.job-card`, `[role="row"]`.
+
+### Action buttons (PLACEHOLDER — pending live probe)
+Adapter uses role-by-accessible-name locators (`getByRole('button', { name, exact: true })`)
+which pierce open shadow DOM. Candidate lists:
+- **Accept**: `Accept`, `Accept Job`, `Accept Dispatch`, `Accept Call`
+- **Decline**: `Decline`, `Decline Job`, `Decline Dispatch`, `Reject`
+- **Confirm modal**: `Decline`, `Accept`, `Submit`, `Confirm`, `Save`, `OK`, `Yes`
+
+Reason-modal flow is best-effort: locator looks for the last visible `textarea`,
+falls back to the last visible `input[type="text"]`. Modal scoping uses
+`[role="dialog"], .modal`.
+
+### dispatchJob — not-applicable
+Dispatch Anywhere is a tow-operator dispatch product, not a verified motor-club
+intake broker with a public write API. `dispatchJob` returns
+`{ success:false, error:'not-applicable: …' }` (no throw) — same pattern as
+Omadi / TowLogs. Re-evaluate if/when Dispatch Anywhere publishes a write surface.
+
+### Human verification checklist — Dispatch Anywhere
+1. Provide tenant creds → run `DISPATCHANYWHERE_USERNAME=… DISPATCHANYWHERE_PASSWORD=… pnpm exec tsx scripts/discover-dispatch-anywhere-selectors.ts`
+   inside `packages/api/`. Reads-only; safe to run on a live account.
+2. Inspect `docs/diagnostics/dispatchanywhere-selectors-YYYYMMDD.json`:
+   - Confirm login flow (which selector hit, what URL did we land on).
+   - Confirm which row selector returned > 0 entries; replace
+     `ROW_SELECTOR_CANDIDATES` head with the verified one.
+   - Confirm the exact Accept / Decline button accessible names from the
+     `locatorProbe` block; collapse the candidate list to the verified label.
+3. On a test job, click Decline once and document the reason-modal shape (field
+   type, confirming button label) so `CONFIRM_BUTTON_NAMES` / reason-field
+   selector can be tightened.
+4. Confirm a post-action toast or status change for `confirmationEvidence`.
