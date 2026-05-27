@@ -13,6 +13,28 @@ import {
   isAaaBrandedShop,
   type AaaBrandedCheckResult,
 } from './aaa-branded.matcher';
+
+// Mirror of `PendingFlipJob` from flip-orchestrator.service.ts. Keeping
+// it duplicated avoids a circular import while still giving the
+// orchestrator a typed return value to consume.
+export interface PendingFlipJobLike {
+  source: 'TOWBOOK' | 'AAA_PORTAL' | string;
+  jobId: string;
+  customerName: string;
+  customerPhone: string;
+  vehicle?: string | null;
+  motorClub?: string | null;
+  motorClubServiceCode?: string | null;
+  reasonText?: string | null;
+  vehicleNotes?: string | null;
+  pickupAddress?: string | null;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  destinationName?: string | null;
+  destinationAddress?: string | null;
+  destinationPhone?: string | null;
+  companyName?: string | null;
+}
 import {
   selectNearestShop,
   type NearestShopResult,
@@ -254,6 +276,20 @@ export class FlipEngineService {
       .from(tenants)
       .where(and(eq(tenants.flipEngineEnabled, true), eq(tenants.isActive, true)));
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Returns the list of "new since last tick" motor club jobs for a tenant
+   * across all sources (Towbook + AAA today). Stub for 49c — the actual
+   * wiring against the existing JobPoller / adapters is left as a 1-line
+   * follow-up so this PR stays reviewable.
+   *
+   * Shape mirrors `PendingFlipJob` in flip-orchestrator.service.ts (kept
+   * `unknown[]` here to avoid an import cycle; the orchestrator narrows
+   * the type at the call site).
+   */
+  async fetchPendingFlipJobs(_tenantId: string): Promise<PendingFlipJobLike[]> {
+    return [];
   }
 
   /**
