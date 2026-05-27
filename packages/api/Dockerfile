@@ -55,15 +55,26 @@ RUN pnpm --filter @ustow/shared build \
 # decisions for the prod failure that led to this pin.
 # -----------------------------------------------------------------------------
 FROM deps AS playwright
-
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
 WORKDIR /app
-
+# Cache-bust marker — bump this when the playwright pin moves so Railway's
+# build cache is forced to re-run the install instead of reusing a stale
+# /ms-playwright that contains a different Chromium revision than the
+# runtime npm expects.
+ARG PLAYWRIGHT_CACHE_BUST=2026-05-27-A
+RUN echo "PLAYWRIGHT_CACHE_BUST=${PLAYWRIGHT_CACHE_BUST}"
 # `deps` already produced packages/api/node_modules with the workspace-pinned
-# Playwright. Just run the install command from there.
+# Playwright. Print the version to the build log first, then install the
+# matching browser, then verify the binary actually landed where Playwright
+# will look for it.
 RUN cd packages/api \
- && pnpm exec playwright install --with-deps chromium
+ && echo "=== Playwright version ===" \
+ && pnpm exec playwright --version \
+ && echo "=== Installing Chromium ===" \
+ && pnpm exec playwright install --with-deps chromium \
+ && echo "=== Browsers on disk ===" \
+ && ls -la /ms-playwright \
+ && find /ms-playwright -maxdepth 3 -name 'chrome-headless-shell*' -o -name 'headless_shell' -o -name 'chrome' | head -20
 
 # -----------------------------------------------------------------------------
 # Stage 4 — runtime
