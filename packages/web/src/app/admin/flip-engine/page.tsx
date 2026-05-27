@@ -62,7 +62,39 @@ interface FlipEngineConfig {
   config: Record<string, unknown>;
 }
 
-type Tab = 'shops' | 'blocklist' | 'settings';
+type Tab = 'shops' | 'blocklist' | 'settings' | 'activity';
+
+interface FlipActivityRow {
+  id: string;
+  tenant_id: string;
+  customer_name: string;
+  customer_phone: string;
+  motor_club: string | null;
+  vehicle: string | null;
+  issue_type: string | null;
+  original_destination: string | null;
+  destination_business_name: string | null;
+  destination_type: string | null;
+  flip_eligible: boolean;
+  nearest_our_shop: string | null;
+  offer_1_result: string | null;
+  offer_2_result: string | null;
+  offer_3_result: string | null;
+  flip_outcome: string | null;
+  convini_link_sent: boolean;
+  call_time: string;
+}
+
+interface FlipActivityResponse {
+  items: FlipActivityRow[];
+  today: {
+    total: number;
+    wins: number;
+    losses: number;
+    skipped: number;
+    winRate: number;
+  };
+}
 
 const SHOP_TYPE_COLOR: Record<'REPAIR' | 'BODY', string> = {
   REPAIR: 'bg-emerald-900 text-emerald-200',
@@ -154,6 +186,7 @@ export default function FlipEnginePage() {
       </div>
 
       <div className="flex gap-2 border-b border-zinc-800">
+        <TabButton label="Activity" active={tab === 'activity'} onClick={() => setTab('activity')} />
         <TabButton label={`Shops (${shops.length})`} active={tab === 'shops'} onClick={() => setTab('shops')} />
         <TabButton
           label={`AAA Blocklist (${blocklist.length})`}
@@ -169,6 +202,7 @@ export default function FlipEnginePage() {
         </div>
       )}
 
+      {tab === 'activity' && <ActivityTab setError={setError} />}
       {tab === 'shops' && <ShopsTab shops={shops} reload={loadShops} setError={setError} />}
       {tab === 'blocklist' && (
         <BlocklistTab blocklist={blocklist} reload={loadBlocklist} setError={setError} />
@@ -738,5 +772,141 @@ function SettingsField({
       </div>
       <div className="sm:col-span-2">{children}</div>
     </div>
+  );
+}
+
+
+// ---------- activity tab ----------
+
+const OUTCOME_COLOR: Record<string, string> = {
+  WIN: 'bg-emerald-900 text-emerald-200',
+  LOSS: 'bg-rose-900 text-rose-200',
+  SKIPPED: 'bg-zinc-800 text-zinc-300',
+};
+
+function bucketOutcome(r: FlipActivityRow): 'WIN' | 'LOSS' | 'SKIPPED' {
+  if (r.flip_outcome && /WIN|ACCEPTED/i.test(r.flip_outcome)) return 'WIN';
+  if (!r.flip_eligible) return 'SKIPPED';
+  return 'LOSS';
+}
+
+function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
+  const [data, setData] = useState<FlipActivityResponse | null>(null);
+  const [outcome, setOutcome] = useState<string>('ALL');
+  const [source, setSource] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qp = new URLSearchParams();
+      if (outcome) qp.set('outcome', outcome);
+      if (source) qp.set('source', source);
+      qp.set('limit', '100');
+      const res = await api<{ data: FlipActivityResponse }>(
+        `/v1/admin/flip-engine/activity?${qp.toString()}`,
+      );
+      setData(res.data);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [outcome, source, setError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Today total" value={String(data?.today.total ?? 0)} />
+          <StatCard label="Wins" value={String(data?.today.wins ?? 0)} />
+          <StatCard label="Losses" value={String(data?.today.losses ?? 0)} />
+          <StatCard label="Win rate" value={`${data?.today.winRate ?? 0}%`} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={outcome} onValueChange={setOutcome}>
+            <SelectTrigger className="max-w-[200px]">
+              <SelectValue placeholder="Outcome" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All outcomes</SelectItem>
+              <SelectItem value="WIN">Wins</SelectItem>
+              <SelectItem value="LOSS">Losses</SelectItem>
+              <SelectItem value="SKIPPED">Skipped</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger className="max-w-[200px]">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Any source</SelectItem>
+              <SelectItem value="towbook">Towbook</SelectItem>
+              <SelectItem value="aaa">AAA</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            {loading ? <Spinner className="mr-2" /> : null}
+            Refresh
+          </Button>
+        </div>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>When</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Vehicle</TableHead>
+              <TableHead>Original → Redirected</TableHead>
+              <TableHead>Outcome</TableHead>
+              <TableHead>CONVINI</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(!data || data.items.length === 0) && !loading && (
+              <TableRow>
+                <TableCell colSpan={6} className="py-8 text-center text-sm text-zinc-500">
+                  No flip activity yet. Once the engine is enabled and the
+                  job poller starts feeding new motor club jobs, attempts
+                  will land here.
+                </TableCell>
+              </TableRow>
+            )}
+            {data?.items.map((r) => {
+              const bucket = bucketOutcome(r);
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="text-xs text-zinc-400">
+                    {new Date(r.call_time).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">{r.customer_name}</div>
+                    <div className="text-xs text-zinc-500 font-mono">{r.customer_phone}</div>
+                  </TableCell>
+                  <TableCell className="text-xs">{r.vehicle ?? '—'}</TableCell>
+                  <TableCell className="text-xs">
+                    <div>{r.original_destination ?? '—'}</div>
+                    {r.nearest_our_shop && (
+                      <div className="text-emerald-300">→ {r.nearest_our_shop}</div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={OUTCOME_COLOR[bucket] ?? 'bg-zinc-700 text-zinc-200'}>
+                      {bucket}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs">{r.convini_link_sent ? 'sent' : '—'}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
