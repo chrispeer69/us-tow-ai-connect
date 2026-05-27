@@ -26,6 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/command-center', label: 'Command Center', icon: 'command-center' },
       { href: '/admin/digital-dispatch', label: 'Digital Dispatch', icon: 'digital-dispatch' },
       { href: '/admin/drivers-live', label: 'Drivers Live', icon: 'drivers-live' },
+      { href: '/admin/flip-engine', label: 'Flip Engine', icon: 'flip-engine' },
     ],
   },
   {
