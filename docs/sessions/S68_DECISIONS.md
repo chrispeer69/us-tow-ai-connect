@@ -61,7 +61,7 @@ Migration `0028_retell_call_id.sql`:
 ## Live credentials (tenant zero, owned by chris@bluecolla...)
 
 ```
-RETELL_API_KEY=key_1b1d0c4ece24ac0238803b2b9af4
+RETELL_API_KEY=key_<set on Railway>
 RETELL_AGENT_ID=agent_c22b4105cef66b8a374fd54483
 RETELL_LLM_ID=llm_3579497925274062dfb3f61aae2e
 RETELL_FROM_NUMBER=+18447011345
