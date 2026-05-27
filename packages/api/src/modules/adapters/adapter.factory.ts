@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { SoftwareType, type TowingSoftwareAdapter } from './adapter.interface';
 import { TowbookAdapter } from './towbook/towbook.adapter';
 import { AaaPortalAdapter } from './aaa-portal/aaa-portal.adapter';
+import { TowLogsAdapter } from './towlogs/towlogs.adapter';
 
 @Injectable()
 export class AdapterFactory {
   constructor(
     private readonly towbook: TowbookAdapter,
     private readonly aaaPortal: AaaPortalAdapter,
+    private readonly towlogs: TowLogsAdapter,
   ) {}
 
   getAdapter(softwareType: string): TowingSoftwareAdapter {
@@ -17,6 +19,7 @@ export class AdapterFactory {
       case SoftwareType.AAA_PORTAL:
         return this.aaaPortal;
       case SoftwareType.TOWLOGS:
+        return this.towlogs;
       case SoftwareType.OMADI:
       case SoftwareType.NATIVE:
         throw new Error(`Adapter for ${softwareType} not implemented yet`);
