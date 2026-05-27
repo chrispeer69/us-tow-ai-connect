@@ -1,22 +1,44 @@
-import { Global, Module } from '@nestjs/common';
-import { TenantsModule } from '../tenants/tenants.module';
+import { Module } from '@nestjs/common';
+import { DbModule } from '../../db/db.module';
 import { OutboundVoiceController } from './outbound-voice.controller';
-import { OutboundVoiceService } from './outbound-voice.service';
 import { OutboundVoiceWebhookController } from './outbound-voice-webhook.controller';
+import { OutboundVoiceService } from './outbound-voice.service';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
+import { RetellOutboundClient } from './retell-outbound.client';
+import { RetellWebhookController } from './retell-webhook.controller';
+import {
+  OUTBOUND_VOICE_PROVIDER,
+  pickOutboundVoiceProvider,
+} from './outbound-voice-provider.factory';
 
 /**
- * Session 49 — Outbound voice orchestrator.
+ * Session 49 — outbound voice module.
+ * Session 68 — adds Retell client + provider factory + Retell webhook controller.
  *
- * Mirrors the OutboundSmsModule shape: @Global so other modules can import
- * the service for lifecycle hooks (notifyJobDispatched et al.) without
- * having to add the module to their own imports[].
+ * Both Thinkrr and Retell clients are provided so:
+ *   - The factory can pick either based on env / config.
+ *   - Legacy thinkrr_call_id rows continue to resolve through the Thinkrr
+ *     webhook + cancel paths after the cutover.
+ *   - Rollback is a single env var flip with zero code change.
  */
-@Global()
 @Module({
-  imports: [TenantsModule],
-  controllers: [OutboundVoiceController, OutboundVoiceWebhookController],
-  providers: [OutboundVoiceService, ThinkrrOutboundClient],
+  imports: [DbModule],
+  controllers: [
+    OutboundVoiceController,
+    OutboundVoiceWebhookController,
+    RetellWebhookController,
+  ],
+  providers: [
+    ThinkrrOutboundClient,
+    RetellOutboundClient,
+    {
+      provide: OUTBOUND_VOICE_PROVIDER,
+      inject: [RetellOutboundClient, ThinkrrOutboundClient],
+      useFactory: (retell: RetellOutboundClient, thinkrr: ThinkrrOutboundClient) =>
+        pickOutboundVoiceProvider(retell, thinkrr),
+    },
+    OutboundVoiceService,
+  ],
   exports: [OutboundVoiceService],
 })
 export class OutboundVoiceModule {}
