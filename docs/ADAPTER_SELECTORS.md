@@ -66,6 +66,83 @@ real creds live encrypted in the tenant credentials store). See
 `docs/BLOCKERS.md`. The adapter keeps a structured no-op that returns
 `success:false, error:'not-applicable'`.
 
+## TowLogs (towlogs.com)
+
+TowLogs is a dispatch SaaS used by tow operators. Built **best-effort** in
+Session 51 — no live credentials were available at build time, so selectors are
+educated guesses derived from common dispatch-SPA conventions and the role-based
+locator strategy that worked for AAA. Every guess is verified by the adapter at
+runtime (count > 0 + visible + enabled) before it clicks anything; misses
+return `{ success: false, error }` and screenshot to `/tmp` rather than
+throwing.
+
+### Login (best-effort)
+| Step | Selector | Confidence |
+|------|----------|------------|
+| username | `input[name="email"]`, `input[type="email"]`, `input[name="username"]`, `#email`, `#username` (first hit) | best-effort |
+| password | `input[type="password"]`, `input[name="password"]`, `#password` (first hit) | best-effort |
+| submit | `getByRole('button', { name: /sign in|log ?in|login/i })` then fallback to `button[type="submit"]` | best-effort |
+| success | URL no longer contains `/login` | best-effort |
+
+### Open jobs list
+- URL: `https://app.towlogs.com/jobs` (assumed — needs confirmation)
+- Row selector candidates (first non-empty wins, in this order):
+  `[data-job-id]`, `[data-call-id]`, `table tbody tr[data-id]`, `tr.job-row`,
+  `.job-row`, `.job-card`, `li.job`, `[role="row"]`
+- Per-row fields read from optional child selectors (`[data-customer]` /
+  `.customer-name`, `[data-vehicle]` / `.vehicle`, etc.) — `cleanText()` returns
+  empty string when absent, so adapter does not crash on a minimal row.
+
+### Action buttons (best-effort, role-based)
+The adapter locates Accept / Decline with `getByRole('button', { name, exact: true })`,
+which pierces open shadow DOM. Tried in order, first visible+enabled hit wins:
+
+| Action | Accessible name candidates | Confidence |
+|--------|---------------------------|------------|
+| **Accept** | `Accept`, `Accept Job`, `Accept Call`, `Accept Dispatch` | placeholder |
+| **Decline** | `Decline`, `Decline Job`, `Decline Call`, `Reject` | placeholder |
+| **Confirm modal** | `Decline`, `Accept`, `Submit`, `Confirm`, `Save`, `OK`, `Yes` | placeholder |
+
+### Confirmation indicators
+The adapter reads the first match from `[role="status"], .toast, .notification, .alert`
+as `confirmationEvidence`. If absent, falls back to a synthetic timestamp string
+(`"action submitted at <ISO> (no toast captured)"`) — the click still succeeded;
+the audit row just doesn't carry a toast quote.
+
+### dispatchJob — not-applicable stub
+TowLogs appears to be intake-oriented (we accept jobs offered to us). No
+verified public write/dispatch API surface. Adapter returns
+`{ success: false, error: 'not-applicable: ...' }` — matches the Towbook
+inverse pattern.
+
+### Known gotchas
+1. **Login URL unverified** — `https://app.towlogs.com/login` is the
+   conventional pattern; if TowLogs lives on a marketing-vs-app split host
+   (e.g. `app.` vs `dispatch.`), update `LOGIN_URL` in the adapter constant.
+2. **Row schema unknown** — the row extractor reads optional child selectors;
+   real rows will likely surface only a subset, so adapter scrape may return
+   sparse `ActiveJob` records until selectors are spot-checked against a live
+   account.
+3. **Modal flow unverified** — the optional reason-modal flow is best-effort
+   only. If TowLogs uses a custom dialog component (not `[role="dialog"]` or
+   `.modal`), the confirm-button click will be skipped silently and the primary
+   click result is still recorded.
+
+### Human verification checklist (TowLogs — first live job)
+1. Confirm login URL (`https://app.towlogs.com/login` vs alternate host).
+2. Confirm open-jobs URL (`https://app.towlogs.com/jobs` vs `/dispatch`, `/calls`).
+3. Open browser devtools on a real open-jobs list and report which `ROW_SELECTOR_CANDIDATES`
+   resolves > 0 rows; pin that selector at the top of the array.
+4. Note exact button label for Accept (`Accept` vs `Accept Job` vs `Accept Call`)
+   and Decline.
+5. Confirm the reason-modal label/structure when declining a real job.
+6. Note the post-action confirmation indicator (toast / status change / route
+   change) so `confirmationEvidence` captures something meaningful.
+
+After verification, update `LOGIN_URL`, `OPEN_JOBS_URL`, `ROW_SELECTOR_CANDIDATES`,
+`ACCEPT_BUTTON_NAMES`, `DECLINE_BUTTON_NAMES`, `CONFIRM_BUTTON_NAMES`, and the
+toast-locator in `towlogs.adapter.ts`.
+
 ## Human verification checklist (Chris)
 1. When a **real offered/pending** AAA job exists, open it and confirm the
    button label is exactly **"Accept"** (vs "Accept Call"/"Accept Job"). Update
