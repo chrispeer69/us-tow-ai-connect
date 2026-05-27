@@ -47,28 +47,22 @@ RUN pnpm --filter @ustow/shared build \
 # -----------------------------------------------------------------------------
 # Stage 3 — playwright
 #
-# Install the Chromium browser + Debian dependencies. We do this in a dedicated
-# stage so the heavy apt install layer caches independently of the application
-# code. The browser binary lives at /ms-playwright and is copied into the
-# runtime image as a single COPY.
+# Install the Chromium browser + Debian dependencies. We reuse the workspace
+# lockfile (NOT a fresh `pnpm install playwright`) so the Playwright npm
+# version that lands here matches exactly what the build stage produced for
+# the runtime image. Mismatching versions cause the runtime to look up a
+# chrome-headless-shell-XXXX binary that doesn't exist on disk — see S65
+# decisions for the prod failure that led to this pin.
 # -----------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS playwright
+FROM deps AS playwright
 
-ENV PNPM_HOME=/pnpm \
-    PATH=/pnpm:$PATH \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-RUN corepack enable && corepack prepare pnpm@9 --activate
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
-# Playwright's CLI needs the package to be present to know which browser
-# version to fetch — copy just the api package.json and install only that
-# package's deps to keep the layer small.
-COPY packages/api/package.json packages/api/
-
+# `deps` already produced packages/api/node_modules with the workspace-pinned
+# Playwright. Just run the install command from there.
 RUN cd packages/api \
- && pnpm install --prod=false playwright \
  && pnpm exec playwright install --with-deps chromium
 
 # -----------------------------------------------------------------------------
