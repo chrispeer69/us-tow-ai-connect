@@ -43,6 +43,18 @@ export const tenants = pgTable('tenants', {
   // Session 28: hard gate raised when a per-job (credit) tenant runs out of
   // credits. The job poller / command center checks this before ingesting.
   billingBlocked: boolean('billing_blocked').notNull().default(false),
+  // Session 49: outbound voice orchestrator opt-in. Disabled by default; the
+  // admin UI flips this when the tenant has signed the TCPA acknowledgement.
+  // Config jsonb shape:
+  //   {
+  //     dispatch_cron_enabled?: boolean,
+  //     dispatch_interval_seconds?: number,
+  //     require_consent?: boolean,                       // default true
+  //     enabled_purposes?: string[],                     // subset of the 6 purposes
+  //     thinkrr_outbound_agent_id?: string
+  //   }
+  outboundVoiceEnabled: boolean('outbound_voice_enabled').notNull().default(false),
+  outboundVoiceConfig: jsonb('outbound_voice_config').notNull().default({} as unknown as never),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -919,3 +931,46 @@ export const users = pgTable(
 );
 
 export type UserRow = typeof users.$inferSelect;
+
+// ============ OUTBOUND CALLS (Session 49 — voice orchestrator) ============
+// Audit trail of every outbound voice call placed via the Thinkrr outbound
+// agent. Created in `queued` status by OutboundVoiceService.enqueueCall, then
+// transitioned by the dispatcher cron + Thinkrr webhook callbacks. The
+// thinkrr_call_id (UNIQUE) keys idempotent webhook updates.
+export const outboundCalls = pgTable(
+  'outbound_calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    purpose: varchar('purpose', { length: 40 }).notNull(),
+    relatedJobId: uuid('related_job_id'),
+    toPhone: varchar('to_phone', { length: 20 }).notNull(),
+    toName: varchar('to_name', { length: 120 }),
+    scriptTemplate: varchar('script_template', { length: 60 }).notNull(),
+    scriptVariables: jsonb('script_variables').notNull().default({} as unknown as never),
+    thinkrrCallId: varchar('thinkrr_call_id', { length: 120 }),
+    status: varchar('status', { length: 20 }).notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(3),
+    scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    durationSeconds: integer('duration_seconds'),
+    transcript: text('transcript'),
+    recordingUrl: text('recording_url'),
+    outcome: jsonb('outcome'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantStatusIdx: index('outbound_calls_tenant_status_idx').on(t.tenantId, t.status),
+    scheduledForIdx: index('outbound_calls_scheduled_for_idx').on(t.scheduledFor),
+    thinkrrCallIdIdx: uniqueIndex('outbound_calls_thinkrr_call_id_uniq').on(t.thinkrrCallId),
+    tenantCreatedIdx: index('outbound_calls_tenant_created_idx').on(t.tenantId, t.createdAt),
+  }),
+);
+export type OutboundCallRow = typeof outboundCalls.$inferSelect;
+export type OutboundCallInsert = typeof outboundCalls.$inferInsert;
