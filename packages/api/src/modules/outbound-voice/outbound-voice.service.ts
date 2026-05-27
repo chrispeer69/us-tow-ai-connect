@@ -10,24 +10,31 @@ import {
   SCRIPT_TEMPLATES,
 } from './script-templates';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
+import { RetellOutboundClient } from './retell-outbound.client';
+import {
+  OUTBOUND_VOICE_PROVIDER,
+} from './outbound-voice-provider.factory';
+import type { OutboundVoiceProvider } from './outbound-voice-provider.interface';
 
 /**
  * Session 49 — Outbound voice orchestrator.
+ * Session 68 — Provider-agnostic: dispatches via injected OutboundVoiceProvider
+ *              (Retell by default, Thinkrr fallback). Webhook handlers exist for
+ *              both providers; legacy thinkrr_call_id rows continue to resolve
+ *              through handleWebhookEvent for backward compatibility.
  *
  * Responsibilities:
  *   1. enqueueCall — validate template + variables, insert a `queued` row.
  *   2. dispatchQueued — cron, every 30 s by default. Picks queued + due
- *      rows, calls Thinkrr, transitions to `dialing` or `failed`.
- *   3. handleWebhookEvent — idempotent on thinkrr_call_id; transitions to
- *      `in_progress` / terminal status as the carrier reports back.
- *   4. retryFailed — cron, picks failed rows under max_attempts and
- *      re-queues with exponential backoff.
- *   5. listCalls / getCall / cancelCall / requeueCall — admin surface.
- *   6. Lifecycle hooks (notifyJobDispatched, …) — convenience wrappers
- *      other modules can opt into without coupling them to enqueueCall
- *      directly. They never throw.
+ *      rows, calls the active provider, transitions to `dialing` or `failed`.
+ *   3. handleWebhookEvent — legacy Thinkrr-only path (kept for backward compat).
+ *   4. handleProviderWebhookEvent — provider-agnostic webhook resolver.
+ *   5. retryFailed — cron, picks failed rows under max_attempts and re-queues.
+ *   6. listCalls / getCall / cancelCall / requeueCall — admin surface.
+ *   7. Lifecycle hooks (notifyJobDispatched, …) — convenience wrappers
+ *      other modules can opt into without coupling them to enqueueCall.
  *
- * Tenant-scoped at every layer. The controllers and webhooks supply
+ * Tenant-scoped at every layer. Controllers and webhooks supply
  * `tenantId`; this service never trusts request bodies for tenancy.
  */
 @Injectable()
@@ -38,7 +45,11 @@ export class OutboundVoiceService {
   constructor(
     @Inject(DB_CLIENT) private readonly db: DbClient,
     private readonly thinkrr: ThinkrrOutboundClient,
-  ) {}
+    private readonly retell: RetellOutboundClient,
+    @Inject(OUTBOUND_VOICE_PROVIDER) private readonly provider: OutboundVoiceProvider,
+  ) {
+    this.logger.log(`[outbound-voice] active provider: ${this.provider.providerName}`);
+  }
 
   // ---------- enqueue ----------
 
@@ -55,9 +66,6 @@ export class OutboundVoiceService {
   }): Promise<OutboundCallRow> {
     const tenant = await this.assertEnabled(input.tenantId, input.purpose);
 
-    // Render once up front to validate variables — we don't store the rendered
-    // body (it can be regenerated from template + variables) but we DO want
-    // the enqueue to fail fast if the caller forgot a required variable.
     try {
       renderTemplate(input.scriptTemplate, input.scriptVariables);
     } catch (err) {
@@ -69,8 +77,6 @@ export class OutboundVoiceService {
       throw err;
     }
 
-    // Soft TCPA check. The dispatch step writes to `outcome` if consent
-    // wasn't on file — this is the soft compliance the spec calls for.
     const requireConsent = readConfigBool(tenant, 'require_consent', true);
     if (requireConsent) {
       this.logger.debug(
@@ -137,10 +143,16 @@ export class OutboundVoiceService {
     const existing = await this.getCall(tenantId, id);
     if (!existing) throw new Error('outbound call not found');
     if (TERMINAL_STATUSES.has(existing.status)) {
-      // Idempotent: cancelling a completed/failed/cancelled row returns it as-is.
       return existing;
     }
-    if (existing.thinkrrCallId) {
+    // Route cancel through the provider that placed this call, not the
+    // currently-active one. Legacy thinkrr_call_id rows keep cancelling
+    // through Thinkrr even after the cutover to Retell.
+    const providerName = (existing as { provider?: string }).provider ?? 'thinkrr';
+    const retellId = (existing as { retellCallId?: string | null }).retellCallId;
+    if (providerName === 'retell' && retellId) {
+      await this.retell.cancelCall(retellId);
+    } else if (existing.thinkrrCallId) {
       await this.thinkrr.cancelCall(existing.thinkrrCallId);
     }
     const updated = await this.db
@@ -159,7 +171,7 @@ export class OutboundVoiceService {
     const existing = await this.getCall(tenantId, id);
     if (!existing) throw new Error('outbound call not found');
     if (existing.status === 'queued' || existing.status === 'dialing' || existing.status === 'in_progress') {
-      return existing; // Already live — no-op.
+      return existing;
     }
     const updated = await this.db
       .update(outboundCalls)
@@ -171,10 +183,16 @@ export class OutboundVoiceService {
         durationSeconds: null,
         error: null,
         thinkrrCallId: null,
+        // retellCallId column is wiped here too via raw SQL below if present
         updatedAt: new Date(),
-      })
+      } as never)
       .where(eq(outboundCalls.id, id))
       .returning();
+    // Belt-and-suspenders: clear retell_call_id at SQL level so existing
+    // Drizzle types don't need a regeneration before this PR lands.
+    await this.db.execute(
+      sql`update outbound_calls set retell_call_id = null where id = ${id}`,
+    );
     return updated[0];
   }
 
@@ -195,12 +213,6 @@ export class OutboundVoiceService {
     }
   }
 
-  /**
-   * Picks queued + due rows (scheduled_for null OR <= now) and tries to place
-   * each via Thinkrr. Tenants without `outbound_voice_enabled = true` are
-   * skipped at SQL level. Returns the rows that were transitioned out of
-   * `queued` (helpful for the admin "Send now" flow).
-   */
   async dispatchQueued(maxBatch = 25): Promise<OutboundCallRow[]> {
     const now = new Date();
     const queued = await this.db
@@ -242,7 +254,6 @@ export class OutboundVoiceService {
         (call.scriptVariables ?? {}) as Record<string, unknown>,
       );
     } catch (err) {
-      // Bad data — fail terminally, do not retry.
       const updated = await this.db
         .update(outboundCalls)
         .set({
@@ -257,9 +268,12 @@ export class OutboundVoiceService {
       return updated[0];
     }
 
-    const callbackUrl = buildCallbackUrl();
-    const agentId = readConfigString(tenant, 'thinkrr_outbound_agent_id', null) ?? undefined;
-    const result = await this.thinkrr.placeCall({
+    const callbackUrl = buildCallbackUrl(this.provider.providerName);
+    const agentId = this.provider.providerName === 'retell'
+      ? readConfigString(tenant, 'retell_outbound_agent_id', null) ?? undefined
+      : readConfigString(tenant, 'thinkrr_outbound_agent_id', null) ?? undefined;
+
+    const result = await this.provider.placeCall({
       toPhone: call.toPhone,
       toName: call.toName,
       scriptBody: rendered.body,
@@ -272,12 +286,9 @@ export class OutboundVoiceService {
     });
 
     const requireConsent = readConfigBool(tenant, 'require_consent', true);
-    const consentSkipped = requireConsent === true; // soft compliance
+    const consentSkipped = requireConsent === true;
 
     if (!result) {
-      // Thinkrr unconfigured / failed. Bump attempts; if under max_attempts
-      // leave the row as `queued` so retryFailed picks it up later. Otherwise
-      // mark it `failed` terminally.
       const nextAttempts = call.attempts + 1;
       const finalStatus = nextAttempts >= call.maxAttempts ? 'failed' : 'queued';
       const updated = await this.db
@@ -285,7 +296,7 @@ export class OutboundVoiceService {
         .set({
           status: finalStatus,
           attempts: nextAttempts,
-          error: 'thinkrr_unavailable_or_unconfigured',
+          error: `${this.provider.providerName}_unavailable_or_unconfigured`,
           updatedAt: new Date(),
           ...(finalStatus === 'failed' ? { endedAt: new Date() } : {}),
         })
@@ -294,19 +305,29 @@ export class OutboundVoiceService {
       return updated[0];
     }
 
-    const updated = await this.db
-      .update(outboundCalls)
-      .set({
-        status: 'dialing',
-        thinkrrCallId: result.thinkrrCallId,
-        attempts: call.attempts + 1,
-        startedAt: new Date(),
-        outcome: { consent_check_skipped: consentSkipped } as never,
-        updatedAt: new Date(),
-      })
+    // Persist the provider-call-id on the matching column. Update via raw
+    // SQL so the new retell_call_id column doesn't require a Drizzle schema
+    // regen before this PR lands.
+    const providerIdColumn = this.provider.providerName === 'retell'
+      ? 'retell_call_id'
+      : 'thinkrr_call_id';
+    await this.db.execute(
+      sql`update outbound_calls
+          set status = 'dialing',
+              ${sql.raw(providerIdColumn)} = ${result.providerCallId},
+              provider = ${this.provider.providerName},
+              attempts = ${call.attempts + 1},
+              started_at = now(),
+              outcome = ${JSON.stringify({ consent_check_skipped: consentSkipped })}::jsonb,
+              updated_at = now()
+          where id = ${call.id}`,
+    );
+    const rows = await this.db
+      .select()
+      .from(outboundCalls)
       .where(eq(outboundCalls.id, call.id))
-      .returning();
-    return updated[0];
+      .limit(1);
+    return rows[0];
   }
 
   // ---------- retry cron ----------
@@ -318,9 +339,6 @@ export class OutboundVoiceService {
   }
 
   async retryFailed(): Promise<number> {
-    // Re-queue rows that failed for transient reasons (thinkrr_unavailable_*)
-    // and still have attempts under max_attempts. Backoff is implied by the
-    // every-5-minute cron; we don't store next_attempt_after explicitly.
     const candidates = await this.db
       .select()
       .from(outboundCalls)
@@ -328,7 +346,7 @@ export class OutboundVoiceService {
         and(
           eq(outboundCalls.status, 'failed'),
           sql`${outboundCalls.attempts} < ${outboundCalls.maxAttempts}`,
-          sql`${outboundCalls.error} ILIKE 'thinkrr_unavailable%'`,
+          sql`(${outboundCalls.error} ILIKE 'thinkrr_unavailable%' OR ${outboundCalls.error} ILIKE 'retell_unavailable%')`,
         ),
       )
       .limit(50);
@@ -340,24 +358,15 @@ export class OutboundVoiceService {
     return candidates.length;
   }
 
-  // ---------- webhook handler ----------
+  // ---------- webhook handlers ----------
 
   /**
-   * Idempotent on `thinkrr_call_id`. Webhook controller is responsible for
-   * verifying the signature; this method trusts its input.
-   *
-   * Status mapping (Thinkrr → outbound_calls.status):
-   *   ringing | initiated  → dialing
-   *   in_progress           → in_progress
-   *   completed             → completed
-   *   no_answer             → no_answer
-   *   busy                  → busy
-   *   rejected | declined   → rejected
-   *   failed | error        → failed
-   *   canceled | cancelled  → cancelled
+   * Legacy Thinkrr-only path. Kept for backward compatibility with the
+   * existing /webhooks/thinkrr/outbound-result endpoint. Delegates to
+   * handleProviderWebhookEvent with provider='thinkrr'.
    */
   async handleWebhookEvent(event: {
-    callId: string; // thinkrr_call_id
+    callId: string;
     status: string;
     durationSeconds?: number | null;
     transcript?: string | null;
@@ -366,22 +375,43 @@ export class OutboundVoiceService {
     error?: string | null;
     timestampIso?: string | null;
   }): Promise<{ matched: boolean; previousStatus: string | null; newStatus: string | null }> {
+    return this.handleProviderWebhookEvent({ provider: 'thinkrr', ...event });
+  }
+
+  /**
+   * Session 68 — provider-agnostic webhook event handler. Idempotent on
+   * the provider-specific call id column. Webhook controllers verify
+   * signatures before calling this.
+   */
+  async handleProviderWebhookEvent(event: {
+    provider: 'retell' | 'thinkrr';
+    callId: string;
+    status: string;
+    durationSeconds?: number | null;
+    transcript?: string | null;
+    recordingUrl?: string | null;
+    outcome?: Record<string, unknown> | null;
+    error?: string | null;
+    timestampIso?: string | null;
+  }): Promise<{ matched: boolean; previousStatus: string | null; newStatus: string | null }> {
+    const lookupColumn = event.provider === 'retell' ? sql`retell_call_id` : sql`thinkrr_call_id`;
     const rows = await this.db
       .select()
       .from(outboundCalls)
-      .where(eq(outboundCalls.thinkrrCallId, event.callId))
+      .where(sql`${lookupColumn} = ${event.callId}`)
       .limit(1);
     const existing = rows[0];
     if (!existing) {
-      this.logger.warn(`[outbound-voice] webhook for unknown thinkrr_call_id=${event.callId}`);
+      this.logger.warn(
+        `[outbound-voice] webhook for unknown ${event.provider}_call_id=${event.callId}`,
+      );
       return { matched: false, previousStatus: null, newStatus: null };
     }
 
-    const newStatus = mapThinkrrStatus(event.status);
+    const newStatus = mapProviderStatus(event.status);
     if (!newStatus) {
       return { matched: true, previousStatus: existing.status, newStatus: null };
     }
-    // Idempotency: if the row already advanced past this status, ignore.
     if (TERMINAL_STATUSES.has(existing.status) && existing.status === newStatus) {
       return { matched: true, previousStatus: existing.status, newStatus: existing.status };
     }
@@ -410,7 +440,6 @@ export class OutboundVoiceService {
   }
 
   // ---------- lifecycle hooks ----------
-  // Other modules import the service and call these. None of these throw.
 
   async notifyJobDispatched(input: {
     tenantId: string;
@@ -533,6 +562,7 @@ export class OutboundVoiceService {
     enabled: boolean;
     config: Record<string, unknown>;
     availablePurposes: string[];
+    activeProvider: string;
   }> {
     const rows = await this.db
       .select({
@@ -547,6 +577,7 @@ export class OutboundVoiceService {
       enabled: row?.enabled ?? false,
       config: (row?.config as Record<string, unknown> | null) ?? {},
       availablePurposes: Object.values(SCRIPT_TEMPLATES).map((t) => t.purpose),
+      activeProvider: this.provider.providerName,
     };
   }
 
@@ -615,9 +646,9 @@ const TERMINAL_STATUSES = new Set([
   'cancelled',
 ]);
 
-function mapThinkrrStatus(raw: string): string | null {
+function mapProviderStatus(raw: string): string | null {
   const s = raw.toLowerCase().trim();
-  if (s === 'ringing' || s === 'initiated' || s === 'queued') return 'dialing';
+  if (s === 'ringing' || s === 'initiated' || s === 'queued' || s === 'dialing') return 'dialing';
   if (s === 'in_progress' || s === 'in-progress' || s === 'answered') return 'in_progress';
   if (s === 'completed' || s === 'success' || s === 'ok') return 'completed';
   if (s === 'no_answer' || s === 'no-answer' || s === 'unanswered') return 'no_answer';
@@ -660,7 +691,7 @@ function readConfigArray(
   return null;
 }
 
-function buildCallbackUrl(): string {
+function buildCallbackUrl(provider: 'retell' | 'thinkrr'): string {
   const base = (process.env.PUBLIC_BASE_URL ?? 'http://localhost:3001').replace(/\/$/, '');
-  return `${base}/webhooks/thinkrr/outbound-result`;
+  return `${base}/webhooks/${provider}/outbound-result`;
 }
