@@ -55,5 +55,6 @@ export enum SoftwareType {
   TOWLOGS = 'TOWLOGS',
   OMADI = 'OMADI',
   AAA_PORTAL = 'AAA_PORTAL',
+  DISPATCH_ANYWHERE = 'DISPATCH_ANYWHERE',
   NATIVE = 'NATIVE',
 }

@@ -4,6 +4,7 @@ import { TowbookAdapter } from './towbook/towbook.adapter';
 import { AaaPortalAdapter } from './aaa-portal/aaa-portal.adapter';
 import { TowLogsAdapter } from './towlogs/towlogs.adapter';
 import { OmadiAdapter } from './omadi/omadi.adapter';
+import { DispatchAnywhereAdapter } from './dispatch-anywhere/dispatch-anywhere.adapter';
 @Injectable()
 export class AdapterFactory {
   constructor(
@@ -11,6 +12,7 @@ export class AdapterFactory {
     private readonly aaaPortal: AaaPortalAdapter,
     private readonly towlogs: TowLogsAdapter,
     private readonly omadi: OmadiAdapter,
+    private readonly dispatchAnywhere: DispatchAnywhereAdapter,
   ) {}
   getAdapter(softwareType: string): TowingSoftwareAdapter {
     switch (softwareType.toUpperCase()) {
@@ -22,6 +24,8 @@ export class AdapterFactory {
         return this.towlogs;
       case SoftwareType.OMADI:
         return this.omadi;
+      case SoftwareType.DISPATCH_ANYWHERE:
+        return this.dispatchAnywhere;
       case SoftwareType.NATIVE:
         throw new Error(`Adapter for ${softwareType} not implemented yet`);
       default:
