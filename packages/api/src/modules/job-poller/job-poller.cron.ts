@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { eq } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { tenants } from '../../db/schema';
+import { tenantCredentials, tenants } from '../../db/schema';
 import { AdapterFactory } from '../adapters/adapter.factory';
 import type { ActiveJob } from '../adapters/adapter.interface';
 import { CommandCenterService } from '../command-center/command-center.service';
@@ -81,6 +81,24 @@ export class JobPollerCron {
         `Tenant ${tenant.id} software ${tenant.targetSoftwareType} has no unified-jobs mapping`,
       );
       return;
+    }
+
+    // S65 — circuit breaker. If credentials have failed 3 or more times
+    // in the last hour, stop hammering the upstream until the cooldown
+    // expires. Operators can clear failed_login_count manually after
+    // fixing the credentials, or wait for the natural backoff.
+    const cred = await this.db.query.tenantCredentials.findFirst({
+      where: eq(tenantCredentials.tenantId, tenant.id),
+    });
+    if (cred && cred.failedLoginCount >= 3) {
+      const lastFailureMs = cred.lastFailureAt?.getTime() ?? 0;
+      const cooldownMs = 60 * 60 * 1000; // 1 hour
+      if (Date.now() - lastFailureMs < cooldownMs) {
+        this.logger.debug(
+          `Circuit breaker open for tenant ${tenant.id} (failedLoginCount=${cred.failedLoginCount}). Skipping until cooldown.`,
+        );
+        return;
+      }
     }
 
     try {
