@@ -33,6 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/calls', label: 'Calls', icon: 'calls' },
       { href: '/admin/sms-log', label: 'SMS Log', icon: 'sms-log' },
+      { href: '/admin/outbound-voice', label: 'Outbound Voice', icon: 'outbound-voice' },
       { href: '/admin/digest', label: 'Digest', icon: 'digest' },
     ],
   },
