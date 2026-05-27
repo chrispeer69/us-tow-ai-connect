@@ -75,6 +75,15 @@ locator strategy that worked for AAA. Every guess is verified by the adapter at
 runtime (count > 0 + visible + enabled) before it clicks anything; misses
 return `{ success: false, error }` and screenshot to `/tmp` rather than
 throwing.
+## Omadi (omadi.com)
+
+Omadi is dispatch software for tow operators. Built **best-effort** in Session
+52 — no live credentials were available at build time, so selectors are
+educated guesses derived from common dispatch-SPA conventions and the
+role-based locator strategy that worked for AAA. Every guess is verified by
+the adapter at runtime (count > 0 + visible + enabled) before it clicks
+anything; misses return `{ success: false, error }` and screenshot to `/tmp`
+rather than throwing.
 
 ### Login (best-effort)
 | Step | Selector | Confidence |
@@ -101,6 +110,24 @@ which pierces open shadow DOM. Tried in order, first visible+enabled hit wins:
 |--------|---------------------------|------------|
 | **Accept** | `Accept`, `Accept Job`, `Accept Call`, `Accept Dispatch` | placeholder |
 | **Decline** | `Decline`, `Decline Job`, `Decline Call`, `Reject` | placeholder |
+### Dispatch board / open-jobs list
+- URL: `https://app.omadi.com/dispatch` (assumed — needs confirmation)
+- Row selector candidates (first non-empty wins, in this order):
+  `[data-job-id]`, `[data-call-id]`, `[data-dispatch-id]`,
+  `table tbody tr[data-id]`, `tr.dispatch-row`, `.dispatch-row`,
+  `tr.job-row`, `.job-row`, `.job-card`, `[role="row"]`
+- Per-row fields read from optional child selectors (`[data-customer]` /
+  `.customer-name`, `[data-vehicle]` / `.vehicle`, etc.) — `cleanText()` returns
+  empty string when absent.
+
+### Action buttons (best-effort, role-based)
+The adapter locates Accept / Decline with `getByRole('button', { name, exact: true })`,
+which pierces open shadow DOM. Tried in order, first visible+enabled wins:
+
+| Action | Accessible name candidates | Confidence |
+|--------|---------------------------|------------|
+| **Accept** | `Accept`, `Accept Job`, `Accept Dispatch`, `Accept Call` | placeholder |
+| **Decline** | `Decline`, `Decline Job`, `Decline Dispatch`, `Reject` | placeholder |
 | **Confirm modal** | `Decline`, `Accept`, `Submit`, `Confirm`, `Save`, `OK`, `Yes` | placeholder |
 
 ### Confirmation indicators
@@ -135,6 +162,36 @@ inverse pattern.
    resolves > 0 rows; pin that selector at the top of the array.
 4. Note exact button label for Accept (`Accept` vs `Accept Job` vs `Accept Call`)
    and Decline.
+as `confirmationEvidence`. If absent, falls back to a synthetic timestamp
+string (`"action submitted at <ISO> (no toast captured)"`).
+
+### dispatchJob — not-applicable stub
+Omadi is dispatch software for the operator's own jobs; it is not a motor-club
+intake broker with a verified public write API. Adapter returns
+`{ success: false, error: 'not-applicable: ...' }` — matches the
+Towbook / TowLogs pattern.
+
+### Known gotchas
+1. **Login URL unverified** — `https://app.omadi.com/login` is the
+   conventional pattern; confirm against the real marketing/app split if
+   different.
+2. **Dispatch URL unverified** — `https://app.omadi.com/dispatch` is a guess;
+   the real path may be `/jobs`, `/calls`, `/board`, etc.
+3. **Row schema unknown** — the row extractor reads optional child selectors;
+   real rows will likely surface only a subset, so scrape may return sparse
+   `ActiveJob` records until selectors are spot-checked.
+4. **Modal flow unverified** — best-effort `[role="dialog"], .modal` scope; if
+   Omadi uses a custom component, the confirm-button click will be skipped
+   silently and the primary click is still recorded.
+
+### Human verification checklist (Omadi — first live job)
+1. Confirm login URL (`https://app.omadi.com/login` vs alternate host).
+2. Confirm dispatch URL (`/dispatch` vs `/jobs`, `/calls`, `/board`).
+3. Open browser devtools on a real dispatch list and report which
+   `ROW_SELECTOR_CANDIDATES` resolves > 0 rows; pin that selector at the top
+   of the array.
+4. Note exact button label for Accept (`Accept` vs `Accept Job` vs
+   `Accept Dispatch`) and Decline.
 5. Confirm the reason-modal label/structure when declining a real job.
 6. Note the post-action confirmation indicator (toast / status change / route
    change) so `confirmationEvidence` captures something meaningful.
@@ -142,6 +199,9 @@ inverse pattern.
 After verification, update `LOGIN_URL`, `OPEN_JOBS_URL`, `ROW_SELECTOR_CANDIDATES`,
 `ACCEPT_BUTTON_NAMES`, `DECLINE_BUTTON_NAMES`, `CONFIRM_BUTTON_NAMES`, and the
 toast-locator in `towlogs.adapter.ts`.
+After verification, update `LOGIN_URL`, `DISPATCH_URL`,
+`ROW_SELECTOR_CANDIDATES`, `ACCEPT_BUTTON_NAMES`, `DECLINE_BUTTON_NAMES`,
+`CONFIRM_BUTTON_NAMES`, and the toast-locator in `omadi.adapter.ts`.
 
 ## Human verification checklist (Chris)
 1. When a **real offered/pending** AAA job exists, open it and confirm the

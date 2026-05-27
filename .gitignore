@@ -22,3 +22,4 @@ docs/diagnostics/*.png
 # gitleaks binary + raw report (report embeds matched strings)
 scripts/security/bin/
 docs/security/gitleaks-report.json
+# Adapter discovery screenshots may contain real customer PII — keep them local.
