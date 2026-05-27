@@ -2,6 +2,9 @@ import { Global, Module } from '@nestjs/common';
 import { TenantsModule } from '../tenants/tenants.module';
 import { FlipEngineController } from './flip-engine.controller';
 import { FlipEngineService } from './flip-engine.service';
+import { DestinationClassifierService } from './destination-classifier.service';
+import { IssueClassifierService } from './issue-classifier.service';
+import { FlipOrchestratorService } from './flip-orchestrator.service';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -17,7 +20,17 @@ import { FlipEngineService } from './flip-engine.service';
 @Module({
   imports: [TenantsModule],
   controllers: [FlipEngineController],
-  providers: [FlipEngineService],
-  exports: [FlipEngineService],
+  providers: [
+    FlipEngineService,
+    DestinationClassifierService,
+    IssueClassifierService,
+    FlipOrchestratorService,
+  ],
+  exports: [
+    FlipEngineService,
+    DestinationClassifierService,
+    IssueClassifierService,
+    FlipOrchestratorService,
+  ],
 })
 export class FlipEngineModule {}
