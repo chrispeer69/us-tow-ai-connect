@@ -15,7 +15,7 @@ import { Injectable, Logger } from '@nestjs/common';
  * payload here and the rest of the module is untouched.
  */
 @Injectable()
-export class ThinkrrOutboundClient {
+export class ThinkrrOutboundClient {readonly providerName = 'thinkrr' as const;
   private readonly logger = new Logger(ThinkrrOutboundClient.name);
   private readonly apiUrl: string | null;
   private readonly apiKey: string | null;
