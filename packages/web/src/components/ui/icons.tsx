@@ -15,6 +15,7 @@ export type IconName =
   | 'calls'
   | 'sms-log'
   | 'outbound-voice'
+  | 'flip-engine'
   | 'digest'
   | 'integrations'
   | 'routing'
@@ -46,6 +47,13 @@ const PATHS: Record<IconName, string[]> = {
     'M5 4h3l2 5-2 1a11 11 0 0 0 5 5l1-2 5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z',
     'M16 4a5 5 0 0 1 4 4',
     'M16 8a2 2 0 0 1 2 2',
+  ],
+  // Two arrows curving in opposite directions = redirect / flip.
+  'flip-engine': [
+    'M4 9a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5',
+    'M20 15a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5',
+    'M5 6L4 9l3-1',
+    'M19 18l1-3-3 1',
   ],
   digest: ['M5 4h11l3 3v13H5z', 'M9 9h6M9 13h6M9 17h4'],
   integrations: ['M9 7V4h6v3', 'M5 7h14v4a7 7 0 0 1-14 0z', 'M12 18v2'],
