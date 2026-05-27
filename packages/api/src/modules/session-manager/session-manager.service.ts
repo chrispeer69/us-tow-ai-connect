@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -8,6 +8,7 @@ import { tenants, tenantCredentials } from '../../db/schema';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { AdapterFactory } from '../adapters/adapter.factory';
 import { NotificationService } from '../notifications/notification.service';
+import { classifyFailure } from './classify-failure';
 
 @Injectable()
 export class SessionManagerService {
@@ -61,14 +62,38 @@ export class SessionManagerService {
         await adapter.login(tenant.id, decoded);
         await this.db
           .update(tenantCredentials)
-          .set({ sessionStatus: 'ACTIVE', lastLoginSuccess: new Date(), updatedAt: new Date() })
+          .set({
+            sessionStatus: 'ACTIVE',
+            lastLoginSuccess: new Date(),
+            updatedAt: new Date(),
+            // Clear failure observability after a successful login so the
+            // admin UI doesn't keep showing a stale reason.
+            failureReason: null,
+            failureKind: null,
+            failedLoginCount: 0,
+            lastFailureAt: null,
+          })
           .where(eq(tenantCredentials.tenantId, tenant.id));
         this.logger.log(`Session refreshed for tenant ${tenant.id}`);
       } catch (error) {
-        this.logger.error(`Session refresh FAILED for tenant ${tenant.id}: ${(error as Error).message}`);
+        const message = (error as Error).message ?? 'unknown';
+        const kind = classifyFailure(message);
+        // Truncate at 2000 chars so an unbounded Playwright dump cannot
+        // blow up the row size.
+        const reason = message.slice(0, 2000);
+        this.logger.error(
+          `Session refresh FAILED for tenant ${tenant.id} (kind=${kind}): ${message}`,
+        );
         await this.db
           .update(tenantCredentials)
-          .set({ sessionStatus: 'FAILED', updatedAt: new Date() })
+          .set({
+            sessionStatus: 'FAILED',
+            updatedAt: new Date(),
+            failureReason: reason,
+            failureKind: kind,
+            lastFailureAt: new Date(),
+            failedLoginCount: sql`${tenantCredentials.failedLoginCount} + 1`,
+          })
           .where(eq(tenantCredentials.tenantId, tenant.id));
         await this.notificationService.sendSessionAlert(
           tenant.ownerEmail,

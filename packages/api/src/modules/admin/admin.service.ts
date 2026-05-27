@@ -22,6 +22,7 @@ import {
 } from '../../db/schema';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { AdapterFactory } from '../adapters/adapter.factory';
+import { classifyFailure } from '../session-manager/classify-failure';
 import type {
   AgentConfigUpdateBody,
   ApiKeyCreateBody,
@@ -172,12 +173,20 @@ export class AdminService {
     const adapter = this.adapters.getAdapter(softwareType);
     const result = await adapter.testConnection(decoded);
     const next = result.success ? 'ACTIVE' : 'FAILED';
+    const failureReason = result.success ? null : (result.message ?? '').slice(0, 2000);
+    const failureKind = result.success ? null : classifyFailure(result.message ?? '');
     await this.db
       .update(tenantCredentials)
       .set({
         sessionStatus: next,
         lastLoginSuccess: result.success ? new Date() : cred.lastLoginSuccess,
         updatedAt: new Date(),
+        failureReason,
+        failureKind,
+        lastFailureAt: result.success ? null : new Date(),
+        failedLoginCount: result.success
+          ? 0
+          : sql`${tenantCredentials.failedLoginCount} + 1`,
       })
       .where(eq(tenantCredentials.tenantId, tenantId));
     return result;
@@ -201,6 +210,11 @@ export class AdminService {
       hasCredentials: !!cred,
       sessionStatus: cred?.sessionStatus ?? 'NEW',
       lastLoginSuccess: cred?.lastLoginSuccess ?? null,
+      // S65 — failure observability exposed to the admin UI.
+      failureReason: cred?.failureReason ?? null,
+      failureKind: cred?.failureKind ?? null,
+      failedLoginCount: cred?.failedLoginCount ?? 0,
+      lastFailureAt: cred?.lastFailureAt ?? null,
     };
   }
 

@@ -91,6 +91,14 @@ export const tenantCredentials = pgTable('tenant_credentials', {
   authTag: text('auth_tag').notNull(),
   sessionStatus: varchar('session_status', { length: 20 }).notNull().default('PENDING'),
   lastLoginSuccess: timestamp('last_login_success', { withTimezone: true }),
+  // S65 — failure observability so operators can read WHY a login failed
+  // straight out of the database. Populated by SessionManagerService catch
+  // block. `failureKind` is a coarse category for grouping; `failureReason`
+  // is the exception .message string.
+  failureReason: text('failure_reason'),
+  failureKind: varchar('failure_kind', { length: 40 }),
+  failedLoginCount: integer('failed_login_count').notNull().default(0),
+  lastFailureAt: timestamp('last_failure_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
