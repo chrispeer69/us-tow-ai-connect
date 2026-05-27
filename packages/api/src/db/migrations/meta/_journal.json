@@ -155,6 +155,14 @@
       "when": 1749070000000,
       "tag": "0022_members_rbac",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1749080000000,
+      "tag": "0024_outbound_voice",
+      "breakpoints": true
     }
   ]
 }
+
