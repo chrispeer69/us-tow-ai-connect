@@ -55,6 +55,21 @@ export const tenants = pgTable('tenants', {
   //   }
   outboundVoiceEnabled: boolean('outbound_voice_enabled').notNull().default(false),
   outboundVoiceConfig: jsonb('outbound_voice_config').notNull().default({} as unknown as never),
+  // Session 49b: outbound flip engine opt-in. Disabled by default. The poller
+  // skips tenants with this flag false at SQL level so an unconfigured tenant
+  // costs zero CPU. Config jsonb shape:
+  //   {
+  //     poll_interval_seconds?: number,                  // default 60
+  //     no_flip_confidence_threshold?: number,           // default 0.85
+  //     no_flip_categories?: string[],                   // default ['single_tire_issue','jump_start','lockout','fuel_delivery','winch_out','accident_with_airbags']
+  //     daily_report_hour_local?: number,                // 0-23, default 21
+  //     batch_summary_size?: number,                     // default 10
+  //     send_batch_summaries?: boolean,                  // default true
+  //     send_daily_report?: boolean,                     // default true
+  //     mention_rentals?: boolean                        // default true
+  //   }
+  flipEngineEnabled: boolean('flip_engine_enabled').notNull().default(false),
+  flipEngineConfig: jsonb('flip_engine_config').notNull().default({} as unknown as never),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -974,3 +989,69 @@ export const outboundCalls = pgTable(
 );
 export type OutboundCallRow = typeof outboundCalls.$inferSelect;
 export type OutboundCallInsert = typeof outboundCalls.$inferInsert;
+
+// ============ ALPHA SHOPS (Session 49b — partner shop registry) ============
+// Per-tenant list of partner repair / body shops the flip engine can
+// redirect calls to. Tenant-zero is seeded with all 9 Alpha Automotive
+// shops in 0025_alpha_shops.sql; every other tenant starts empty.
+export const alphaShops = pgTable(
+  'alpha_shops',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 180 }).notNull(),
+    shopType: varchar('shop_type', { length: 20 }).notNull(), // REPAIR | BODY
+    addressLine: varchar('address_line', { length: 255 }).notNull(),
+    city: varchar('city', { length: 100 }).notNull(),
+    state: varchar('state', { length: 2 }).notNull(),
+    postalCode: varchar('postal_code', { length: 20 }).notNull(),
+    lat: numeric('lat', { precision: 10, scale: 6 }),
+    lng: numeric('lng', { precision: 10, scale: 6 }),
+    phone: varchar('phone', { length: 20 }),
+    website: text('website'),
+    rentalPickupAvailable: boolean('rental_pickup_available').notNull().default(true),
+    active: boolean('active').notNull().default(true),
+    specialties: jsonb('specialties').notNull().default([] as unknown as never),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantActiveIdx: index('alpha_shops_tenant_active_idx').on(t.tenantId, t.active),
+    tenantTypeIdx: index('alpha_shops_tenant_type_idx').on(t.tenantId, t.shopType),
+  }),
+);
+export type AlphaShopRow = typeof alphaShops.$inferSelect;
+export type AlphaShopInsert = typeof alphaShops.$inferInsert;
+
+// ============ AAA-BRANDED BLOCKLIST (Session 49b) ============
+// Hard guardrail backing the "never flip a AAA call going to a AAA-branded
+// repair location" rule. The flip engine first applies the regex
+// /\bAAA\b/i to the destination business name; this table is the
+// operator-managed override layer for regional brand variants and
+// specific addresses. Tenant-scoped.
+export const aaaBrandedBlocklist = pgTable(
+  'aaa_branded_blocklist',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    matchType: varchar('match_type', { length: 20 }).notNull(), // NAME_PATTERN | EXACT_NAME | EXACT_ADDRESS | PHONE
+    matchValue: varchar('match_value', { length: 255 }).notNull(),
+    label: varchar('label', { length: 180 }).notNull(),
+    notes: text('notes'),
+    active: boolean('active').notNull().default(true),
+    addedBy: varchar('added_by', { length: 255 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantActiveIdx: index('aaa_branded_blocklist_tenant_active_idx').on(t.tenantId, t.active),
+    matchIdx: index('aaa_branded_blocklist_match_idx').on(t.matchType, t.matchValue),
+  }),
+);
+export type AaaBrandedBlocklistRow = typeof aaaBrandedBlocklist.$inferSelect;
+export type AaaBrandedBlocklistInsert = typeof aaaBrandedBlocklist.$inferInsert;
