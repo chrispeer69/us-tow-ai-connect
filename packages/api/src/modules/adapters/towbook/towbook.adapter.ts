@@ -50,8 +50,9 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
   async login(tenantId: string, creds: DecryptedCredentials): Promise<void> {
-    const browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
+    let browser: import('playwright').Browser | undefined;
     try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -79,7 +80,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       );
       throw error;
     } finally {
-      await browser.close().catch(() => undefined);
+      if (browser) await browser.close().catch(() => undefined);
     }
   }
 
@@ -90,8 +91,9 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     }
 
     const storageState = JSON.parse(stateJson);
-    const browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
+    let browser: import('playwright').Browser | undefined;
     try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
       const context = await browser.newContext({ storageState });
       const page = await context.newPage();
 
@@ -125,14 +127,15 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       this.logger.log(`Scraped ${deduped.length} active jobs for tenant ${tenantId}`);
       return deduped;
     } finally {
-      await browser.close().catch(() => undefined);
+      if (browser) await browser.close().catch(() => undefined);
     }
   }
 
   async testConnection(creds: DecryptedCredentials): Promise<AdapterConnectionTestResult> {
     const start = Date.now();
-    const browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
+    let browser: import('playwright').Browser | undefined;
     try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
       const context = await browser.newContext();
       const page = await context.newPage();
       await page.goto(this.LOGIN_URL, { waitUntil: 'networkidle', timeout: 30_000 });
@@ -148,7 +151,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
         latencyMs: Date.now() - start,
       };
     } finally {
-      await browser.close().catch(() => undefined);
+      if (browser) await browser.close().catch(() => undefined);
     }
   }
 

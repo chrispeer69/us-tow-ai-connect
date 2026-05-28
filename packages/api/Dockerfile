@@ -102,6 +102,7 @@ COPY --from=build /app/packages/api/src/db         packages/api/src/db
 # matched Chromium build at /ms-playwright, and `npx playwright` at
 # WORKDIR /app could not resolve the CLI anyway (pnpm puts it under
 # packages/api/node_modules/.bin, not /app/node_modules/.bin).
+RUN chown -R pwuser:pwuser /app
 USER pwuser
 
 EXPOSE 3001

@@ -6,6 +6,7 @@
   "author": "Blue Collar AI <chris@bluecollarai.online>",
   "license": "UNLICENSED",
   "scripts": {
+    "dev": "pnpm -r --parallel dev",
     "dev:api": "pnpm --filter @ustow/api dev",
     "dev:web": "pnpm --filter @ustow/web dev",
     "build:api": "pnpm --filter @ustow/api build",

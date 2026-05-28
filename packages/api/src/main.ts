@@ -12,7 +12,7 @@ import 'dotenv/config';
 // captures the path at module-load time. Railway sometimes scrubs ENV
 // declarations from Dockerfiles; setting it in JS as a fallback means the
 // container works whether or not the orchestrator honours the Dockerfile.
-if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
+if (process.env.NODE_ENV === 'production' && !process.env.PLAYWRIGHT_BROWSERS_PATH) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '/ms-playwright';
 }
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
