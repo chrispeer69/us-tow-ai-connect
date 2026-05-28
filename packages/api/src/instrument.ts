@@ -19,13 +19,26 @@
  */
 import 'dotenv/config';
 import * as Sentry from '@sentry/nestjs';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
+
+// @sentry/profiling-node ships a native C++ addon (.node binary). If the
+// binary was compiled on a different distro than the runtime image (e.g.
+// Debian Bookworm build → Ubuntu Jammy runtime) the require() will throw
+// or segfault. Wrap defensively so the app boots regardless.
+let profilingIntegration: (() => Sentry.Integration) | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { nodeProfilingIntegration } = require('@sentry/profiling-node');
+  profilingIntegration = nodeProfilingIntegration;
+} catch {
+  // eslint-disable-next-line no-console
+  console.warn('[sentry] @sentry/profiling-node not available — profiling disabled');
+}
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   environment: process.env.NODE_ENV ?? 'production',
   tracesSampleRate: 0.1,
   profilesSampleRate: 0.1,
-  integrations: [nodeProfilingIntegration()],
+  integrations: profilingIntegration ? [profilingIntegration()] : [],
   enabled: !!process.env.SENTRY_DSN,
 });
