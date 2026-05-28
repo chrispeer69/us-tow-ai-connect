@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FlipOrchestratorService } from './flip-orchestrator.service';
 import { FlipEngineService } from './flip-engine.service';
-import { TenantService } from '../tenant/tenant.service';
+import { TenantsService } from '../tenants/tenants.service';
 
 @Injectable()
 export class FlipOrchestratorCron {
@@ -11,7 +11,7 @@ export class FlipOrchestratorCron {
   constructor(
     private orchestrator: FlipOrchestratorService,
     private flipEngine: FlipEngineService,
-    private tenants: TenantService,
+    private tenants: TenantsService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -26,11 +26,11 @@ export class FlipOrchestratorCron {
           try {
             await this.orchestrator.handleJob(tenant.id, job);
           } catch (err) {
-            this.logger.error(Job failed: , err);
+            this.logger.error(`Job failed: ${job.jobId}`, err);
           }
         }
       } catch (err) {
-        this.logger.error(Tenant  failed, err);
+        this.logger.error(`Tenant ${tenant.id} failed`, err);
       }
     }
   }
