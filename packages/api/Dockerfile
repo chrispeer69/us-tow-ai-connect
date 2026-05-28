@@ -95,18 +95,13 @@ COPY --from=build /app/packages/api/node_modules   packages/api/node_modules
 # runtime so the preDeployCommand can apply migrations.
 COPY --from=build /app/packages/api/src/db         packages/api/src/db
 
-# Belt-and-suspenders: even though the base image (v1.60.0-jammy) is pinned
-# to the resolved playwright npm version, drift between the image's baked
-# Chromium build and the one playwright npm expects has bitten us before
-# (e.g. ERROR [SessionManagerService] browser launch: Executable doesn't
-# exist at /ms-playwright/chromium_headless_shell-...). Re-running the
-# install against the workspace's playwright npm guarantees the headless
-# shell binary lands at the exact path SessionManagerService asks for.
-RUN npx playwright install --with-deps chromium
-
 # The official Playwright image is set up as root by default; switch to
 # the unprivileged 'pwuser' it creates for production runs. (Don't try to
 # switch to 'node' — that user does not exist in this base image.)
+# No `playwright install` step here: the base image already ships the
+# matched Chromium build at /ms-playwright, and `npx playwright` at
+# WORKDIR /app could not resolve the CLI anyway (pnpm puts it under
+# packages/api/node_modules/.bin, not /app/node_modules/.bin).
 USER pwuser
 
 EXPOSE 3001
