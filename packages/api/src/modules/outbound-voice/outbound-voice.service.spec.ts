@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OutboundVoiceService } from './outbound-voice.service';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
+import { RetellOutboundClient } from './retell-outbound.client';
 import { MissingVariableError } from './script-templates';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -126,6 +127,13 @@ function wrapCallRow(row: any) {
   return row;
 }
 
+function createSvc(db: any) {
+  const thinkrr = new ThinkrrOutboundClient();
+  const retell = new RetellOutboundClient();
+  const provider = { providerName: 'retell' } as any;
+  return new OutboundVoiceService(db as never, thinkrr, retell, provider);
+}
+
 describe('OutboundVoiceService', () => {
   beforeEach(() => {
     delete process.env.THINKRR_OUTBOUND_API_URL;
@@ -136,8 +144,7 @@ describe('OutboundVoiceService', () => {
 
   it('enqueueCall validates variables and inserts a queued row', async () => {
     const { db, calls } = makeFakeDb();
-    const client = new ThinkrrOutboundClient();
-    const svc = new OutboundVoiceService(db as never, client);
+    const svc = createSvc(db);
 
     const row = await svc.enqueueCall({
       tenantId: TENANT_ID,
@@ -160,8 +167,7 @@ describe('OutboundVoiceService', () => {
 
   it('enqueueCall raises MissingVariableError when required variable is empty', async () => {
     const { db } = makeFakeDb();
-    const client = new ThinkrrOutboundClient();
-    const svc = new OutboundVoiceService(db as never, client);
+    const svc = createSvc(db);
 
     await expect(
       svc.enqueueCall({
@@ -180,8 +186,7 @@ describe('OutboundVoiceService', () => {
 
   it('enqueueCall refuses when outbound_voice_enabled is false', async () => {
     const { db } = makeFakeDb([], { outboundVoiceEnabled: false });
-    const client = new ThinkrrOutboundClient();
-    const svc = new OutboundVoiceService(db as never, client);
+    const svc = createSvc(db);
 
     await expect(
       svc.enqueueCall({
@@ -212,8 +217,7 @@ describe('OutboundVoiceService', () => {
       endedAt: null,
     };
     const { db, calls } = makeFakeDb([seedRow]);
-    const client = new ThinkrrOutboundClient();
-    const svc = new OutboundVoiceService(db as never, client);
+    const svc = createSvc(db);
 
     const r1 = await svc.handleWebhookEvent({ callId: 'thinkrr-abc', status: 'in_progress' });
     expect(r1.matched).toBe(true);
@@ -247,7 +251,7 @@ describe('OutboundVoiceService', () => {
       endedAt: new Date(),
     };
     const { db } = makeFakeDb([seedRow]);
-    const svc = new OutboundVoiceService(db as never, new ThinkrrOutboundClient());
+    const svc = createSvc(db);
 
     const r = await svc.handleWebhookEvent({ callId: 'thinkrr-abc', status: 'completed' });
     expect(r.matched).toBe(true);
@@ -257,7 +261,7 @@ describe('OutboundVoiceService', () => {
 
   it('handleWebhookEvent returns matched=false on unknown call_id', async () => {
     const { db } = makeFakeDb();
-    const svc = new OutboundVoiceService(db as never, new ThinkrrOutboundClient());
+    const svc = createSvc(db);
 
     const r = await svc.handleWebhookEvent({ callId: 'nope', status: 'completed' });
     expect(r.matched).toBe(false);
