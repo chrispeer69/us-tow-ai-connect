@@ -1,4 +1,4 @@
-﻿services:
+services:
   postgres:
     image: postgres:16
     container_name: ustow-postgres
@@ -8,7 +8,7 @@
       POSTGRES_PASSWORD: ustow_dev
       POSTGRES_DB: ustow
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - ustow_pgdata:/var/lib/postgresql/data
 
