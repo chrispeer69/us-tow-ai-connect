@@ -15,7 +15,7 @@ import { Injectable, Logger } from '@nestjs/common';
  * payload here and the rest of the module is untouched.
  */
 @Injectable()
-export class ThinkrrOutboundClient {
+export class ThinkrrOutboundClient {readonly providerName = 'thinkrr' as const;
   private readonly logger = new Logger(ThinkrrOutboundClient.name);
   private readonly apiUrl: string | null;
   private readonly apiKey: string | null;
@@ -55,7 +55,7 @@ export class ThinkrrOutboundClient {
     tenantId: string;
     agentId?: string | null;
     callbackUrl?: string;
-  }): Promise<{ thinkrrCallId: string } | null> {
+  }): Promise<{ providerCallId: string } | null> {
     if (!this.isConfigured()) {
       this.logger.warn(
         `[outbound-voice] Thinkrr unconfigured — skipping placeCall for ${params.callId} (tenant ${params.tenantId})`,
@@ -106,7 +106,7 @@ export class ThinkrrOutboundClient {
         );
         return null;
       }
-      return { thinkrrCallId };
+      return { providerCallId: thinkrrCallId };
     } catch (err) {
       this.logger.warn(
         `[outbound-voice] Thinkrr placeCall threw for ${params.callId}: ${(err as Error).message}`,
