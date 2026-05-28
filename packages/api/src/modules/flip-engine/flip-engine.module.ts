@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TenantsModule } from '../tenants/tenants.module';
 import { FlipEngineController } from './flip-engine.controller';
 import { FlipActivityController } from './flip-activity.controller';
@@ -9,6 +10,7 @@ import { FlipOrchestratorService } from './flip-orchestrator.service';
 import { FlipNotifierService } from './flip-notifier.service';
 import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
 import { FlipOrchestratorCron } from './flip-orchestrator.cron';
+
 /**
  * Session 49b — Flip Engine data layer.
  *
@@ -21,7 +23,7 @@ import { FlipOrchestratorCron } from './flip-orchestrator.cron';
  */
 @Global()
 @Module({
-  imports: [TenantsModule, OutboundVoiceModule],
+  imports: [ScheduleModule.forRoot(), TenantsModule, OutboundVoiceModule],
   controllers: [FlipEngineController, FlipActivityController],
   providers: [
     FlipEngineService,
@@ -38,6 +40,6 @@ import { FlipOrchestratorCron } from './flip-orchestrator.cron';
     FlipOrchestratorService,
     FlipNotifierService,
     FlipOrchestratorCron,
-  ]
+  ],
 })
 export class FlipEngineModule {}
