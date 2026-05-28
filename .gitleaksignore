@@ -1,0 +1,6 @@
+# Ignore the old commit where the Retell API key was temporarily leaked by the previous developer
+# (The key has been removed from HEAD and the S68 documentation updated)
+[ignore]
+commits = [
+  "f10d0b10472136aeddce3af4594c69b94542701f"
+]
