@@ -51,4 +51,26 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// -----------------------------------------------------------------------------
+// Sentry build-time wrap.
+//
+// `withSentryConfig` injects the Sentry webpack plugin so client/server
+// bundles include the Sentry SDK and (when an auth token is available) uploads
+// source maps to sentry.io. `silent: true` suppresses the upload-related
+// console chatter on every build.
+//
+// Source-map upload is OFF until SENTRY_AUTH_TOKEN is set — without that
+// guard, local `pnpm build` would warn loudly and CI would fail with a "no
+// auth token" exit. When the token is set in Railway later (alongside
+// SENTRY_ORG + SENTRY_PROJECT) source-map upload kicks in automatically.
+// -----------------------------------------------------------------------------
+const { withSentryConfig } = require('@sentry/nextjs');
+
+module.exports = withSentryConfig(nextConfig, {
+  silent: true,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+  disableLogger: true,
+  widenClientFileUpload: false,
+});

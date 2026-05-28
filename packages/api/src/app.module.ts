@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AdminCspMiddleware } from './common/middleware/admin-csp.middleware';
 import { AdminIpAllowListGuard } from './common/guards/admin-ip-allowlist.guard';
@@ -45,6 +46,10 @@ import { DomainStatusController } from './modules/health/domain-status.controlle
 
 @Module({
   imports: [
+    // SentryModule.forRoot() wires the Nest interceptor that links Nest's
+    // request lifecycle to Sentry's active scope, so captured exceptions
+    // carry route + handler context. Init itself lives in instrument.ts.
+    SentryModule.forRoot(),
     ScheduleModule.forRoot(),
     RedisModule,
     EncryptionModule,

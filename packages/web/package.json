@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@react-google-maps/api": "^2.20.0",
+    "@sentry/nextjs": "^10.54.0",
     "@ustow/shared": "workspace:*",
     "clsx": "^2.1.0",
     "next": "^15.0.0",

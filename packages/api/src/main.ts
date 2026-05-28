@@ -1,3 +1,8 @@
+// MUST be the first import — @sentry/nestjs binds its OpenTelemetry
+// auto-instrumentation hooks inside Sentry.init(), and modules that have
+// already been require()'d by the time init runs are not re-patched.
+// See packages/api/src/instrument.ts for the init body.
+import './instrument';
 import 'reflect-metadata';
 import 'dotenv/config';
 
@@ -10,9 +15,10 @@ import 'dotenv/config';
 if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '/ms-playwright';
 }
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { initSentry } from './common/observability/sentry';
@@ -132,6 +138,17 @@ async function bootstrap() {
     }
     next();
   });
+
+  // Sentry's global exception filter wraps Nest's default BaseExceptionFilter
+  // so swallowed 500s — anything that bubbles past per-controller filters —
+  // are captured with full request context. Stays inert when SENTRY_DSN is
+  // unset because instrument.ts initialised Sentry with enabled:false.
+  // BaseExceptionFilter wants the abstract HttpServer; HttpAdapterHost on a
+  // NestExpressApplication narrows that to the Express instance, which is
+  // structurally compatible at runtime but not at the type level — hence
+  // the cast (matches how other Nest+Sentry templates do it).
+  const adapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new SentryGlobalFilter(adapterHost.httpAdapter as never));
 
   app.enableShutdownHooks();
 
