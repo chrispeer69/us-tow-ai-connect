@@ -24,9 +24,7 @@ COPY packages/api/package.json packages/api/
 COPY packages/shared/package.json packages/shared/
 COPY packages/web/package.json packages/web/
 
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile
-
+RUN pnpm install --frozen-lockfile
 # -----------------------------------------------------------------------------
 # Stage 2 — build
 #
