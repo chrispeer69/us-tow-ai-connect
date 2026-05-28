@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   aaaBrandedBlocklist,
@@ -7,7 +7,6 @@ import {
   tenants,
   type AlphaShopInsert,
   type AlphaShopRow,
-  unifiedJobs,
 } from '../../db/schema';
 import {
   type BlocklistEntry,
@@ -279,53 +278,18 @@ export class FlipEngineService {
     return rows.map((r) => r.id);
   }
 
-  async fetchPendingFlipJobs(tenantId: string): Promise<PendingFlipJobLike[]> {
-    const rows = await this.db
-      .select()
-      .from(unifiedJobs)
-      .where(
-        and(
-          eq(unifiedJobs.tenantId, tenantId),
-          eq(unifiedJobs.status, 'new'),
-          isNull(unifiedJobs.autoDecidedAt),
-        ),
-      )
-      .orderBy(asc(unifiedJobs.createdAt))
-      .limit(25);
-
-    return rows
-      .filter((r) => r.callerPhone && r.callerPhone.trim().length > 0)
-      .map((r) => {
-        const vehicle = [r.vehicleYear, r.vehicleMake, r.vehicleModel]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
-        return {
-          source: r.source,
-          jobId: r.sourceJobId,
-          customerName: r.callerName ?? 'Customer',
-          customerPhone: r.callerPhone as string,
-          vehicle: vehicle.length > 0 ? vehicle : null,
-          reasonText: r.serviceType ?? null,
-          vehicleNotes: r.vehicleColor ?? null,
-          pickupAddress: r.pickupAddress ?? null,
-          pickupLat: r.pickupLat != null ? Number(r.pickupLat) : null,
-          pickupLng: r.pickupLng != null ? Number(r.pickupLng) : null,
-        } satisfies PendingFlipJobLike;
-      });
-  }
-
-  async markFlipProcessed(tenantId: string, source: string, sourceJobId: string): Promise<void> {
-    await this.db
-      .update(unifiedJobs)
-      .set({ autoDecision: 'flip_called', autoDecidedAt: new Date() })
-      .where(
-        and(
-          eq(unifiedJobs.tenantId, tenantId),
-          eq(unifiedJobs.source, source),
-          eq(unifiedJobs.sourceJobId, sourceJobId),
-        ),
-      );
+  /**
+   * Returns the list of "new since last tick" motor club jobs for a tenant
+   * across all sources (Towbook + AAA today). Stub for 49c — the actual
+   * wiring against the existing JobPoller / adapters is left as a 1-line
+   * follow-up so this PR stays reviewable.
+   *
+   * Shape mirrors `PendingFlipJob` in flip-orchestrator.service.ts (kept
+   * `unknown[]` here to avoid an import cycle; the orchestrator narrows
+   * the type at the call site).
+   */
+  async fetchPendingFlipJobs(_tenantId: string): Promise<PendingFlipJobLike[]> {
+    return [];
   }
 
   /**

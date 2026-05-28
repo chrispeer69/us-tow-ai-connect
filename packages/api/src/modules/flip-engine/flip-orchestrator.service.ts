@@ -241,6 +241,7 @@ export class FlipOrchestratorService {
         scriptVariables: { body: fullBody },
         relatedJobId: null, // job.jobId is the source-side id, not a UUID
       });
+      await this.flipEngine.markFlipProcessed(tenantId, job.source, job.jobId);
       return true;
     } catch (err) {
       this.logger.warn(
