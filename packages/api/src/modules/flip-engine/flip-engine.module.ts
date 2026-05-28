@@ -7,6 +7,7 @@ import { DestinationClassifierService } from './destination-classifier.service';
 import { IssueClassifierService } from './issue-classifier.service';
 import { FlipOrchestratorService } from './flip-orchestrator.service';
 import { FlipNotifierService } from './flip-notifier.service';
+import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -20,7 +21,7 @@ import { FlipNotifierService } from './flip-notifier.service';
  */
 @Global()
 @Module({
-  imports: [TenantsModule],
+  imports: [TenantsModule, OutboundVoiceModule],
   controllers: [FlipEngineController, FlipActivityController],
   providers: [
     FlipEngineService,
