@@ -974,6 +974,8 @@ export const outboundCalls = pgTable(
     scriptTemplate: varchar('script_template', { length: 60 }).notNull(),
     scriptVariables: jsonb('script_variables').notNull().default({} as unknown as never),
     thinkrrCallId: varchar('thinkrr_call_id', { length: 120 }),
+    retellCallId: text('retell_call_id'),
+    provider: text('provider').notNull().default('thinkrr'),
     status: varchar('status', { length: 20 }).notNull().default('queued'),
     attempts: integer('attempts').notNull().default(0),
     maxAttempts: integer('max_attempts').notNull().default(3),
@@ -992,6 +994,8 @@ export const outboundCalls = pgTable(
     tenantStatusIdx: index('outbound_calls_tenant_status_idx').on(t.tenantId, t.status),
     scheduledForIdx: index('outbound_calls_scheduled_for_idx').on(t.scheduledFor),
     thinkrrCallIdIdx: uniqueIndex('outbound_calls_thinkrr_call_id_uniq').on(t.thinkrrCallId),
+    retellCallIdIdx: index('outbound_calls_retell_call_id_idx').on(t.retellCallId),
+    providerIdx: index('outbound_calls_provider_idx').on(t.provider),
     tenantCreatedIdx: index('outbound_calls_tenant_created_idx').on(t.tenantId, t.createdAt),
   }),
 );

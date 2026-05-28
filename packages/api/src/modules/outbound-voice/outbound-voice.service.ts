@@ -183,16 +183,11 @@ export class OutboundVoiceService {
         durationSeconds: null,
         error: null,
         thinkrrCallId: null,
-        // retellCallId column is wiped here too via raw SQL below if present
+        retellCallId: null,
         updatedAt: new Date(),
       } as never)
       .where(eq(outboundCalls.id, id))
       .returning();
-    // Belt-and-suspenders: clear retell_call_id at SQL level so existing
-    // Drizzle types don't need a regeneration before this PR lands.
-    await this.db.execute(
-      sql`update outbound_calls set retell_call_id = null where id = ${id}`,
-    );
     return updated[0];
   }
 
@@ -305,29 +300,22 @@ export class OutboundVoiceService {
       return updated[0];
     }
 
-    // Persist the provider-call-id on the matching column. Update via raw
-    // SQL so the new retell_call_id column doesn't require a Drizzle schema
-    // regen before this PR lands.
-    const providerIdColumn = this.provider.providerName === 'retell'
-      ? 'retell_call_id'
-      : 'thinkrr_call_id';
-    await this.db.execute(
-      sql`update outbound_calls
-          set status = 'dialing',
-              ${sql.raw(providerIdColumn)} = ${result.providerCallId},
-              provider = ${this.provider.providerName},
-              attempts = ${call.attempts + 1},
-              started_at = now(),
-              outcome = ${JSON.stringify({ consent_check_skipped: consentSkipped })}::jsonb,
-              updated_at = now()
-          where id = ${call.id}`,
-    );
-    const rows = await this.db
-      .select()
-      .from(outboundCalls)
+    const updated = await this.db
+      .update(outboundCalls)
+      .set({
+        status: 'dialing',
+        provider: this.provider.providerName,
+        attempts: call.attempts + 1,
+        startedAt: new Date(),
+        outcome: { consent_check_skipped: consentSkipped } as never,
+        updatedAt: new Date(),
+        ...(this.provider.providerName === 'retell'
+          ? { retellCallId: result.providerCallId }
+          : { thinkrrCallId: result.providerCallId }),
+      })
       .where(eq(outboundCalls.id, call.id))
-      .limit(1);
-    return rows[0];
+      .returning();
+    return updated[0];
   }
 
   // ---------- retry cron ----------
