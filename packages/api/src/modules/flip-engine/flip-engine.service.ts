@@ -288,8 +288,47 @@ export class FlipEngineService {
    * `unknown[]` here to avoid an import cycle; the orchestrator narrows
    * the type at the call site).
    */
-  async fetchPendingFlipJobs(_tenantId: string): Promise<PendingFlipJobLike[]> {
-    return [];
+  async fetchPendingFlipJobs(tenantId: string): Promise<PendingFlipJobLike[]> {
+    // Read-only feed of jobs the dispatch layer has marked `new` for this
+    // tenant. We intentionally do NOT mutate unified_jobs.status here — that
+    // column is the shared dispatch lifecycle. Per-tick dedupe is handled by
+    // the orchestrator's in-memory `seen` set.
+    const res = (await this.db.execute(sql`
+      SELECT id, source, source_job_id, caller_phone, caller_name,
+             vehicle_year, vehicle_make, vehicle_model, vehicle_color,
+             pickup_address, pickup_lat, pickup_lng, dropoff_address,
+             service_type
+      FROM unified_jobs
+      WHERE tenant_id = ${tenantId} AND status = 'new'
+      ORDER BY created_at ASC
+      LIMIT 50
+    `)) as unknown;
+    const rows: Array<Record<string, unknown>> = Array.isArray(res)
+      ? (res as Array<Record<string, unknown>>)
+      : ((res as { rows?: Array<Record<string, unknown>> }).rows ?? []);
+    return rows
+      .filter((r) => !!r.caller_phone)
+      .map((r) => ({
+        source: String(r.source),
+        jobId: String(r.source_job_id ?? r.id),
+        customerName: (r.caller_name as string) ?? '',
+        customerPhone: String(r.caller_phone),
+        vehicle:
+          [r.vehicle_year, r.vehicle_color, r.vehicle_make, r.vehicle_model]
+            .filter(Boolean)
+            .join(' ') || null,
+        reasonText: (r.service_type as string) ?? null,
+        pickupAddress: (r.pickup_address as string) ?? null,
+        pickupLat: r.pickup_lat != null ? Number(r.pickup_lat) : null,
+        pickupLng: r.pickup_lng != null ? Number(r.pickup_lng) : null,
+        destinationName: null,
+        destinationAddress: (r.dropoff_address as string) ?? null,
+        destinationPhone: null,
+        companyName: null,
+        motorClub: null,
+        motorClubServiceCode: null,
+        vehicleNotes: null,
+      }));
   }
 
   /**
@@ -309,7 +348,3 @@ export class FlipEngineService {
     return { lat: Number(hit.lat), lng: Number(hit.lng) };
   }
 }
-
-// `sql` is unused but kept to ensure the drizzle helper imports stay
-// consistent across this module + the 49c additions (poller will use it).
-void sql;
