@@ -1,7 +1,14 @@
-﻿packages:
+packages:
   - "packages/*"
 allowBuilds:
   '@nestjs/core': true
+  # Native CPU profiler binary for @sentry/profiling-node — the .node
+  # binary is fetched and unpacked during install; without this pnpm
+  # refuses to run the lifecycle script and `pnpm install` exits 1.
+  '@sentry-internal/node-cpu-profiler': true
+  # @sentry/cli's postinstall pulls the platform-matched sentry-cli
+  # binary used by @sentry/nextjs at build time (source-map upload).
+  '@sentry/cli': true
   bcrypt: true
   es5-ext: true
   esbuild: true

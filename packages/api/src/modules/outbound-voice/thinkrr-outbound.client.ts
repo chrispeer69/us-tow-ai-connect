@@ -55,7 +55,7 @@ export class ThinkrrOutboundClient {readonly providerName = 'thinkrr' as const;
     tenantId: string;
     agentId?: string | null;
     callbackUrl?: string;
-  }): Promise<{ thinkrrCallId: string } | null> {
+  }): Promise<{ providerCallId: string } | null> {
     if (!this.isConfigured()) {
       this.logger.warn(
         `[outbound-voice] Thinkrr unconfigured — skipping placeCall for ${params.callId} (tenant ${params.tenantId})`,
@@ -106,7 +106,7 @@ export class ThinkrrOutboundClient {readonly providerName = 'thinkrr' as const;
         );
         return null;
       }
-      return { thinkrrCallId };
+      return { providerCallId: thinkrrCallId };
     } catch (err) {
       this.logger.warn(
         `[outbound-voice] Thinkrr placeCall threw for ${params.callId}: ${(err as Error).message}`,

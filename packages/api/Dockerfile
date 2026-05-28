@@ -24,9 +24,7 @@ COPY packages/api/package.json packages/api/
 COPY packages/shared/package.json packages/shared/
 COPY packages/web/package.json packages/web/
 
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile
-
+RUN pnpm install --frozen-lockfile
 # -----------------------------------------------------------------------------
 # Stage 2 — build
 #
@@ -100,6 +98,10 @@ COPY --from=build /app/packages/api/src/db         packages/api/src/db
 # The official Playwright image is set up as root by default; switch to
 # the unprivileged 'pwuser' it creates for production runs. (Don't try to
 # switch to 'node' — that user does not exist in this base image.)
+# No `playwright install` step here: the base image already ships the
+# matched Chromium build at /ms-playwright, and `npx playwright` at
+# WORKDIR /app could not resolve the CLI anyway (pnpm puts it under
+# packages/api/node_modules/.bin, not /app/node_modules/.bin).
 USER pwuser
 
 EXPOSE 3001
