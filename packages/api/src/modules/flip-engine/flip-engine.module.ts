@@ -9,7 +9,6 @@ import { IssueClassifierService } from './issue-classifier.service';
 import { FlipOrchestratorService } from './flip-orchestrator.service';
 import { FlipNotifierService } from './flip-notifier.service';
 import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
-import { FlipOrchestratorCron } from './flip-orchestrator.cron';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -31,7 +30,6 @@ import { FlipOrchestratorCron } from './flip-orchestrator.cron';
     IssueClassifierService,
     FlipOrchestratorService,
     FlipNotifierService,
-    FlipOrchestratorCron,
   ],
   exports: [
     FlipEngineService,
@@ -39,7 +37,6 @@ import { FlipOrchestratorCron } from './flip-orchestrator.cron';
     IssueClassifierService,
     FlipOrchestratorService,
     FlipNotifierService,
-    FlipOrchestratorCron,
   ],
 })
 export class FlipEngineModule {}
