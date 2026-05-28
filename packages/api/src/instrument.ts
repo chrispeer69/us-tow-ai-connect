@@ -24,7 +24,7 @@ import * as Sentry from '@sentry/nestjs';
 // binary was compiled on a different distro than the runtime image (e.g.
 // Debian Bookworm build → Ubuntu Jammy runtime) the require() will throw
 // or segfault. Wrap defensively so the app boots regardless.
-let profilingIntegration: (() => Sentry.Integration) | undefined;
+let profilingIntegration: (() => unknown) | undefined;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { nodeProfilingIntegration } = require('@sentry/profiling-node');
@@ -39,6 +39,6 @@ Sentry.init({
   environment: process.env.NODE_ENV ?? 'production',
   tracesSampleRate: 0.1,
   profilesSampleRate: 0.1,
-  integrations: profilingIntegration ? [profilingIntegration()] : [],
+  integrations: profilingIntegration ? [profilingIntegration() as any] : [],
   enabled: !!process.env.SENTRY_DSN,
 });
