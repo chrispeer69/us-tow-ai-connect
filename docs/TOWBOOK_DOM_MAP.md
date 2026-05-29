@@ -46,6 +46,39 @@ After clicking "Get Results!", the dispatch board updates with matching calls. E
 
 The results appear in the main dispatch area. Parse the DOM for active/enroute calls matching the search.
 
+## Dispatch Row Column IDs (`<li class="entryRow">` → `[columnid]`)
+
+Verified against a live DS4 board (git 18f8999, 3 jobs):
+
+| columnid | Field |
+|----------|-------|
+| 2 | Vehicle |
+| 4 | ETA |
+| 5 | Driver |
+| 9 | Account |
+| 14 | Status |
+| 22 | Contact — "Name (xxx) xxx-xxxx" |
+
+### Pickup / Destination address columns — UNCONFIRMED
+
+The pickup ("Tow From") and destination ("Tow To") address columns were **not
+present** in the verified capture above — the original scraper shipped
+`destination: ''` and never captured pickup. Their `columnid`s are unknown; it
+is also possible the DS4 **list view does not expose these columns at all** (the
+full addresses may only live in the call-detail panel), in which case capturing
+them requires detail-page navigation rather than a list-row parse.
+
+To resolve: run one scrape and read the `[towbook-debug] columnid N = "…"`
+diagnostic lines now emitted by `TowbookAdapter.dumpDiagnostics` (logged every
+scrape; full HTML also dumped when `TOWBOOK_DEBUG_DUMP=1`). Then set:
+
+- `TOWBOOK_PICKUP_COLUMN_IDS` — comma-separated columnid(s) for the pickup address
+- `TOWBOOK_DROPOFF_COLUMN_IDS` — comma-separated columnid(s) for the destination address
+
+First match wins; values are accepted only if they pass a lenient address sanity
+check (so a mis-pointed id can't inject a phone/ETA). Until set, pickup and
+destination are captured as empty (never a wrong address).
+
 ## Key Notes
 
 - No CAPTCHA on login

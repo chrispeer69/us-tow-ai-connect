@@ -11,6 +11,9 @@ export interface ActiveJob {
   status: string;
   driverName: string;
   eta: string;
+  /** Pickup / origin address ("Tow From"). Empty string when not captured. */
+  pickup: string;
+  /** Destination / drop-off address ("Tow To"). Empty string when not present (e.g. tow-to TBD). */
   destination: string;
   lastUpdated: string;
 }
