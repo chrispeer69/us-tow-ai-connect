@@ -29,7 +29,7 @@ name = "@ustow/api"
   # ship tsx, so the dev `db:migrate` script (tsx src/db/migrate.ts) would
   # fail here.
   preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"
-  startCommand = "node packages/api/dist/main.js"
+  startCommand = "sh -c 'echo \"[DIAG] shell active, user=$(whoami), cwd=$(pwd)\" && echo \"[DIAG] PORT=$PORT NODE_ENV=$NODE_ENV\" && ls -la packages/api/dist/main.js && echo \"[DIAG] launching node $(node --version)...\" && exec node packages/api/dist/main.js'"
   healthcheckPath = "/health/ready"
   healthcheckTimeout = 30
   restartPolicyType = "ON_FAILURE"
