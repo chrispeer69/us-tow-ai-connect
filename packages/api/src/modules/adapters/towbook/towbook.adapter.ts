@@ -142,7 +142,29 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       await page.fill('#Username', creds.username);
       await page.fill('#Password', creds.password);
       await page.click('button:has-text("Log in")');
-      await page.waitForURL('https://app.towbook.com/**', { timeout: 15_000 });
+
+      // Try to wait for the dashboard URL, but catch it early if we stay on the login screen
+      try {
+        await page.waitForURL('https://app.towbook.com/**', { timeout: 8000 });
+      } catch (e) {
+        // Timeout exceeded, we are likely still on the login page due to bad credentials
+      }
+
+      // Check if we are still stuck on the login page
+      if (page.url().includes('/Security/Login')) {
+        const errorText = await page.evaluate(() => {
+          const doc: any = (globalThis as any).document;
+          // Standard selectors for ASP.NET / bootstrap login validation errors
+          const el = doc.querySelector('.validation-summary-errors, .alert-danger, .text-danger, #val-summary');
+          return el ? el.textContent?.replace(/\s+/g, ' ').trim() : 'Invalid username or password';
+        });
+        return { 
+          success: false, 
+          message: errorText || 'Invalid username or password', 
+          latencyMs: Date.now() - start 
+        };
+      }
+
       return { success: true, message: 'Connected successfully', latencyMs: Date.now() - start };
     } catch (error) {
       return {

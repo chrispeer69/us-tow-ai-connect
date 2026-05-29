@@ -3,8 +3,6 @@
 // already been require()'d by the time init runs are not re-patched.
 // See packages/api/src/instrument.ts for the init body.
 import './instrument';
-// eslint-disable-next-line no-console
-console.log('[BOOT] main.ts: instrument loaded, loading reflect-metadata...');
 import 'reflect-metadata';
 import 'dotenv/config';
 
@@ -15,22 +13,14 @@ import 'dotenv/config';
 // declarations from Dockerfiles; setting it in JS as a fallback means the
 // container works whether or not the orchestrator honours the Dockerfile.
 import './playwright-env';
-// eslint-disable-next-line no-console
-console.log('[BOOT] main.ts: loading NestJS + other imports...');
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-// eslint-disable-next-line no-console
-console.log('[BOOT] main.ts: loading SentryGlobalFilter...');
 import { SentryGlobalFilter } from '@sentry/nestjs/setup';
-// eslint-disable-next-line no-console
-console.log('[BOOT] main.ts: loading helmet + app modules...');
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { initSentry } from './common/observability/sentry';
 import { buildOriginMatcher, resolveAllowedOrigins } from './common/utils/allowed-domains';
-// eslint-disable-next-line no-console
-console.log('[BOOT] main.ts: all imports complete');
 
 // Routes that must NOT enforce the CORS allow-list. Webhook providers
 // (Thinkrr, Twilio) and the public Knowledge Pack consumer (Thinkrr's
@@ -66,13 +56,9 @@ function warnIfLocalhostInProd(logger: Logger) {
 }
 
 async function bootstrap() {
-  // eslint-disable-next-line no-console
-  console.log('[BOOT] bootstrap() starting...');
   initSentry();
 
   const logger = new Logger('Bootstrap');
-  // eslint-disable-next-line no-console
-  console.log('[BOOT] bootstrap: creating NestFactory...');
   warnIfLocalhostInProd(logger);
 
   // CORS allow-list, resolved from ALLOWED_DOMAINS (comma-separated origins,
@@ -82,21 +68,12 @@ async function bootstrap() {
   // Bringing a custom domain online is a one-variable change, no code edit.
   const allowList = resolveAllowedOrigins(process.env);
 
-  let app: NestExpressApplication;
-  try {
-    app = await NestFactory.create<NestExpressApplication>(AppModule, {
-      // CORS configured below so we can use the exempt-prefix middleware
-      // pattern instead of the global toggle.
-      cors: false,
-      rawBody: true,
-    });
-    // eslint-disable-next-line no-console
-    console.log('[BOOT] bootstrap: NestFactory.create succeeded');
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[BOOT] bootstrap: NestFactory.create FAILED:', err);
-    throw err;
-  }
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // CORS configured below so we can use the exempt-prefix middleware
+    // pattern instead of the global toggle.
+    cors: false,
+    rawBody: true,
+  });
 
   // Helmet defaults are safe for an API; the one override is
   // crossOriginResourcePolicy so Thinkrr's agent runtime can pull the

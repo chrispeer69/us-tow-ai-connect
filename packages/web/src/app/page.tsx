@@ -19,7 +19,7 @@ export default function Home() {
         <div className="mt-6 flex gap-4">
           <Link
             href="/admin/integrations"
-            className="rounded-[12px] bg-[var(--alliance-blue)] px-6 py-3 font-semibold text-white shadow-[0_4px_16px_rgba(37,99,235,0.35)] transition hover:bg-[var(--alliance-blue-dark)]"
+            className="rounded-[12px] bg-[var(--alliance-blue)] px-6 py-3 font-semibold text-white shadow-[0_4px_16px_rgba(37,99,235,0.35)] transition hover:bg-[var(--alliance-blue-dark)] hover:text-white"
           >
             Go to Admin Dashboard
           </Link>
