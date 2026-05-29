@@ -23,15 +23,12 @@ name = "@ustow/api"
   dockerfilePath = "packages/api/Dockerfile"
 
   [services.deploy]
-  # Apply DB migrations before booting the API. Drizzle's migrator is
-  # idempotent so re-running on every deploy is safe.
-  # `:prod` flavour invokes the compiled JS — the runtime image does not
-  # ship tsx, so the dev `db:migrate` script (tsx src/db/migrate.ts) would
-  # fail here.
-  preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"
-  startCommand = "sh -c 'echo \"[DIAG] shell active, user=$(whoami), cwd=$(pwd)\" && echo \"[DIAG] PORT=$PORT NODE_ENV=$NODE_ENV\" && ls -la packages/api/dist/main.js && echo \"[DIAG] launching node $(node --version)...\" && exec node packages/api/dist/main.js'"
+  # TEMPORARILY commented out to let the Dockerfile CMD handle everything
+  # so we can see diagnostics in deploy logs.
+  # preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"
+  # startCommand = "node packages/api/dist/main.js"
   healthcheckPath = "/health/ready"
-  healthcheckTimeout = 30
+  healthcheckTimeout = 60
   restartPolicyType = "ON_FAILURE"
   restartPolicyMaxRetries = 5
 
