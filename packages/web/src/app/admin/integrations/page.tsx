@@ -32,7 +32,9 @@ export default function IntegrationsPage() {
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     void loadStatus();
@@ -58,6 +60,7 @@ export default function IntegrationsPage() {
   async function handleSave() {
     setSaving(true);
     setError(null);
+    setSuccess(null);
     try {
       await api('/v1/admin/credentials', {
         method: 'POST',
@@ -75,6 +78,7 @@ export default function IntegrationsPage() {
   async function handleTest() {
     setStatus('TESTING');
     setError(null);
+    setSuccess(null);
     try {
       const data = await api<{ success: boolean; message: string; latencyMs: number }>(
         '/v1/admin/credentials/test',
@@ -92,6 +96,7 @@ export default function IntegrationsPage() {
   async function handleForceRefresh() {
     setRefreshing(true);
     setError(null);
+    setSuccess(null);
     try {
       await api('/v1/admin/credentials/test', { method: 'POST' });
       await loadStatus();
@@ -99,6 +104,23 @@ export default function IntegrationsPage() {
       setError((err as Error).message);
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Disconnect Towbook? This stops syncing.')) return;
+    setDisconnecting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await api('/v1/admin/credentials', { method: 'DELETE' });
+      setStatus('DISCONNECTED');
+      setLastSynced(null);
+      setSuccess('Disconnected. Syncing has stopped.');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -185,8 +207,18 @@ export default function IntegrationsPage() {
               {status === 'TESTING' ? <Spinner className="mr-2" /> : null}
               Test Connection
             </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              className="ml-auto"
+            >
+              {disconnecting ? <Spinner className="mr-2" /> : null}
+              Disconnect
+            </Button>
           </div>
           {error && <p className="text-sm text-red-400 break-words">{error}</p>}
+          {success && <p className="text-sm text-[var(--alliance-green)] break-words">{success}</p>}
         </CardContent>
       </Card>
     </div>
