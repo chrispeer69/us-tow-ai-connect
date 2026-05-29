@@ -23,25 +23,30 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { api } from '@/lib/utils';
 
+// The flip-engine API returns shop rows straight from Drizzle, whose column
+// properties are camelCase (shopType, addressLine, …). The previous snake_case
+// shape here silently resolved every such field to `undefined` — which is why
+// the TYPE column rendered blank and the "Repair shops: 0 / Body shops: 0"
+// counts never matched. Keep this in sync with AlphaShopRow on the API.
 interface AlphaShop {
   id: string;
-  tenant_id: string;
+  tenantId: string;
   name: string;
-  shop_type: 'REPAIR' | 'BODY';
-  address_line: string;
+  shopType: 'REPAIR' | 'BODY';
+  addressLine: string;
   city: string;
   state: string;
-  postal_code: string;
+  postalCode: string;
   lat: string | number | null;
   lng: string | number | null;
   phone: string | null;
   website: string | null;
-  rental_pickup_available: boolean;
+  rentalPickupAvailable: boolean;
   active: boolean;
   specialties: string[];
   notes: string | null;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface BlocklistEntry {
@@ -96,11 +101,6 @@ interface FlipActivityResponse {
   };
 }
 
-const SHOP_TYPE_COLOR: Record<'REPAIR' | 'BODY', string> = {
-  REPAIR: 'bg-emerald-900 text-emerald-200',
-  BODY: 'bg-blue-900 text-blue-200',
-};
-
 const MATCH_TYPE_COLOR: Record<string, string> = {
   NAME_PATTERN: 'bg-amber-900 text-amber-200',
   EXACT_NAME: 'bg-violet-900 text-violet-200',
@@ -152,8 +152,8 @@ export default function FlipEnginePage() {
   }, [loadAll]);
 
   const stats = useMemo(() => {
-    const repairCount = shops.filter((s) => s.shop_type === 'REPAIR' && s.active).length;
-    const bodyCount = shops.filter((s) => s.shop_type === 'BODY' && s.active).length;
+    const repairCount = shops.filter((s) => s.shopType === 'REPAIR' && s.active).length;
+    const bodyCount = shops.filter((s) => s.shopType === 'BODY' && s.active).length;
     const blockCount = blocklist.filter((b) => b.active).length;
     return { repairCount, bodyCount, blockCount };
   }, [shops, blocklist]);
@@ -306,12 +306,12 @@ function ShopsTab({
                   {s.notes && <div className="text-xs text-zinc-500">{s.notes}</div>}
                 </TableCell>
                 <TableCell>
-                  <Badge className={SHOP_TYPE_COLOR[s.shop_type]}>{s.shop_type}</Badge>
+                  <ShopTypeCell shop={s} reload={reload} setError={setError} />
                 </TableCell>
                 <TableCell className="text-xs">
-                  {s.address_line}
+                  {s.addressLine}
                   <br />
-                  {s.city}, {s.state} {s.postal_code}
+                  {s.city}, {s.state} {s.postalCode}
                 </TableCell>
                 <TableCell className="text-xs font-mono">{s.phone ?? '—'}</TableCell>
                 <TableCell>
@@ -321,7 +321,7 @@ function ShopsTab({
                     <Badge className="bg-zinc-800 text-zinc-400">Inactive</Badge>
                   )}
                 </TableCell>
-                <TableCell className="text-xs">{s.rental_pickup_available ? 'Yes' : 'No'}</TableCell>
+                <TableCell className="text-xs">{s.rentalPickupAvailable ? 'Yes' : 'No'}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -338,6 +338,57 @@ function ShopsTab({
         />
       )}
     </Card>
+  );
+}
+
+// Inline, editable TYPE control for a shop row. PATCHes `shopType` via the
+// existing PUT /v1/admin/flip-engine/shops/:id endpoint (ShopPatchSchema
+// accepts a partial { shopType }), then reloads so the row and the header
+// "Repair shops / Body shops" counts update from the source of truth.
+function ShopTypeCell({
+  shop,
+  reload,
+  setError,
+}: {
+  shop: AlphaShop;
+  reload: () => Promise<void>;
+  setError: (s: string | null) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const change = async (next: string) => {
+    if (next === shop.shopType || (next !== 'REPAIR' && next !== 'BODY')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api(`/v1/admin/flip-engine/shops/${shop.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ shopType: next }),
+        headers: { 'content-type': 'application/json' },
+      });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-[120px]">
+        <Select value={shop.shopType} onValueChange={(v) => void change(v)} disabled={saving}>
+          <SelectTrigger>
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="REPAIR">Repair</SelectItem>
+            <SelectItem value="BODY">Body</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {saving && <Spinner />}
+    </div>
   );
 }
 

@@ -13,9 +13,10 @@ interface SelectProps {
   value: string;
   onValueChange: (v: string) => void;
   children: React.ReactNode;
+  disabled?: boolean;
 }
 
-export function Select({ value, onValueChange, children }: SelectProps) {
+export function Select({ value, onValueChange, children, disabled }: SelectProps) {
   const items: { value: string; label: string }[] = [];
   let trigger: React.ReactNode = null;
 
@@ -42,9 +43,10 @@ export function Select({ value, onValueChange, children }: SelectProps) {
       <div className="relative inline-block w-full">
         <select
           value={value}
+          disabled={disabled}
           onChange={(e) => onValueChange(e.target.value)}
           className={cn(
-            'h-10 w-full appearance-none rounded-[12px] border border-[var(--border-strong)] bg-[var(--surface-card)] px-3 pr-9 text-sm text-[var(--text-main)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--alliance-blue)] focus-visible:border-[var(--alliance-blue)]',
+            'h-10 w-full appearance-none rounded-[12px] border border-[var(--border-strong)] bg-[var(--surface-card)] px-3 pr-9 text-sm text-[var(--text-main)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--alliance-blue)] focus-visible:border-[var(--alliance-blue)] disabled:opacity-50 disabled:cursor-not-allowed',
           )}
         >
           {items.map((it) => (
