@@ -10,6 +10,20 @@ import { AdapterFactory } from '../adapters/adapter.factory';
 import { NotificationService } from '../notifications/notification.service';
 import { classifyFailure } from './classify-failure';
 
+/**
+ * Overall ceiling for a single tenant's session refresh (decrypt + adapter
+ * login). A hung Playwright await (e.g. a selector that never appears, or a
+ * launch/navigation that stalls) must NEVER block the refresh indefinitely —
+ * an unbounded await here is what previously froze the JobPollerCron (its
+ * in-flight lock could never be released). Read at call time so it stays
+ * overridable in tests. Default 45s. Exported so the poller can derive its
+ * own watchdog ceiling from the same value.
+ */
+export function getSessionRefreshTimeoutMs(): number {
+  const raw = Number(process.env.SESSION_REFRESH_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 45_000;
+}
+
 @Injectable()
 export class SessionManagerService {
   private readonly logger = new Logger(SessionManagerService.name);
@@ -51,6 +65,11 @@ export class SessionManagerService {
       // Refresh when ttl < 10 minutes OR key missing (ttl === -2)
       if (ttl > 600) continue;
 
+      const timeoutMs = getSessionRefreshTimeoutMs();
+      const startedAt = Date.now();
+      this.logger.log(
+        `Session refresh START for tenant ${tenant.id} (timeout ${timeoutMs}ms)`,
+      );
       try {
         const decoded = this.encryptionUtil.decrypt(
           cred.usernameEncrypted,
@@ -59,7 +78,17 @@ export class SessionManagerService {
           cred.authTag,
         );
         const adapter = this.adapterFactory.getAdapter(tenant.targetSoftwareType);
-        await adapter.login(tenant.id, decoded);
+        // Overall timeout guard. adapter.login() opens its own Playwright
+        // browser and closes it in a finally{} on every path, but an await
+        // inside it can stall forever; Promise.race lets us stop WAITING so
+        // this loop (and the poll cycle that may have triggered it) can never
+        // hang. On timeout we throw a TIMEOUT-classified error and fall into
+        // the failure path below, which marks the session invalid.
+        await this.withTimeout(
+          adapter.login(tenant.id, decoded),
+          timeoutMs,
+          `Session refresh for tenant ${tenant.id}`,
+        );
         await this.db
           .update(tenantCredentials)
           .set({
@@ -74,7 +103,9 @@ export class SessionManagerService {
             lastFailureAt: null,
           })
           .where(eq(tenantCredentials.tenantId, tenant.id));
-        this.logger.log(`Session refreshed for tenant ${tenant.id}`);
+        this.logger.log(
+          `Session refresh SUCCESS for tenant ${tenant.id} in ${Date.now() - startedAt}ms`,
+        );
       } catch (error) {
         const message = (error as Error).message ?? 'unknown';
         const kind = classifyFailure(message);
@@ -82,7 +113,7 @@ export class SessionManagerService {
         // blow up the row size.
         const reason = message.slice(0, 2000);
         this.logger.error(
-          `Session refresh FAILED for tenant ${tenant.id} (kind=${kind}): ${message}`,
+          `Session refresh FAILED for tenant ${tenant.id} (kind=${kind}) after ${Date.now() - startedAt}ms: ${message}`,
         );
         await this.db
           .update(tenantCredentials)
@@ -104,5 +135,25 @@ export class SessionManagerService {
     }
 
     this.logger.log('Session refresh cycle complete.');
+  }
+
+  /**
+   * Resolve/reject with `work`, but reject with a clear, TIMEOUT-classifiable
+   * error if it has not settled within `ms`. The timer is always cleared so a
+   * fast-resolving `work` does not keep the event loop alive. Note: on timeout
+   * the underlying `work` promise keeps running in the background until its own
+   * internal awaits settle — the adapter closes its browser in a finally{} on
+   * every path, so abandoning the wait does not leak a browser indefinitely.
+   */
+  private async withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    try {
+      return await Promise.race([work, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }

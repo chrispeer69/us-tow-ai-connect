@@ -10,10 +10,20 @@ import { AaaNormalizer } from '../command-center/normalizers/aaa.normalizer';
 import { TowbookNormalizer } from '../command-center/normalizers/towbook.normalizer';
 import type { UnifiedJobInput, UnifiedJobSource } from '../command-center/normalizers/types';
 import { DispatchRulesEngineService } from '../digital-dispatch/dispatch-rules-engine.service';
-import { SessionManagerService } from '../session-manager/session-manager.service';
+import {
+  SessionManagerService,
+  getSessionRefreshTimeoutMs,
+} from '../session-manager/session-manager.service';
 import { SessionExpiredException } from '../../common/exceptions/session-expired.exception';
 
 const CONCURRENCY = 5;
+
+// Extra head-room added to the SessionManager's own refresh timeout to derive
+// the poller-side watchdog ceiling. The session layer should always time out
+// first (producing a cleanly classified failure); this watchdog only fires if
+// that layer ever regresses, guaranteeing the poll cycle still releases its
+// in-flight lock.
+const REFRESH_WATCHDOG_BUFFER_MS = 10_000;
 
 const SOURCE_BY_SOFTWARE: Record<string, UnifiedJobSource | undefined> = {
   TOWBOOK: 'towbook',
@@ -114,14 +124,41 @@ export class JobPollerCron {
     } catch (err) {
       if (err instanceof SessionExpiredException) {
         this.logger.warn(`Session expired for tenant ${tenant.id}. Triggering refresh.`);
-        await this.sessionManager.refreshExpiringSessions().catch((e) => {
-          this.logger.error(
-            `Session refresh after expiry failed for tenant ${tenant.id}: ${(e as Error).message}`,
-          );
-        });
+        await this.refreshWithWatchdog(tenant.id);
       } else {
         this.logger.error(`Poll failed for tenant ${tenant.id}: ${(err as Error).message}`);
       }
+    }
+  }
+
+  /**
+   * Trigger a session refresh without ever letting it freeze this poll cycle.
+   * The refresh is already bounded by SessionManager's own
+   * SESSION_REFRESH_TIMEOUT_MS; this watchdog is a second, slightly-longer
+   * ceiling so that even a regression in the session layer cannot leave
+   * pollAllTenants()'s `await` pending and its `isRunning` lock stuck on.
+   * Always resolves; never throws.
+   */
+  private async refreshWithWatchdog(tenantId: string): Promise<void> {
+    const ceilingMs = getSessionRefreshTimeoutMs() + REFRESH_WATCHDOG_BUFFER_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        this.logger.error(
+          `Session refresh watchdog fired for tenant ${tenantId} after ${ceilingMs}ms; abandoning wait so the poll cycle can release its lock.`,
+        );
+        resolve();
+      }, ceilingMs);
+    });
+    const refresh = this.sessionManager.refreshExpiringSessions().catch((e) => {
+      this.logger.error(
+        `Session refresh after expiry failed for tenant ${tenantId}: ${(e as Error).message}`,
+      );
+    });
+    try {
+      await Promise.race([refresh, watchdog]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
