@@ -43,7 +43,7 @@ export class SessionManagerService {
 
     for (const tenant of activeTenants) {
       const cred = tenant.credentials;
-      if (!cred) continue;
+      if (!cred || cred.sessionStatus === 'PAUSED') continue;
 
       const sessionKey = `session:${tenant.targetSoftwareType.toLowerCase()}:${tenant.id}`;
       const ttl = await this.redis.ttl(sessionKey);

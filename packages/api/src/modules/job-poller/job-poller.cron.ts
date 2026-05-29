@@ -90,7 +90,13 @@ export class JobPollerCron {
     const cred = await this.db.query.tenantCredentials.findFirst({
       where: eq(tenantCredentials.tenantId, tenant.id),
     });
-    if (cred && cred.failedLoginCount >= 3) {
+
+    if (!cred || cred.sessionStatus === 'PAUSED') {
+      this.logger.debug(`No credentials found or integration paused for tenant ${tenant.id}. Skipping scraper polling.`);
+      return;
+    }
+
+    if (cred.failedLoginCount >= 3) {
       const lastFailureMs = cred.lastFailureAt?.getTime() ?? 0;
       const cooldownMs = 60 * 60 * 1000; // 1 hour
       if (Date.now() - lastFailureMs < cooldownMs) {

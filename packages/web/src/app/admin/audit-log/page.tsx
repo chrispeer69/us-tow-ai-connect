@@ -25,16 +25,16 @@ import { api } from '@/lib/utils';
 
 interface AuditRow {
   id: string;
-  tenant_id: string | null;
-  actor_type: string;
-  actor_id: string;
+  tenantId: string | null;
+  actorType: string;
+  actorId: string;
   action: string;
-  resource_type: string | null;
-  resource_id: string | null;
-  before_state: unknown;
-  after_state: unknown;
+  resourceType: string | null;
+  resourceId: string | null;
+  beforeState: unknown;
+  afterState: unknown;
   metadata: Record<string, unknown> | null;
-  created_at: string;
+  createdAt: string;
 }
 
 interface ApiResponse {
@@ -211,17 +211,17 @@ export default function AuditLogPage() {
                         onClick={() => setExpanded(isExpanded ? null : row.id)}
                       >
                         <TableCell className="font-mono text-xs whitespace-nowrap">
-                          {new Date(row.created_at).toLocaleString()}
+                          {new Date(row.createdAt).toLocaleString()}
                         </TableCell>
                         <TableCell>
-                          <Badge className={ACTOR_COLOR[row.actor_type] ?? ''}>{row.actor_type}</Badge>
-                          <div className="text-xs font-mono text-zinc-500 mt-1">{row.actor_id}</div>
+                          <Badge className={ACTOR_COLOR[row.actorType] ?? ''}>{row.actorType}</Badge>
+                          <div className="text-xs font-mono text-zinc-500 mt-1">{row.actorId}</div>
                         </TableCell>
                         <TableCell className="font-mono text-xs">{row.action}</TableCell>
                         <TableCell className="text-xs">
-                          {row.resource_type ?? '—'}
-                          {row.resource_id && (
-                            <div className="text-zinc-500 font-mono">{row.resource_id}</div>
+                          {row.resourceType ?? '—'}
+                          {row.resourceId && (
+                            <div className="text-zinc-500 font-mono">{row.resourceId}</div>
                           )}
                         </TableCell>
                         <TableCell>
@@ -239,13 +239,13 @@ export default function AuditLogPage() {
                               <div>
                                 <p className="text-zinc-500 mb-1">Before</p>
                                 <pre className="bg-zinc-900 rounded p-2 overflow-auto max-h-64">
-                                  {JSON.stringify(row.before_state ?? null, null, 2)}
+                                  {JSON.stringify(row.beforeState ?? null, null, 2)}
                                 </pre>
                               </div>
                               <div>
                                 <p className="text-zinc-500 mb-1">After</p>
                                 <pre className="bg-zinc-900 rounded p-2 overflow-auto max-h-64">
-                                  {JSON.stringify(row.after_state ?? null, null, 2)}
+                                  {JSON.stringify(row.afterState ?? null, null, 2)}
                                 </pre>
                               </div>
                               <div>

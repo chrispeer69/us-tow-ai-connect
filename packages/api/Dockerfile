@@ -110,5 +110,5 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -fsS http://127.0.0.1:${PORT:-3001}/health || exit 1
 
-# No ENTRYPOINT — let CMD run directly so Railway captures all stdout.
-CMD ["sh", "-c", "echo '[CMD] Container starting' && echo '[CMD] user='$(whoami)' cwd='$(pwd) && echo '[CMD] PORT='$PORT' NODE_ENV='$NODE_ENV && echo '[CMD] node='$(node --version) && ls packages/api/dist/main.js && echo '[CMD] running migrate...' && node packages/api/dist/db/migrate.js && echo '[CMD] migrate done, starting main.js...' && exec node packages/api/dist/main.js"]
+ENTRYPOINT ["tini", "--"]
+CMD ["sh", "-c", "node packages/api/dist/db/migrate.js && exec node packages/api/dist/main.js"]

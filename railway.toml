@@ -23,10 +23,8 @@ name = "@ustow/api"
   dockerfilePath = "packages/api/Dockerfile"
 
   [services.deploy]
-  # TEMPORARILY commented out to let the Dockerfile CMD handle everything
-  # so we can see diagnostics in deploy logs.
-  # preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"
-  # startCommand = "node packages/api/dist/main.js"
+  preDeployCommand = "pnpm --filter @ustow/api run db:migrate:prod"
+  startCommand = "node packages/api/dist/main.js"
   healthcheckPath = "/health/ready"
   healthcheckTimeout = 60
   restartPolicyType = "ON_FAILURE"

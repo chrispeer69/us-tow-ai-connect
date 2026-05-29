@@ -43,6 +43,21 @@ export class AdminController {
     return this.service.saveCredentials(req.tenantId, body);
   }
 
+  @Delete('credentials')
+  deleteCredentials(@Req() req: AdminRequest) {
+    return this.service.deleteCredentials(req.tenantId);
+  }
+
+  @Post('credentials/pause')
+  pauseIntegration(@Req() req: AdminRequest) {
+    return this.service.pauseIntegration(req.tenantId);
+  }
+
+  @Post('credentials/resume')
+  resumeIntegration(@Req() req: AdminRequest) {
+    return this.service.resumeIntegration(req.tenantId);
+  }
+
   @Post('credentials/test')
   testConnection(@Req() req: AdminRequest) {
     return this.service.testConnection(req.tenantId);

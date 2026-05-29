@@ -188,3 +188,34 @@ Note: the BUILD_SESSIONS.md document was updated upstream during this build. The
 5. SendGrid sender domain authentication must be configured before alert emails will deliver.
 6. Drizzle migration step requires a live Postgres at `DATABASE_URL`; CI/CD wiring for `pnpm db:migrate` is part of Session 10 (skipped).
 7. EncryptionUtil deviates from the spec's IV/authTag sharing pattern for cryptographic correctness. Verify with the security-review skill before launch.
+
+---
+
+## Session 69 — Production Recovery, CORS Security & Control Features (2026-05-29)
+
+### 1. Silent Boot Crash & Railway UI Override Resolution
+- **Root Cause**: The API container on Railway was failing to start, exiting immediately with a status of "Completed" and yielding zero logs. This was because the Railway Dashboard's **"Custom Start Command"** setting had an active override (`node packages/api/dist/db/migrate.js && node packages/api/dist/main.js`) which took precedence over the Dockerfile CMD configuration and crashed Node during the early bootstrap phase before stdout could hook up.
+- **Fix**: Cleared the dashboard UI "Custom Start Command" override to let the container boot cleanly from the codebase's official **Dockerfile CMD** configuration.
+- **Port Binding**: Explicitly bound the API application to bind on all network interfaces in `main.ts` using `await app.listen(port, '0.0.0.0')` to guarantee the Railway load balancer and internal services route traffic correctly.
+
+### 2. Sentry Native Module Distro Compatibility Wrap
+- **Root Cause**: Sentry's `@sentry/profiling-node` package compiles a native C++ addon (`.node` binary). In the container pipeline, building on a Debian Bookworm stage and running on an Ubuntu Jammy stage threw silent runtime loader errors when NestJS loaded `instrument.ts`, crashing the process on boot.
+- **Fix**: Wrapped Sentry's initialization and `@sentry/profiling-node` import inside defensive try-catch gates in `instrument.ts`. The container now successfully starts and handles logging even if the native profiling integration is unavailable on a specific host environment.
+
+### 3. The "Vague 500" CORS Mismatch Explained
+- **Root Cause**: When the client or developer attempted to save integrations using the raw Railway URL (`https://ustowweb-production.up.railway.app`), the API returned a generic 500 error in **4ms**.
+- **Explanation**: This was caused by strict CORS origin policies inside `main.ts`. The API's allowed CORS origins were configured to only allow requests originating from the official custom domain (`https://www.ustowaiconnect.com`). When requests originated from the unrecognized raw Railway URL, the CORS gate instantly rejected them. NestJS surfaces rejected CORS requests as generic 500 errors.
+- **Fix**: Documented the requirement to always access the admin dashboard via the official custom domain (`https://www.ustowaiconnect.com/admin/integrations`), where the origin is pre-authorized.
+
+### 4. Custom Scraper Control Features: "Pause Scraper" & "Disconnect"
+To prevent background scrapers from running infinitely or hitting rate-limits, we implemented two separate interactive controls in both the backend API and Next.js frontend:
+- **"Pause Scraper"**:
+  - Hits `POST /v1/admin/credentials/pause`, updating the database `sessionStatus` to `'PAUSED'` and wiping the active jobs list in Redis to maintain a clean UI list while paused.
+  - The background scraper cron loop (`job-poller.cron.ts`) and session manager (`session-manager.service.ts`) check this status and **immediately skip execution** when paused, completely halting all Playwright and background browser threads.
+  - Clicking **"Resume Integration"** sets it back to `'ACTIVE'` and restarts background polling safely.
+  - Renders a warning-colored **`● Paused`** yellow badge in the UI.
+- **"Disconnect Integration"**:
+  - Prompts the user with an explicit confirmation modal.
+  - Hits `DELETE /v1/admin/credentials`, completely deleting the credentials row from Postgres and erasing all active Towbook browser session context and cookies from Redis.
+  - UI state immediately resets to **`● Disconnected`** (grey), wrings input fields, and hides the control panel.
+

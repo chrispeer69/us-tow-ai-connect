@@ -2,11 +2,14 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, desc, asc, like, gte, lte, SQL, sql } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import type Redis from 'ioredis';
+import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   aiAgentConfigs,
@@ -101,46 +104,111 @@ const PLAN_DETAILS: Record<
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     @Inject(DB_CLIENT) private readonly db: DbClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly encryption: EncryptionUtil,
     private readonly adapters: AdapterFactory,
   ) {}
 
   // ─── credentials ─────────────────────────────────────────────────────
   async saveCredentials(tenantId: string, body: SaveCredentialsBody) {
-    await this.ensureTenant(tenantId, body.softwareType);
-    const enc = this.encryption.encryptCredentials(body.username, body.password);
-    const existing = await this.db
-      .select()
-      .from(tenantCredentials)
-      .where(eq(tenantCredentials.tenantId, tenantId))
-      .limit(1);
-    const now = new Date();
-    if (existing[0]) {
-      await this.db
-        .update(tenantCredentials)
-        .set({
+    try {
+      await this.ensureTenant(tenantId, body.softwareType);
+      const enc = this.encryption.encryptCredentials(body.username, body.password);
+      const existing = await this.db
+        .select()
+        .from(tenantCredentials)
+        .where(eq(tenantCredentials.tenantId, tenantId))
+        .limit(1);
+      const now = new Date();
+      if (existing[0]) {
+        await this.db
+          .update(tenantCredentials)
+          .set({
+            usernameEncrypted: enc.usernameEncrypted,
+            passwordEncrypted: enc.passwordEncrypted,
+            encryptionIv: enc.iv,
+            authTag: enc.authTag,
+            sessionStatus: 'PENDING',
+            updatedAt: now,
+          })
+          .where(eq(tenantCredentials.tenantId, tenantId));
+      } else {
+        await this.db.insert(tenantCredentials).values({
+          tenantId,
           usernameEncrypted: enc.usernameEncrypted,
           passwordEncrypted: enc.passwordEncrypted,
           encryptionIv: enc.iv,
           authTag: enc.authTag,
           sessionStatus: 'PENDING',
           updatedAt: now,
-        })
-        .where(eq(tenantCredentials.tenantId, tenantId));
-    } else {
-      await this.db.insert(tenantCredentials).values({
-        tenantId,
-        usernameEncrypted: enc.usernameEncrypted,
-        passwordEncrypted: enc.passwordEncrypted,
-        encryptionIv: enc.iv,
-        authTag: enc.authTag,
-        sessionStatus: 'PENDING',
-        updatedAt: now,
-      });
+        });
+      }
+      return { status: 'success' };
+    } catch (err) {
+      this.logger.error(`saveCredentials failed for tenant ${tenantId}: ${(err as Error).message}`, (err as Error).stack);
+      throw err;
     }
-    return { status: 'success' };
+  }
+
+  async deleteCredentials(tenantId: string) {
+    try {
+      // 1. Delete credentials from Postgres database
+      await this.db
+        .delete(tenantCredentials)
+        .where(eq(tenantCredentials.tenantId, tenantId));
+
+      // 2. Clear Redis session and active jobs caches
+      const tenant = await this.getCompany(tenantId);
+      const software = tenant.targetSoftwareType.toLowerCase();
+      
+      await this.redis.del(`session:${software}:${tenantId}`);
+      await this.redis.del(`jobs:${software}:${tenantId}`);
+
+      this.logger.log(`Successfully disconnected credentials for tenant ${tenantId}`);
+      return { status: 'success' };
+    } catch (err) {
+      this.logger.error(`deleteCredentials failed for tenant ${tenantId}: ${(err as Error).message}`);
+      throw err;
+    }
+  }
+
+  async pauseIntegration(tenantId: string) {
+    try {
+      await this.db
+        .update(tenantCredentials)
+        .set({ sessionStatus: 'PAUSED', updatedAt: new Date() })
+        .where(eq(tenantCredentials.tenantId, tenantId));
+      
+      // Clear current Redis active jobs cache to keep UI empty while paused
+      const tenant = await this.getCompany(tenantId);
+      const software = tenant.targetSoftwareType.toLowerCase();
+      await this.redis.del(`jobs:${software}:${tenantId}`);
+
+      this.logger.log(`Tenant ${tenantId} integration paused.`);
+      return { status: 'success' };
+    } catch (err) {
+      this.logger.error(`pauseIntegration failed for tenant ${tenantId}: ${(err as Error).message}`);
+      throw err;
+    }
+  }
+
+  async resumeIntegration(tenantId: string) {
+    try {
+      await this.db
+        .update(tenantCredentials)
+        .set({ sessionStatus: 'ACTIVE', updatedAt: new Date() })
+        .where(eq(tenantCredentials.tenantId, tenantId));
+      
+      this.logger.log(`Tenant ${tenantId} integration resumed.`);
+      return { status: 'success' };
+    } catch (err) {
+      this.logger.error(`resumeIntegration failed for tenant ${tenantId}: ${(err as Error).message}`);
+      throw err;
+    }
   }
 
   async testConnection(tenantId: string) {
@@ -205,11 +273,28 @@ export class AdminService {
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
+
+    let username: string | null = null;
+    if (cred) {
+      try {
+        const decoded = this.encryption.decrypt(
+          cred.usernameEncrypted,
+          cred.passwordEncrypted,
+          cred.encryptionIv,
+          cred.authTag,
+        );
+        username = decoded.username;
+      } catch (err) {
+        this.logger.warn(`Failed to decrypt username for tenant ${tenantId} status view`);
+      }
+    }
+
     return {
       softwareType: tenant[0]?.softwareType ?? 'TOWBOOK',
       hasCredentials: !!cred,
       sessionStatus: cred?.sessionStatus ?? 'NEW',
       lastLoginSuccess: cred?.lastLoginSuccess ?? null,
+      username,
       // S65 — failure observability exposed to the admin UI.
       failureReason: cred?.failureReason ?? null,
       failureKind: cred?.failureKind ?? null,
