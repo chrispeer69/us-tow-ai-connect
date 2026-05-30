@@ -2,7 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { eq } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs } from '../../db/schema';
+import { outboundCallLogs, tenants } from '../../db/schema';
+import type { UnifiedJobRow } from '../../db/schema';
 import { OutboundVoiceService } from '../outbound-voice/outbound-voice.service';
 import {
   DestinationClassifierService,
@@ -26,15 +27,15 @@ import {
  * Session 49c — Flip orchestrator.
  *
  * Loop:
- *   1. Cron tick (default every 60s).
- *   2. For each tenant with `flip_engine_enabled = true`:
- *      a. Fetch new motor club jobs (Towbook + AAA) since last tick.
- *      b. For each new job, classify destination + issue.
- *      c. Decide flip eligibility (decideFlip).
- *      d. Build the script via flip-scripts renderers.
- *      e. Enqueue outbound call via OutboundVoiceService (custom template).
- *      f. Insert an outbound_call_logs row capturing all decisions.
- *   3. Move on. Errors per-job are logged but never abort the whole batch.
+ * 1. Cron tick (default every 60s).
+ * 2. For each tenant with `flip_engine_enabled = true`:
+ *    a. Fetch new motor club jobs (Towbook + AAA) since last tick.
+ *    b. For each new job, classify destination + issue.
+ *    c. Decide flip eligibility (decideFlip).
+ *    d. Build the script via flip-scripts renderers.
+ *    e. Enqueue outbound call via OutboundVoiceService (custom template).
+ *    f. Insert an outbound_call_logs row capturing all decisions.
+ * 3. Move on. Errors per-job are logged but never abort the whole batch.
  *
  * Job-source adapters are NOT modified by this service. We rely on
  * existing scrapeAllActiveJobs adapter methods + an in-memory "seen jobs"
@@ -252,6 +253,125 @@ export class FlipOrchestratorService {
         .set({ flipOutcome: 'ENQUEUE_FAILED' })
         .where(eq(outboundCallLogs.id, logRow.id));
       return false;
+    }
+  }
+
+  /**
+   * Enqueue ONE combined welcome call on a newly-created unified_jobs row.
+   *
+   * Gated on tenant.outbound_voice_enabled (NOT the flip flag) so the
+   * welcome call works for any tenant that has opted into outbound voice,
+   * regardless of whether the flip engine is turned on.
+   *
+   * Script: confirm details + convini pitch always. Flip offers are layered
+   * in ONLY when the dropoff address classifies as a competing repair shop
+   * (destination.tag === 'COMPETING_REPAIR'), so the call stays concise for
+   * jobs heading to the customer's home or a dealer.
+   *
+   * Dedup: uses the same in-memory `seen` map as the flip cron, keyed on
+   * `welcome:${tenantId}:${job.id}`, so a job that was already welcomed is
+   * never called a second time even if the cron tick fires concurrently.
+   */
+  async handleNewlyCreatedJob(tenantId: string, job: UnifiedJobRow): Promise<void> {
+    // Skip if no phone number — nothing to call.
+    if (!job.callerPhone) return;
+
+    // Dedup: never enqueue the same job twice.
+    const seenKey = `welcome:${tenantId}:${job.id}`;
+    if (this.seen.has(seenKey)) return;
+    this.seen.set(seenKey, Date.now());
+
+    try {
+      // Gate: only proceed if tenant has opted into outbound voice.
+      const tenantRows = await this.db
+        .select({ outboundVoiceEnabled: tenants.outboundVoiceEnabled, flipEngineConfig: tenants.flipEngineConfig })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const tenant = tenantRows[0];
+      if (!tenant?.outboundVoiceEnabled) return;
+
+      // Classify destination to decide whether to layer in flip offers.
+      const [blocklistRows, ourShops] = await Promise.all([
+        this.flipEngine.listBlocklist(tenantId),
+        this.flipEngine.listActiveShops(tenantId),
+      ]);
+      const blocklist = blocklistRows
+        .filter((b) => b.active)
+        .map((b) => ({
+          matchType: b.matchType as 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE',
+          matchValue: b.matchValue,
+          active: b.active,
+        }));
+      const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+
+      const destination: ClassifyDestinationResult = await this.destinationClassifier.classify({
+        destinationName: null,
+        destinationAddress: job.dropoffAddress ?? null,
+        destinationPhone: null,
+        source: job.source,
+        blocklist,
+        ourShopNames,
+      });
+
+      const mentionRentals =
+        (tenant.flipEngineConfig as { mention_rentals?: boolean })?.mention_rentals !== false;
+
+      // Always render confirm + convini.
+      const confirm = renderConfirmDetails({
+        customerName: job.callerName ?? 'there',
+        companyName: 'our team',
+        vehicle:
+          [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
+            .filter(Boolean)
+            .join(' ') || 'your vehicle',
+        pickupLocation: job.pickupAddress ?? 'your location',
+        destination: destination.resolvedAddress ?? job.dropoffAddress ?? 'your destination',
+      });
+
+      // Layer in flip offers only when destination is a competing repair shop.
+      let offers: string[] = [];
+      if (destination.tag === 'COMPETING_REPAIR' && job.pickupLat != null && job.pickupLng != null) {
+        const pick = await this.flipEngine.pickNearestShop({
+          tenantId,
+          pickupLat: Number(job.pickupLat),
+          pickupLng: Number(job.pickupLng),
+          shopType: 'REPAIR',
+        });
+        const nearestShopName = pick.shop?.name ?? null;
+        const distanceMilesSaved = pick.distanceMiles;
+        if (nearestShopName) {
+          offers = [
+            renderOffer1({ ourShopName: nearestShopName, distanceMilesSaved, rentalsAvailable: mentionRentals }),
+            renderOffer2({ ourShopName: nearestShopName, distanceMilesSaved, rentalsAvailable: mentionRentals }),
+            renderOffer3({ ourShopName: nearestShopName, distanceMilesSaved, rentalsAvailable: mentionRentals }),
+          ];
+        }
+      }
+
+      const convini = renderConviniPitch({
+        intensity: 'soft',
+        rentalsAvailable: mentionRentals,
+        ourBodyShopMention: undefined,
+      });
+
+      const fullBody = [confirm, ...offers, convini].join('\n\n');
+
+      await this.voice.enqueueCall({
+        tenantId,
+        purpose: 'welcome',
+        toPhone: job.callerPhone,
+        toName: job.callerName ?? '',
+        scriptTemplate: 'custom',
+        scriptVariables: { body: fullBody },
+        relatedJobId: job.id,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `[flip-orchestrator] handleNewlyCreatedJob ${job.id} threw: ${(err as Error).message}`,
+      );
+      // Remove from seen so a retry on the next tick is possible.
+      this.seen.delete(seenKey);
     }
   }
 
