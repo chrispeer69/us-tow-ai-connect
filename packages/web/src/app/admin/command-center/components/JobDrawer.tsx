@@ -51,8 +51,8 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
   const events = job.events ?? [];
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950">
-      <header className="flex items-start justify-between border-b border-zinc-800 p-4">
+    <aside className="flex h-full w-full flex-col border-l border-zinc-200 bg-white">
+      <header className="flex items-start justify-between border-b border-zinc-200 p-4">
         <div>
           <div className="flex items-center gap-3">
             <StatusPill status={job.status} />
@@ -60,31 +60,31 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
               {SOURCE_LABEL[job.source] ?? job.source}
             </span>
           </div>
-          <h2 className="mt-2 text-xl font-semibold text-zinc-100">
+          <h2 className="mt-2 text-xl font-semibold text-zinc-900">
             {job.callerName || 'Unnamed caller'}
           </h2>
-          {job.callerPhone && <p className="text-sm text-zinc-400">{job.callerPhone}</p>}
+          {job.callerPhone && <p className="text-sm text-zinc-500">{job.callerPhone}</p>}
         </div>
         <button
           onClick={onClose}
-          className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 transition-colors"
           aria-label="Close"
         >
           ✕
         </button>
       </header>
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-4 text-sm text-zinc-300">
+      <div className="flex-1 space-y-5 overflow-y-auto p-4 text-sm text-zinc-700">
         <section>
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Vehicle</h3>
-          <p className="mt-1 text-zinc-200">{formatVehicle(job)}</p>
+          <p className="mt-1 font-medium text-zinc-900">{formatVehicle(job)}</p>
         </section>
 
         <section>
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Pickup</h3>
-          <p className="mt-1 text-zinc-200">{job.pickupAddress || '—'}</p>
+          <p className="mt-1 font-medium text-zinc-900">{job.pickupAddress || '—'}</p>
           {job.pickupLat && job.pickupLng && (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-500 mt-0.5">
               {Number(job.pickupLat).toFixed(4)}, {Number(job.pickupLng).toFixed(4)}
             </p>
           )}
@@ -93,7 +93,7 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
         {job.dropoffAddress && (
           <section>
             <h3 className="text-xs uppercase tracking-wide text-zinc-500">Dropoff</h3>
-            <p className="mt-1 text-zinc-200">{job.dropoffAddress}</p>
+            <p className="mt-1 font-medium text-zinc-900">{job.dropoffAddress}</p>
           </section>
         )}
 
@@ -103,7 +103,7 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
             value={pendingDriver}
             onChange={(e) => void handleAssign(e.target.value)}
             disabled={working}
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-zinc-100"
+            className="mt-1.5 w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-2 text-zinc-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">Unassigned</option>
             {drivers.map((d) => (
@@ -140,9 +140,9 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
         </section>
 
         {job.autoDecision && (
-          <section className="rounded border border-zinc-800 bg-zinc-900/60 p-3">
-            <h3 className="text-xs uppercase tracking-wide text-zinc-500">AI decision</h3>
-            <p className="mt-1 text-zinc-200">
+          <section className="rounded border border-zinc-200 bg-blue-50/50 p-4">
+            <h3 className="text-xs uppercase tracking-wide text-blue-600 font-semibold">AI decision</h3>
+            <p className="mt-1.5 text-zinc-900">
               <span className="font-medium">{job.autoDecision}</span>
               {job.autoDecidedAt && (
                 <span className="ml-2 text-xs text-zinc-500">
@@ -151,24 +151,25 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
               )}
             </p>
             {job.autoDecisionReason && (
-              <p className="mt-1 text-xs text-zinc-400">{job.autoDecisionReason}</p>
+              <p className="mt-1.5 text-sm text-zinc-600">{job.autoDecisionReason}</p>
             )}
           </section>
         )}
 
         <section>
-          <h3 className="text-xs uppercase tracking-wide text-zinc-500">Timeline</h3>
-          <ol className="mt-2 space-y-2 border-l border-zinc-800 pl-3">
+          <h3 className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Timeline</h3>
+          <ol className="space-y-3 border-l-2 border-zinc-100 pl-4 ml-1">
             {events.length === 0 && <li className="text-zinc-500">No events recorded yet.</li>}
             {events.map((e) => (
-              <li key={e.id}>
+              <li key={e.id} className="relative">
+                <div className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-zinc-300 border border-white" />
                 <div className="text-xs text-zinc-500">
                   {new Date(e.createdAt).toLocaleString()}
                 </div>
-                <div className="text-zinc-200">
+                <div className="text-zinc-900 mt-0.5">
                   <span className="font-medium">{e.eventType}</span>
                   {e.payload && Object.keys(e.payload).length > 0 && (
-                    <span className="ml-2 text-xs text-zinc-500">
+                    <span className="ml-2 text-xs text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded">
                       {JSON.stringify(e.payload)}
                     </span>
                   )}

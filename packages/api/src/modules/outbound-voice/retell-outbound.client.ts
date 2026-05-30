@@ -80,9 +80,14 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     dynamicVariables.ustow_call_id = params.callId;
     if (params.toName) dynamicVariables.customer_name = params.toName;
 
+    const testNumber = process.env.RETELL_TEST_OVERRIDE_NUMBER?.trim();
+    if (testNumber) {
+      this.logger.warn(`[outbound-voice] ⚠️ TEST OVERRIDE ACTIVE: Redirecting call from ${params.toPhone} to ${testNumber}`);
+    }
+
     const body = {
       from_number: this.fromNumber!,
-      to_number: params.toPhone,
+      to_number: testNumber || params.toPhone,
       override_agent_id: overrideAgentId,
       retell_llm_dynamic_variables: dynamicVariables,
       metadata: {

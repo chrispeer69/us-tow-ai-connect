@@ -80,11 +80,11 @@ export function MapPanel({
 
   if (!apiKey) {
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/40 text-sm text-zinc-400">
+      <div className="flex h-full w-full items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-sm text-zinc-500 shadow-sm">
         <div className="max-w-md p-6 text-center">
-          <p className="font-medium text-zinc-200">Google Maps not configured</p>
-          <p className="mt-2">
-            Set <code className="rounded bg-zinc-800 px-1.5 py-0.5">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to render the live map.
+          <p className="font-medium text-zinc-900">Google Maps not configured</p>
+          <p className="mt-2 text-zinc-600">
+            Set <code className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-800">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to render the live map.
             The job table below still updates in real time without it.
           </p>
         </div>
@@ -94,7 +94,7 @@ export function MapPanel({
 
   if (!isLoaded) {
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/40 text-sm text-zinc-400">
+      <div className="flex h-full w-full items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-sm text-zinc-500 shadow-sm">
         Loading map…
       </div>
     );
@@ -108,7 +108,6 @@ export function MapPanel({
       options={{
         disableDefaultUI: true,
         zoomControl: true,
-        styles: DARK_STYLES,
       }}
     >
       {jobs.map((j) => {
@@ -133,27 +132,7 @@ export function MapPanel({
   );
 }
 
-// Dark theme styling for Google Maps to fit the rest of the admin shell.
-const DARK_STYLES = [
-  { elementType: 'geometry', stylers: [{ color: '#18181b' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#a1a1aa' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#18181b' }] },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#27272a' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#3f3f46' }],
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry',
-    stylers: [{ color: '#52525b' }],
-  },
-];
+
 
 // Surface for callers that need to know which status maps to which color
 // (e.g., the legend).

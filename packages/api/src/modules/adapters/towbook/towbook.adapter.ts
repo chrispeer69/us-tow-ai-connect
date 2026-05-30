@@ -367,13 +367,31 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     // The page.evaluate callback runs inside the Chromium page where DOM
     // globals exist; the Node tsconfig doesn't include lib.dom, so we type the
     // closure args as `any`. It does ONLY DOM scraping — it returns each row's
-    // raw columnid→text map. All field mapping happens in Node via
-    // assembleActiveJob() so it stays unit-testable without a browser.
+    // raw columnid→text map, plus any dynamically discovered column IDs.
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const rawRows: TowbookRawRow[] = await page.evaluate((rowSelector: string) => {
+    const { rawRows, dynamicPickupIds, dynamicDropoffIds } = await page.evaluate((rowSelector: string) => {
       const doc: any = (globalThis as any).document;
+      
+      // 1. Dynamic Header Parsing
+      const pickupIds: string[] = [];
+      const dropoffIds: string[] = [];
+      const headerEls = Array.from(doc.querySelectorAll('.header-text[columnid]'));
+      
+      for (const el of headerEls as any[]) {
+        const id = el.getAttribute('columnid');
+        const text = (el.textContent || el.getAttribute('displayname') || '').toLowerCase();
+        if (!id) continue;
+        
+        if (text.includes('tow source') || text.includes('pickup') || text.includes('location')) {
+          pickupIds.push(id);
+        } else if (text.includes('destination') || text.includes('tow to') || text.includes('dropoff')) {
+          dropoffIds.push(id);
+        }
+      }
+
+      // 2. Row extraction
       const rows: any[] = Array.from(doc.querySelectorAll(rowSelector));
-      return rows.map((row: any) => {
+      const extractedRows = rows.map((row: any) => {
         const cells: Record<string, string> = {};
         const cellEls: any[] = Array.from(row.querySelectorAll('[columnid]'));
         for (const el of cellEls) {
@@ -385,13 +403,23 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
         }
         return { dataId: row.getAttribute('data-id') || '', cells };
       });
+      
+      return { rawRows: extractedRows, dynamicPickupIds: pickupIds, dynamicDropoffIds: dropoffIds };
     }, ROW_SELECTOR);
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
+    // Combine any .env overrides with dynamically found IDs
+    const finalPickupIds = Array.from(new Set([...PICKUP_COLUMN_IDS, ...dynamicPickupIds]));
+    const finalDropoffIds = Array.from(new Set([...DROPOFF_COLUMN_IDS, ...dynamicDropoffIds]));
+
+    if (dynamicPickupIds.length > 0 || dynamicDropoffIds.length > 0) {
+      this.logger.log(`[towbook-adapter] Dynamic Headers parsed. Pickup IDs: [${finalPickupIds.join(',')}], Dropoff IDs: [${finalDropoffIds.join(',')}]`);
+    }
+
     return rawRows.map((r) =>
       assembleActiveJob(r, {
-        pickupColumnIds: PICKUP_COLUMN_IDS,
-        dropoffColumnIds: DROPOFF_COLUMN_IDS,
+        pickupColumnIds: finalPickupIds,
+        dropoffColumnIds: finalDropoffIds,
       }),
     );
   }
