@@ -20,12 +20,12 @@ export function JobsTable({
 }) {
   if (jobs.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-400">
+      <div className="flex h-full items-center justify-center rounded-lg border border-zinc-200 bg-white p-6 text-sm text-zinc-500 shadow-sm">
         <div className="max-w-md text-center">
-          <p className="font-medium text-zinc-200">No active jobs yet</p>
+          <p className="font-medium text-zinc-900">No active jobs yet</p>
           <p className="mt-2">
             Connect an integration on the{' '}
-            <a className="text-emerald-400 underline" href="/admin/integrations">
+            <a className="text-blue-600 underline hover:text-blue-700" href="/admin/integrations">
               Integrations
             </a>{' '}
             page, or create a manual job to populate the dispatch board.
@@ -36,9 +36,9 @@ export function JobsTable({
   }
 
   return (
-    <div className="h-full overflow-auto rounded-lg border border-zinc-800 bg-zinc-900/40">
+    <div className="h-full overflow-auto rounded-lg border border-zinc-200 bg-white shadow-sm">
       <table className="min-w-full text-sm">
-        <thead className="sticky top-0 z-10 bg-zinc-900 text-xs uppercase tracking-wide text-zinc-400">
+        <thead className="sticky top-0 z-10 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 border-b border-zinc-200">
           <tr>
             <th className="px-3 py-2 text-left">Status</th>
             <th className="px-3 py-2 text-left">Source</th>
@@ -56,25 +56,25 @@ export function JobsTable({
               key={j.id}
               onClick={() => onSelect(j.id)}
               className={cn(
-                'cursor-pointer border-t border-zinc-800 transition hover:bg-zinc-800/60',
-                j.id === selectedJobId && 'bg-zinc-800/80',
+                'cursor-pointer border-t border-zinc-100 transition hover:bg-zinc-50',
+                j.id === selectedJobId && 'bg-blue-50/50',
               )}
             >
               <td className="px-3 py-2">
                 <StatusPill status={j.status} />
               </td>
-              <td className="px-3 py-2 text-zinc-300">{SOURCE_LABEL[j.source] ?? j.source}</td>
+              <td className="px-3 py-2 text-zinc-700 font-medium">{SOURCE_LABEL[j.source] ?? j.source}</td>
               <td className="px-3 py-2">
-                <div className="font-medium text-zinc-100">{j.callerName || '—'}</div>
+                <div className="font-semibold text-zinc-900">{j.callerName || '—'}</div>
                 <div className="text-xs text-zinc-500">{j.callerPhone || ''}</div>
               </td>
-              <td className="px-3 py-2 text-zinc-300">{formatVehicle(j)}</td>
-              <td className="px-3 py-2 max-w-[280px] truncate text-zinc-300">
+              <td className="px-3 py-2 text-zinc-700">{formatVehicle(j)}</td>
+              <td className="px-3 py-2 max-w-[280px] truncate text-zinc-700">
                 {j.pickupAddress || '—'}
               </td>
-              <td className="px-3 py-2 text-zinc-300">{j.etaMinutes ? `${j.etaMinutes} min` : '—'}</td>
-              <td className="px-3 py-2 text-zinc-300">{j.driver?.name || '—'}</td>
-              <td className="px-3 py-2 text-zinc-400">{formatAge(j.createdAt)}</td>
+              <td className="px-3 py-2 text-zinc-700 font-medium">{j.etaMinutes ? `${j.etaMinutes} min` : '—'}</td>
+              <td className="px-3 py-2 text-zinc-700">{j.driver?.name || '—'}</td>
+              <td className="px-3 py-2 text-zinc-400 text-xs">{formatAge(j.createdAt)}</td>
             </tr>
           ))}
         </tbody>

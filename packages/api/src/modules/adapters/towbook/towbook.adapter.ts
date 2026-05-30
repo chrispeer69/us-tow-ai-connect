@@ -41,6 +41,102 @@ const CANDIDATE_SELECTORS = [
 ];
 const DEBUG_DUMP_ENABLED = process.env.TOWBOOK_DEBUG_DUMP === '1';
 
+// Known DS4 dispatch-board column IDs, verified against a live account
+// (git 18f8999). These four drive the fields we already capture correctly.
+const VEHICLE_COLUMN_ID = '2';
+const ETA_COLUMN_ID = '4';
+const DRIVER_COLUMN_ID = '5';
+const STATUS_COLUMN_ID = '14';
+const CONTACT_COLUMN_ID = '22'; // "Name (xxx) xxx-xxxx"
+
+// The pickup ("Tow From") and destination ("Tow To") address columns were NOT
+// present in that verified capture — the prior code shipped `destination: ''`
+// and never captured pickup at all. Their column IDs are therefore unknown and
+// made configurable: once a live debug scrape (TOWBOOK_DEBUG_DUMP=1, or the
+// always-on per-column diagnostics below) reveals which columnid carries each
+// address, set these env vars (comma-separated columnids, first match wins).
+// Until configured we capture nothing rather than risk persisting a WRONG
+// address into the flip pipeline. See docs/TOWBOOK_DOM_MAP.md.
+const PICKUP_COLUMN_IDS = parseColumnIdList(process.env.TOWBOOK_PICKUP_COLUMN_IDS);
+const DROPOFF_COLUMN_IDS = parseColumnIdList(process.env.TOWBOOK_DROPOFF_COLUMN_IDS);
+
+/** A single scraped dispatch row, reduced to its columnid→text cell map. */
+export interface TowbookRawRow {
+  dataId: string;
+  cells: Record<string, string>;
+}
+
+/** Parse a comma-separated columnid env list into trimmed, non-empty ids. */
+export function parseColumnIdList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Lenient guard applied to a configured address column so an operator's column
+ * choice is trusted, while obvious non-address noise (a bare phone, a clock or
+ * duration ETA) can't leak into the pickup/destination fields. We deliberately
+ * do NOT require a street-number pattern — Towbook destinations are often a
+ * business name the flip destination-classifier still needs to see.
+ */
+export function isPlausibleAddress(text: string): boolean {
+  const t = (text ?? '').trim();
+  if (t.length < 3) return false;
+  if (/^\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}$/.test(t)) return false; // bare phone
+  if (/^\d{1,2}:\d{2}$/.test(t)) return false; // clock ETA "01:25"
+  if (/^\d+\s*(h(r)?|m(in)?)\b/i.test(t)) return false; // duration ETA "15 min"
+  return true;
+}
+
+/** Split Towbook's "Name (xxx) xxx-xxxx" contact cell into name + digits. */
+export function splitContact(contact: string): { name: string; phone: string } {
+  const c = (contact ?? '').trim();
+  const phoneMatch = c.match(/\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/);
+  const phone = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : '';
+  const name = phoneMatch
+    ? c.slice(0, phoneMatch.index).trim().replace(/[,\s]+$/, '')
+    : c;
+  return { name, phone };
+}
+
+/** First configured column whose text is a plausible address; '' if none. */
+function pickAddress(cells: Record<string, string>, candidateIds: string[]): string {
+  for (const id of candidateIds) {
+    const v = (cells[id] ?? '').trim();
+    if (v && isPlausibleAddress(v)) return v;
+  }
+  return '';
+}
+
+/**
+ * Pure DOM-free mapping from a scraped row's cell map to an ActiveJob. Kept
+ * outside the page.evaluate closure (which can't reference Node-scope helpers)
+ * so it is unit-testable without a browser. `nowIso` is injectable for
+ * deterministic tests.
+ */
+export function assembleActiveJob(
+  row: TowbookRawRow,
+  opts: { pickupColumnIds: string[]; dropoffColumnIds: string[]; nowIso?: string },
+): ActiveJob {
+  const cells = row.cells ?? {};
+  const { name, phone } = splitContact(cells[CONTACT_COLUMN_ID] ?? '');
+  return {
+    jobId: row.dataId || '',
+    customerName: name,
+    customerPhone: phone,
+    vehicle: (cells[VEHICLE_COLUMN_ID] ?? '').trim(),
+    status: (cells[STATUS_COLUMN_ID] ?? '').trim(),
+    driverName: (cells[DRIVER_COLUMN_ID] ?? '').trim(),
+    eta: (cells[ETA_COLUMN_ID] ?? '').trim() || 'Unknown',
+    pickup: pickAddress(cells, opts.pickupColumnIds),
+    destination: pickAddress(cells, opts.dropoffColumnIds),
+    lastUpdated: opts.nowIso ?? new Date().toISOString(),
+  };
+}
+
 @Injectable()
 export class TowbookAdapter implements TowingSoftwareAdapter {
   private readonly logger = new Logger(TowbookAdapter.name);
@@ -230,6 +326,31 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       this.logger.log(`[towbook-debug]   ${c.selector} -> ${c.count}`);
     }
 
+    // Enumerate the first row's columnid→text map so an operator can identify
+    // which column carries the pickup ("Tow From") / destination ("Tow To")
+    // address — these were never captured in the originally verified column
+    // set. Feed the right ids into TOWBOOK_PICKUP_COLUMN_IDS /
+    // TOWBOOK_DROPOFF_COLUMN_IDS. If NO column here holds an address, the
+    // addresses are not in the list view and detail-page scraping is needed.
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const columns = await page.evaluate((rowSelector: string) => {
+      const doc: any = (globalThis as any).document;
+      const row: any = doc.querySelector(rowSelector);
+      if (!row) return [] as Array<{ columnid: string; text: string }>;
+      return Array.from(row.querySelectorAll('[columnid]')).map((el: any) => ({
+        columnid: el.getAttribute('columnid') ?? '?',
+        text: (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+      }));
+    }, ROW_SELECTOR);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    this.logger.log(
+      `[towbook-debug]   first-row columns (${columns.length}); pickup ids=[${PICKUP_COLUMN_IDS.join(',')}] dropoff ids=[${DROPOFF_COLUMN_IDS.join(',')}]`,
+    );
+    for (const c of columns) {
+      this.logger.log(`[towbook-debug]   columnid ${c.columnid} = "${c.text}"`);
+    }
+
     if (DEBUG_DUMP_ENABLED) {
       try {
         const html = await page.content();
@@ -243,43 +364,64 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
   }
 
   private async extractRows(page: import('playwright').Page): Promise<ActiveJob[]> {
-    // Callback runs inside the Chromium page where DOM globals exist; the
-    // Node tsconfig doesn't include lib.dom, so we type the closure args as
-    // `any` to avoid pulling DOM types into the API build.
+    // The page.evaluate callback runs inside the Chromium page where DOM
+    // globals exist; the Node tsconfig doesn't include lib.dom, so we type the
+    // closure args as `any`. It does ONLY DOM scraping — it returns each row's
+    // raw columnid→text map, plus any dynamically discovered column IDs.
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    return page.evaluate((rowSelector: string) => {
+    const { rawRows, dynamicPickupIds, dynamicDropoffIds } = await page.evaluate((rowSelector: string) => {
       const doc: any = (globalThis as any).document;
+      
+      // 1. Dynamic Header Parsing
+      const pickupIds: string[] = [];
+      const dropoffIds: string[] = [];
+      const headerEls = Array.from(doc.querySelectorAll('.header-text[columnid]'));
+      
+      for (const el of headerEls as any[]) {
+        const id = el.getAttribute('columnid');
+        const text = (el.textContent || el.getAttribute('displayname') || '').toLowerCase();
+        if (!id) continue;
+        
+        if (text.includes('tow source') || text.includes('pickup') || text.includes('location')) {
+          pickupIds.push(id);
+        } else if (text.includes('destination') || text.includes('tow to') || text.includes('dropoff')) {
+          dropoffIds.push(id);
+        }
+      }
+
+      // 2. Row extraction
       const rows: any[] = Array.from(doc.querySelectorAll(rowSelector));
-      const out: Array<Record<string, string>> = [];
-      // Towbook column IDs (observed on live DS4 dashboard):
-      //   2  vehicle      4  ETA           5  driver name
-      //   9  account     14  status text  22  contact "Name (xxx) xxx-xxxx"
-      const colText = (row: any, columnId: string): string => {
-        const el = row.querySelector(`[columnid="${columnId}"]`);
-        return el ? (el.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
-      };
-      rows.forEach((row: any) => {
-        const contact = colText(row, '22');
-        const phoneMatch = contact.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-        const phoneDigits = phoneMatch ? phoneMatch[0].replace(/\D/g, '') : '';
-        const customerName = phoneMatch
-          ? contact.slice(0, phoneMatch.index).trim().replace(/[,\s]+$/, '')
-          : contact;
-        out.push({
-          jobId: row.getAttribute('data-id') || '',
-          customerName,
-          customerPhone: phoneDigits,
-          vehicle: colText(row, '2'),
-          status: colText(row, '14'),
-          driverName: colText(row, '5'),
-          eta: colText(row, '4') || 'Unknown',
-          destination: '',
-          lastUpdated: new Date().toISOString(),
-        });
+      const extractedRows = rows.map((row: any) => {
+        const cells: Record<string, string> = {};
+        const cellEls: any[] = Array.from(row.querySelectorAll('[columnid]'));
+        for (const el of cellEls) {
+          const id = el.getAttribute('columnid');
+          if (id == null) continue;
+          const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+          // First non-empty wins; never clobber a populated cell with a blank.
+          if (!(id in cells) || (!cells[id] && text)) cells[id] = text;
+        }
+        return { dataId: row.getAttribute('data-id') || '', cells };
       });
-      return out as unknown as ActiveJob[];
+      
+      return { rawRows: extractedRows, dynamicPickupIds: pickupIds, dynamicDropoffIds: dropoffIds };
     }, ROW_SELECTOR);
     /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    // Combine any .env overrides with dynamically found IDs
+    const finalPickupIds = Array.from(new Set([...PICKUP_COLUMN_IDS, ...dynamicPickupIds]));
+    const finalDropoffIds = Array.from(new Set([...DROPOFF_COLUMN_IDS, ...dynamicDropoffIds]));
+
+    if (dynamicPickupIds.length > 0 || dynamicDropoffIds.length > 0) {
+      this.logger.log(`[towbook-adapter] Dynamic Headers parsed. Pickup IDs: [${finalPickupIds.join(',')}], Dropoff IDs: [${finalDropoffIds.join(',')}]`);
+    }
+
+    return rawRows.map((r) =>
+      assembleActiveJob(r, {
+        pickupColumnIds: finalPickupIds,
+        dropoffColumnIds: finalDropoffIds,
+      }),
+    );
   }
 }
 

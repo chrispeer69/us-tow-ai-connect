@@ -53,6 +53,7 @@ describe('TowbookNormalizer', () => {
       status: 'Enroute',
       driverName: '',
       eta: '15 min',
+      pickup: '123 Tow Ln, Columbus OH',
       destination: '500 Main St',
       lastUpdated: new Date().toISOString(),
     });
@@ -64,8 +65,26 @@ describe('TowbookNormalizer', () => {
     expect(out.vehicleMake).toBe('Toyota');
     expect(out.vehicleModel).toBe('Camry');
     expect(out.vehicleColor).toBe('Blue');
+    expect(out.pickupAddress).toBe('123 Tow Ln, Columbus OH');
     expect(out.dropoffAddress).toBe('500 Main St');
     expect(out.etaMinutes).toBe(15);
     expect(out.sourcePayload).toMatchObject({ status_raw: 'Enroute' });
+  });
+
+  it('leaves pickup/dropoff null when the scraper captured neither (tow-to TBD)', () => {
+    const out = n.normalize('tenant-x', {
+      jobId: '999',
+      customerName: 'No Dest',
+      customerPhone: '6145559999',
+      vehicle: '2010 Ford F-150',
+      status: 'Waiting',
+      driverName: '',
+      eta: 'Unknown',
+      pickup: '',
+      destination: '',
+      lastUpdated: new Date().toISOString(),
+    });
+    expect(out.pickupAddress).toBeNull();
+    expect(out.dropoffAddress).toBeNull();
   });
 });

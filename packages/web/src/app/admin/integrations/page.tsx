@@ -165,6 +165,7 @@ export default function IntegrationsPage() {
     AAA_PORTAL: 'AAA Portal',
   };
 
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
@@ -214,6 +215,7 @@ export default function IntegrationsPage() {
               </Button>
             </div>
           ) : null}
+          {error && <p className="text-sm text-red-400 break-words pt-2">{error}</p>}
           {success && <p className="text-sm text-[var(--alliance-green)] break-words pt-2">{success}</p>}
         </CardContent>
       </Card>

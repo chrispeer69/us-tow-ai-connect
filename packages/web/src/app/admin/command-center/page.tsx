@@ -12,7 +12,7 @@ import {
 } from '@/lib/command-center-types';
 import { getCommandCenterSocket } from '@/lib/socket';
 import { api } from '@/lib/utils';
-import { DriversPanel } from './components/DriversPanel';
+import { DriversModal } from './components/DriversModal';
 import { FilterBar, type CommandCenterFilters } from './components/FilterBar';
 import { JobDrawer } from './components/JobDrawer';
 import { JobsTable } from './components/JobsTable';
@@ -40,6 +40,7 @@ export default function CommandCenterPage() {
   const [error, setError] = useState<string | null>(null);
   const [showManualJob, setShowManualJob] = useState(false);
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const [showDriversModal, setShowDriversModal] = useState(false);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
@@ -166,19 +167,22 @@ export default function CommandCenterPage() {
   }
 
   return (
-    <div className="-mx-5 -my-8 flex h-[calc(100vh-70px)] flex-col bg-[var(--surface-bg)] sm:-mx-8">
-      <div className="border-b border-[var(--border-color)] bg-[var(--surface-card)] p-4">
+    <div className="-mx-5 -my-8 flex h-[calc(100vh-70px)] flex-col bg-zinc-50 sm:-mx-8">
+      <div className="border-b border-zinc-200 bg-white p-4 shadow-sm z-10">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <div className="font-label text-xs font-semibold uppercase tracking-[0.18em] text-[var(--alliance-blue)]">
+            <div className="font-label text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">
               Operations
             </div>
-            <h1 className="font-display text-2xl font-extrabold text-[var(--text-main)]">Command Center</h1>
-            <p className="text-sm text-[var(--text-secondary)]">
+            <h1 className="font-display text-2xl font-extrabold text-zinc-900">Command Center</h1>
+            <p className="text-sm text-zinc-500">
               Live dispatch board across every connected source.
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowDriversModal(true)}>
+              Manage Drivers
+            </Button>
             <Button variant="outline" onClick={() => setShowManualJob(true)}>
               + Manual job
             </Button>
@@ -187,19 +191,17 @@ export default function CommandCenterPage() {
         </div>
         <StatsStrip stats={stats} />
         {error && (
-          <p className="mt-3 text-sm text-red-400 break-words">{error}</p>
+          <p className="mt-3 text-sm text-red-500 break-words">{error}</p>
         )}
       </div>
 
+      <div className="px-4 pt-4 shrink-0">
+        <FilterBar filters={filters} onChange={setFilters} />
+      </div>
+
       <div className="grid flex-1 grid-cols-12 overflow-hidden">
-        <div className="col-span-3 xl:col-span-2 overflow-y-auto">
-          <FilterBar filters={filters} onChange={setFilters} />
-          <div className="p-4">
-            <DriversPanel drivers={drivers} onCreate={() => setShowAddDriver(true)} />
-          </div>
-        </div>
-        <div className="col-span-6 xl:col-span-7 flex flex-col gap-3 p-4">
-          <div className="h-1/2 min-h-[300px]">
+        <div className="col-span-9 xl:col-span-9 flex flex-col gap-3 p-4 overflow-y-auto">
+          <div className="h-1/2 min-h-[300px] shrink-0">
             <MapPanel
               jobs={jobs}
               drivers={drivers}
@@ -207,7 +209,7 @@ export default function CommandCenterPage() {
               onSelectJob={setSelectedJobId}
             />
           </div>
-          <div className="h-1/2 min-h-[300px]">
+          <div className="h-1/2 min-h-[300px] shrink-0">
             <JobsTable
               jobs={jobs}
               selectedJobId={selectedJobId}
@@ -225,7 +227,7 @@ export default function CommandCenterPage() {
               onClose={() => setSelectedJobId(null)}
             />
           ) : (
-            <div className="flex h-full items-center justify-center border-l border-zinc-800 p-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full items-center justify-center border-l border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500">
               Select a job on the map or in the table to see its details.
             </div>
           )}
@@ -243,12 +245,24 @@ export default function CommandCenterPage() {
         />
       )}
 
+      {showDriversModal && (
+        <DriversModal
+          drivers={drivers}
+          onCreate={() => {
+            setShowDriversModal(false);
+            setShowAddDriver(true);
+          }}
+          onClose={() => setShowDriversModal(false)}
+        />
+      )}
+
       {showAddDriver && (
         <AddDriverModal
           onClose={() => setShowAddDriver(false)}
           onCreated={(d) => {
             setShowAddDriver(false);
             setDrivers((prev) => [...prev, d]);
+            setShowDriversModal(true);
           }}
         />
       )}
@@ -312,23 +326,23 @@ function ManualJobModal({
 
   return (
     <Modal title="Create manual job" onClose={onClose}>
-      <label className="block text-sm text-zinc-300">
+      <label className="block text-sm font-medium text-zinc-900">
         Caller name
-        <Input value={callerName} onChange={(e) => setCallerName(e.target.value)} />
+        <Input value={callerName} onChange={(e) => setCallerName(e.target.value)} className="mt-1" />
       </label>
-      <label className="block text-sm text-zinc-300">
+      <label className="block text-sm font-medium text-zinc-900">
         Caller phone
-        <Input value={callerPhone} onChange={(e) => setCallerPhone(e.target.value)} />
+        <Input value={callerPhone} onChange={(e) => setCallerPhone(e.target.value)} className="mt-1" />
       </label>
-      <label className="block text-sm text-zinc-300">
+      <label className="block text-sm font-medium text-zinc-900">
         Pickup address
-        <Input value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} />
+        <Input value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} className="mt-1" />
       </label>
-      <label className="block text-sm text-zinc-300">
+      <label className="block text-sm font-medium text-zinc-900">
         Service type
-        <Input value={serviceType} onChange={(e) => setServiceType(e.target.value)} />
+        <Input value={serviceType} onChange={(e) => setServiceType(e.target.value)} className="mt-1" />
       </label>
-      {err && <p className="text-sm text-red-400">{err}</p>}
+      {err && <p className="text-sm text-red-500">{err}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>
           Cancel
@@ -371,15 +385,15 @@ function AddDriverModal({
 
   return (
     <Modal title="Add driver" onClose={onClose}>
-      <label className="block text-sm text-zinc-300">
+      <label className="block text-sm font-medium text-zinc-900">
         Name
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
       </label>
-      <label className="block text-sm text-zinc-300">
+      <label className="block text-sm font-medium text-zinc-900">
         Phone
-        <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" />
       </label>
-      {err && <p className="text-sm text-red-400">{err}</p>}
+      {err && <p className="text-sm text-red-500">{err}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>
           Cancel
@@ -407,14 +421,14 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-5"
+        className="w-full max-w-md space-y-3 rounded-lg border border-zinc-200 bg-white p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-100">{title}</h2>
+          <h2 className="text-lg font-semibold text-zinc-900">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
           >
             ✕
           </button>

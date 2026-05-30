@@ -37,7 +37,7 @@ export class TowbookNormalizer implements AdapterNormalizer {
       vehicleMake: vehicle.make,
       vehicleModel: vehicle.model,
       vehicleColor: vehicle.color,
-      pickupAddress: null,
+      pickupAddress: job.pickup || null,
       dropoffAddress: job.destination || null,
       serviceType: null,
       priority: 'normal',
