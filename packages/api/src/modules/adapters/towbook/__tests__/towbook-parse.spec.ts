@@ -104,13 +104,53 @@ describe('assembleActiveJob', () => {
     expect(job.destination).toBe('');
   });
 
-  it('captures nothing for addresses when no columns are configured', () => {
+  it('recovers pickup + destination by address shape when no columns configured', () => {
+    // This is the production failure mode: TOWBOOK_*_COLUMN_IDS unset and the
+    // detected dropoff columnid not matching the cell the address rendered
+    // under. The fallback scans all cells and assigns by column position.
     const job = assembleActiveJob(
-      row({ '7': '123 Tow Ln', '8': '500 Main St' }),
+      row({ '7': '123 Tow Ln, Columbus, OH 43026', '8': '500 Main St, Dublin, OH 43017' }),
       { pickupColumnIds: [], dropoffColumnIds: [], nowIso: NOW },
     );
-    expect(job.pickup).toBe('');
-    expect(job.destination).toBe('');
+    expect(job.pickup).toBe('123 Tow Ln, Columbus, OH 43026');
+    expect(job.destination).toBe('500 Main St, Dublin, OH 43017');
+  });
+
+  it('recovers the dropoff even when the address lands under an unexpected columnid', () => {
+    // Detected dropoff id is '8' but this row put the address under '9'
+    // (Towbook renumbers/hides columns per session). Trusting only '8' yields
+    // ''; the fallback finds the real address in '9'.
+    const job = assembleActiveJob(
+      row({
+        '22': 'Frank Lutz (740) 812-9489',
+        '7': '800 Polaris Pkwy, Westerville, OH 43082',
+        '9': '8420 Lyra Dr, Columbus, OH 43240',
+      }),
+      opts,
+    );
+    expect(job.pickup).toBe('800 Polaris Pkwy, Westerville, OH 43082');
+    expect(job.destination).toBe('8420 Lyra Dr, Columbus, OH 43240');
+  });
+
+  it('ignores motor-club labels, company names, money and ids when recovering', () => {
+    // Mirrors a real DS4 row: only the two cells with street/ZIP signal should
+    // win; "Agero (Swoop)", a company name, "$45.92" and a numeric id must not.
+    const job = assembleActiveJob(
+      row({
+        '5': 'Jerod Berry',
+        '7': '6282 Lattuga Dr, Columbus, OH 43026',
+        '8': 'Firestone Complete Auto Care, Hilliard Rome Rd, Columbus, OH 43026',
+        '9': 'Agero (Swoop) Columbus',
+        '13': '$45.92',
+        '18': '108913259',
+        '21': 'Roadside Towing and Recovery Inc',
+      }),
+      { pickupColumnIds: [], dropoffColumnIds: [], nowIso: NOW },
+    );
+    expect(job.pickup).toBe('6282 Lattuga Dr, Columbus, OH 43026');
+    expect(job.destination).toBe(
+      'Firestone Complete Auto Care, Hilliard Rome Rd, Columbus, OH 43026',
+    );
   });
 
   it('does not let a mis-pointed column inject phone/ETA noise', () => {
