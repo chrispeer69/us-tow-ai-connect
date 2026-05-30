@@ -265,7 +265,7 @@ export class FlipOrchestratorService {
    *
    * Script: confirm details + convini pitch always. Flip offers are layered
    * in ONLY when the dropoff address classifies as a competing repair shop
-   * (destination.tag === 'COMPETING_REPAIR'), so the call stays concise for
+   * (destination.tag === 'competitor_repair'), so the call stays concise for
    * jobs heading to the customer's home or a dealer.
    *
    * Dedup: uses the same in-memory `seen` map as the flip cron, keyed on
@@ -331,7 +331,7 @@ export class FlipOrchestratorService {
 
       // Layer in flip offers only when destination is a competing repair shop.
       let offers: string[] = [];
-      if (destination.tag === 'COMPETING_REPAIR' && job.pickupLat != null && job.pickupLng != null) {
+      if (destination.tag === 'competitor_repair' && job.pickupLat != null && job.pickupLng != null) {
         const pick = await this.flipEngine.pickNearestShop({
           tenantId,
           pickupLat: Number(job.pickupLat),
@@ -359,7 +359,7 @@ export class FlipOrchestratorService {
 
       await this.voice.enqueueCall({
         tenantId,
-        purpose: 'welcome',
+        purpose: 'custom',
         toPhone: job.callerPhone,
         toName: job.callerName ?? '',
         scriptTemplate: 'custom',
