@@ -49,6 +49,18 @@ const DRIVER_COLUMN_ID = '5';
 const STATUS_COLUMN_ID = '14';
 const CONTACT_COLUMN_ID = '22'; // "Name (xxx) xxx-xxxx"
 
+// Non-address columns. The address fallback (scoreAddress / selectAddresses)
+// must never consider these — they hold a vehicle, an ETA, a driver name, a
+// status phrase (which can literally contain the word "Destination"), or the
+// contact cell. Scanning them would inject noise into pickup/destination.
+const RESERVED_COLUMN_IDS = new Set<string>([
+  VEHICLE_COLUMN_ID,
+  ETA_COLUMN_ID,
+  DRIVER_COLUMN_ID,
+  STATUS_COLUMN_ID,
+  CONTACT_COLUMN_ID,
+]);
+
 // The pickup ("Tow From") and destination ("Tow To") address columns were NOT
 // present in that verified capture — the prior code shipped `destination: ''`
 // and never captured pickup at all. Their column IDs are therefore unknown and
@@ -111,6 +123,72 @@ function pickAddress(cells: Record<string, string>, candidateIds: string[]): str
   return '';
 }
 
+const STREET_SUFFIX =
+  /\b(st|street|ave|avenue|rd|road|dr|drive|ln|lane|blvd|boulevard|way|ct|court|pkwy|parkway|hwy|highway|pl|place|cir|circle|ter|terrace|trl|trail|loop|sq|square|expy|expressway)\b/i;
+const STATE_ZIP = /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/;
+
+/**
+ * Heuristic address score for a single cell's text. Higher = more
+ * address-like. Returns 0 for anything that should never be treated as an
+ * address (phones, clocks/ETAs, money, bare numbers like a job id, or a plain
+ * business/motor-club name with no street or ZIP signal). Used by
+ * `selectAddresses` to recover pickup/destination when the column-id mapping
+ * is unreliable — Towbook's DS4 grid renumbers/hides columns per session, so
+ * the header-detected `columnid` for "Tow To" does not always match the
+ * `columnid` the address text actually lands under in each row.
+ */
+export function scoreAddress(text: string): number {
+  const t = (text ?? '').trim();
+  if (!isPlausibleAddress(t)) return 0; // phone / clock / duration / too short
+  if (/^\d+(?:\.\d+)?$/.test(t)) return 0; // bare number (e.g. a job id)
+  if (t.includes('$')) return 0; // money
+  let score = 0;
+  if (STATE_ZIP.test(t)) score += 3; // "... OH 43026"
+  if (/\d/.test(t) && STREET_SUFFIX.test(t)) score += 2; // "123 Main St"
+  if (t.includes(',') && /\b[A-Z]{2}\b/.test(t)) score += 1; // "..., OH"
+  return score;
+}
+
+// A cell must reach this score to be accepted as a fallback address. Tuned so
+// a real street address or a "City, ST ZIP" line qualifies, while a motor-club
+// label ("Agero (Swoop) Columbus") or a company name ("Roadside Towing Inc")
+// does not.
+const ADDRESS_FALLBACK_THRESHOLD = 2;
+
+/**
+ * Resolve pickup + destination for a row. Configured / dynamically-detected
+ * column ids are trusted first (operator intent). Whatever they don't fill is
+ * recovered by scanning every non-reserved cell for the best address-shaped
+ * value, ordered by column position ("Tow From" precedes "Tow To" in DS4) so
+ * the earlier address becomes pickup and a later distinct one becomes the
+ * destination. This is the fix for the live bug where both addresses scraped
+ * fine into the row cells but `pickAddress` returned '' because the detected
+ * dropoff column id didn't match the cell the address rendered under.
+ */
+export function selectAddresses(
+  cells: Record<string, string>,
+  pickupIds: string[],
+  dropoffIds: string[],
+): { pickup: string; destination: string } {
+  let pickup = pickAddress(cells, pickupIds);
+  let destination = pickAddress(cells, dropoffIds);
+  if (pickup && destination) return { pickup, destination };
+
+  const candidates = Object.entries(cells)
+    .filter(([id]) => !RESERVED_COLUMN_IDS.has(id))
+    .map(([id, raw]) => ({ id, text: (raw ?? '').trim(), score: scoreAddress((raw ?? '').trim()) }))
+    .filter((c) => c.score >= ADDRESS_FALLBACK_THRESHOLD)
+    // Column position is the pickup/destination ordering hint; numeric ids
+    // sort numerically, any non-numeric id sorts last but stays deterministic.
+    .sort((a, b) => (Number(a.id) || Number.MAX_SAFE_INTEGER) - (Number(b.id) || Number.MAX_SAFE_INTEGER));
+
+  if (!pickup) pickup = candidates[0]?.text ?? '';
+  if (!destination) {
+    destination = candidates.find((c) => c.text !== pickup)?.text ?? '';
+  }
+  return { pickup, destination };
+}
+
 /**
  * Pure DOM-free mapping from a scraped row's cell map to an ActiveJob. Kept
  * outside the page.evaluate closure (which can't reference Node-scope helpers)
@@ -123,6 +201,11 @@ export function assembleActiveJob(
 ): ActiveJob {
   const cells = row.cells ?? {};
   const { name, phone } = splitContact(cells[CONTACT_COLUMN_ID] ?? '');
+  const { pickup, destination } = selectAddresses(
+    cells,
+    opts.pickupColumnIds,
+    opts.dropoffColumnIds,
+  );
   return {
     jobId: row.dataId || '',
     customerName: name,
@@ -131,8 +214,8 @@ export function assembleActiveJob(
     status: (cells[STATUS_COLUMN_ID] ?? '').trim(),
     driverName: (cells[DRIVER_COLUMN_ID] ?? '').trim(),
     eta: (cells[ETA_COLUMN_ID] ?? '').trim() || 'Unknown',
-    pickup: pickAddress(cells, opts.pickupColumnIds),
-    destination: pickAddress(cells, opts.dropoffColumnIds),
+    pickup,
+    destination,
     lastUpdated: opts.nowIso ?? new Date().toISOString(),
   };
 }
