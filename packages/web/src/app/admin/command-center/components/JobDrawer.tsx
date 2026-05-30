@@ -51,7 +51,7 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
   const events = job.events ?? [];
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-zinc-200 bg-white">
+    <aside className="flex h-full w-full flex-col bg-white">
       <header className="flex items-start justify-between border-b border-zinc-200 p-4">
         <div>
           <div className="flex items-center gap-3">

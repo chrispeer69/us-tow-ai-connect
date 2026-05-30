@@ -217,7 +217,7 @@ export default function CommandCenterPage() {
             />
           </div>
         </div>
-        <div className="col-span-3">
+        <div className="col-span-3 h-full overflow-hidden border-l border-zinc-200">
           {selectedJob ? (
             <JobDrawer
               job={selectedJob}
@@ -227,7 +227,7 @@ export default function CommandCenterPage() {
               onClose={() => setSelectedJobId(null)}
             />
           ) : (
-            <div className="flex h-full items-center justify-center border-l border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500">
+            <div className="flex h-full items-center justify-center bg-white p-6 text-center text-sm text-zinc-500">
               Select a job on the map or in the table to see its details.
             </div>
           )}
