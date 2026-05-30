@@ -15,6 +15,7 @@ import { CommandCenterGateway } from './command-center.gateway';
 import { GeocoderService } from './geocoder.service';
 import { BillingService } from '../billing/billing.service';
 import { PushService } from '../push/push.service';
+import { FlipOrchestratorService } from '../flip-engine/flip-orchestrator.service';
 import type { UnifiedJobInput, UnifiedJobStatus } from './normalizers/types';
 
 type EnrichedJob = UnifiedJobRow & {
@@ -68,6 +69,9 @@ export class CommandCenterService {
     // service directly from breaking. Session 28. Must be the last parameter
     // because TS does not allow required parameters after an optional one.
     @Optional() private readonly billing?: BillingService,
+    // Optional: present only when FlipEngineModule is wired. Triggers the
+    // welcome call on every newly-created job when outbound_voice_enabled.
+    @Optional() private readonly flipOrchestrator?: FlipOrchestratorService,
   ) {}
 
   async listJobs(tenantId: string, query: JobsListQuery) {
@@ -474,6 +478,15 @@ export class CommandCenterService {
       await this.writeEvent(row.id, 'created', { source: input.source });
       this.broadcast(input.tenantId, 'job.created', row);
       await this.chargeJobCredit(input.tenantId, row.id);
+      // Fire-and-forget welcome call. The orchestrator gates on
+      // tenant.outbound_voice_enabled so no-op when not opted in.
+      this.flipOrchestrator
+        ?.handleNewlyCreatedJob(input.tenantId, row)
+        .catch((err) =>
+          this.logger.warn(
+            `handleNewlyCreatedJob fire-and-forget error: ${(err as Error).message}`,
+          ),
+        );
     } else if (statusChanged) {
       await this.writeEvent(row.id, 'status_changed', {
         from: existing!.status,
