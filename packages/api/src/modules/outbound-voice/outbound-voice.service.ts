@@ -200,6 +200,7 @@ export class OutboundVoiceService {
 
   @Cron('*/30 * * * * *')
   async dispatchQueuedCron(): Promise<void> {
+    if (process.env.OUTBOUND_VOICE_DISPATCH_CRON_ENABLED !== 'true') return;
     if (this.dispatching) {
       this.logger.debug('[outbound-voice] dispatchQueued already in flight, skipping');
       return;
@@ -333,6 +334,7 @@ export class OutboundVoiceService {
 
   @Cron('0 */5 * * * *')
   async retryFailedCron(): Promise<void> {
+    if (process.env.OUTBOUND_VOICE_DISPATCH_CRON_ENABLED !== 'true') return;
     await this.retryFailed();
   }
 
