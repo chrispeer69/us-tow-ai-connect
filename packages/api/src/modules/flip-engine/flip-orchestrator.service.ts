@@ -6,48 +6,48 @@ import { outboundCallLogs, tenants } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
 import { OutboundVoiceService } from '../outbound-voice/outbound-voice.service';
 import {
-    DestinationClassifierService,
-    type ClassifyDestinationResult,
+      DestinationClassifierService,
+      type ClassifyDestinationResult,
 } from './destination-classifier.service';
 import { FlipEngineService } from './flip-engine.service';
 import { decideFlip, type FlipDecision } from './flip-decision.engine';
 import {
-    IssueClassifierService,
-    type ClassifyIssueResult,
+      IssueClassifierService,
+      type ClassifyIssueResult,
 } from './issue-classifier.service';
 import {
-    renderCallBody,
-    scenarioForDestinationTag,
-    type ScriptContext,
+      renderCallBody,
+      scenarioForDestinationTag,
+      type ScriptContext,
 } from './flip-scripts';
 
 function issuePhrase(subcategory: string | null | undefined): string {
-    switch (subcategory) {
-      case 'single_tire_issue':
-      case 'full_tire_set':
-              return 'a flat tire';
-      case 'jump_start':
-              return 'a battery or no-start issue';
-      case 'lockout':
-              return 'a lockout';
-      case 'fuel_delivery':
-              return 'an out-of-fuel situation';
-      case 'winch_out':
-              return 'a stuck or off-road recovery';
-      case 'accident_with_airbags':
-      case 'accident_minor':
-              return 'an accident';
-      case 'mechanical':
-              return 'a mechanical issue';
-      default:
-              return 'a service request';
-    }
+      switch (subcategory) {
+          case 'single_tire_issue':
+          case 'full_tire_set':
+                    return 'a flat tire';
+          case 'jump_start':
+                    return 'a battery or no-start issue';
+          case 'lockout':
+                    return 'a lockout';
+          case 'fuel_delivery':
+                    return 'an out-of-fuel situation';
+          case 'winch_out':
+                    return 'a stuck or off-road recovery';
+          case 'accident_with_airbags':
+          case 'accident_minor':
+                    return 'an accident';
+          case 'mechanical':
+                    return 'a mechanical issue';
+          default:
+                    return 'a service request';
+      }
 }
 
 function firstNameOf(full: string | null | undefined): string {
-    const n = (full ?? '').trim();
-    if (!n) return 'there';
-    return n.split(/\s+/)[0];
+      const n = (full ?? '').trim();
+      if (!n) return 'there';
+      return n.split(/\s+/)[0];
 }
 
 /**
@@ -71,256 +71,393 @@ function firstNameOf(full: string | null | undefined): string {
  * bounded.
  */
 @Injectable()
-  export class FlipOrchestratorService {
-    private readonly logger = new Logger(FlipOrchestratorService.name);
-    private readonly seen = new Map<string, number>(); // key -> ms timestamp
+    export class FlipOrchestratorService {
+      private readonly logger = new Logger(FlipOrchestratorService.name);
+      private readonly seen = new Map<string, number>(); // key -> ms timestamp
   private readonly RETAIN_MS = 6 * 60 * 60 * 1000;
-    private running = false;
+      private running = false;
 
   constructor(
-        @Inject(DB_CLIENT) private readonly db: DbClient,
-        private readonly flipEngine: FlipEngineService,
-        private readonly destinationClassifier: DestinationClassifierService,
-        private readonly issueClassifier: IssueClassifierService,
-        private readonly voice: OutboundVoiceService,
-      ) {}
+          @Inject(DB_CLIENT) private readonly db: DbClient,
+          private readonly flipEngine: FlipEngineService,
+          private readonly destinationClassifier: DestinationClassifierService,
+          private readonly issueClassifier: IssueClassifierService,
+          private readonly voice: OutboundVoiceService,
+        ) {}
 
   @Cron('0 */1 * * * *') // every 60s
-    async tickCron(): Promise<void> {
-          if (process.env.OUTBOUND_FLIP_ENGINE_ENABLED !== 'true') return;
-          if (this.running) {
-                  this.logger.debug('[flip-orchestrator] previous tick still running, skipping');
-                  return;
-          }
-          this.running = true;
-          try {
-                  await this.tick();
-          } finally {
-                  this.running = false;
-                  this.gcSeen();
-          }
-    }
+      async tickCron(): Promise<void> {
+              if (process.env.OUTBOUND_FLIP_ENGINE_ENABLED !== 'true') return;
+              if (this.running) {
+                        this.logger.debug('[flip-orchestrator] previous tick still running, skipping');
+                        return;
+              }
+              this.running = true;
+              try {
+                        await this.tick();
+              } finally {
+                        this.running = false;
+                        this.gcSeen();
+              }
+      }
 
   /**
-     * One pass across all flip-enabled tenants. Public so tests / admin
-     * "run now" endpoints can drive it without waiting for the cron.
-     */
+       * One pass across all flip-enabled tenants. Public so tests / admin
+       * "run now" endpoints can drive it without waiting for the cron.
+       */
   async tick(): Promise<{ tenantsProcessed: number; jobsClassified: number; callsEnqueued: number }> {
-        const tenantIds = await this.flipEngine.listEnabledTenantIds();
-        let jobsClassified = 0;
-        let callsEnqueued = 0;
-        for (const tenantId of tenantIds) {
-                try {
-                          const result = await this.processTenant(tenantId);
-                          jobsClassified += result.jobsClassified;
-                          callsEnqueued += result.callsEnqueued;
-                } catch (err) {
-                          this.logger.warn(
-                                      `[flip-orchestrator] tenant ${tenantId} tick threw: ${(err as Error).message}`,
-                                    );
-                }
-        }
-        return { tenantsProcessed: tenantIds.length, jobsClassified, callsEnqueued };
+          const tenantIds = await this.flipEngine.listEnabledTenantIds();
+          let jobsClassified = 0;
+          let callsEnqueued = 0;
+          for (const tenantId of tenantIds) {
+                    try {
+                                const result = await this.processTenant(tenantId);
+                                jobsClassified += result.jobsClassified;
+                                callsEnqueued += result.callsEnqueued;
+                    } catch (err) {
+                                this.logger.warn(
+                                              `[flip-orchestrator] tenant ${tenantId} tick threw: ${(err as Error).message}`,
+                                            );
+                    }
+          }
+          return { tenantsProcessed: tenantIds.length, jobsClassified, callsEnqueued };
   }
 
   private async processTenant(tenantId: string) {
-        let jobsClassified = 0;
-        let callsEnqueued = 0;
+          let jobsClassified = 0;
+          let callsEnqueued = 0;
 
-      // Hand-off to the existing job-poller adapters via FlipEngineService.
-      // The poller already knows how to fetch new jobs per source; we just
-      // expose a thin "jobs since last tick" feed via the public API.
-      const jobs = await this.flipEngine.fetchPendingFlipJobs(tenantId);
-        for (const job of jobs) {
-                const seenKey = `${job.source}:${tenantId}:${job.jobId}`;
-                if (this.seen.has(seenKey)) continue;
-                this.seen.set(seenKey, Date.now());
-                jobsClassified += 1;
+        // Hand-off to the existing job-poller adapters via FlipEngineService.
+        // The poller already knows how to fetch new jobs per source; we just
+        // expose a thin "jobs since last tick" feed via the public API.
+        const jobs = await this.flipEngine.fetchPendingFlipJobs(tenantId);
+          for (const job of jobs) {
+                    const seenKey = `${job.source}:${tenantId}:${job.jobId}`;
+                    if (this.seen.has(seenKey)) continue;
+                    this.seen.set(seenKey, Date.now());
+                    jobsClassified += 1;
 
-          try {
-                    const enqueued = await this.handleJob(tenantId, job);
-                    if (enqueued) callsEnqueued += 1;
-          } catch (err) {
-                    this.logger.warn(
-                                `[flip-orchestrator] job ${seenKey} threw: ${(err as Error).message}`,
-                              );
+            try {
+                        const enqueued = await this.handleJob(tenantId, job);
+                        if (enqueued) callsEnqueued += 1;
+            } catch (err) {
+                        this.logger.warn(
+                                      `[flip-orchestrator] job ${seenKey} threw: ${(err as Error).message}`,
+                                    );
+            }
           }
-        }
-        return { jobsClassified, callsEnqueued };
+          return { jobsClassified, callsEnqueued };
   }
 
   /**
-     * Process a single job: classify, decide, render, enqueue, log.
-     */
+       * Process a single job: classify, decide, render, enqueue, log.
+       */
   private async handleJob(
-        tenantId: string,
-        job: PendingFlipJob,
-      ): Promise<boolean> {
-        // Pull tenant config + blocklist + our shops in parallel.
-      const [config, blocklistRows, ourShops] = await Promise.all([
-              this.flipEngine.getConfig(tenantId),
-              this.flipEngine.listBlocklist(tenantId),
-              this.flipEngine.listActiveShops(tenantId),
-            ]);
-        const blocklist = blocklistRows
-          .filter((b) => b.active)
-          .map((b) => ({
-                    matchType: b.matchType as 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE',
-                    matchValue: b.matchValue,
-                    active: b.active,
-          }));
-        const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+          tenantId: string,
+          job: PendingFlipJob,
+        ): Promise<boolean> {
+          // Pull tenant config + blocklist + our shops in parallel.
+        const [config, blocklistRows, ourShops] = await Promise.all([
+                  this.flipEngine.getConfig(tenantId),
+                  this.flipEngine.listBlocklist(tenantId),
+                  this.flipEngine.listActiveShops(tenantId),
+                ]);
+          const blocklist = blocklistRows
+            .filter((b) => b.active)
+            .map((b) => ({
+                        matchType: b.matchType as 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE',
+                        matchValue: b.matchValue,
+                        active: b.active,
+            }));
+          const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
 
-      // 1. Classify destination.
-      const destination: ClassifyDestinationResult = await this.destinationClassifier.classify({
-              destinationName: job.destinationName ?? null,
-              destinationAddress: job.destinationAddress ?? null,
-              destinationPhone: job.destinationPhone ?? null,
-              source: job.source,
-              blocklist,
-              ourShopNames,
-      });
+        // 1. Classify destination.
+        const destination: ClassifyDestinationResult = await this.destinationClassifier.classify({
+                  destinationName: job.destinationName ?? null,
+                  destinationAddress: job.destinationAddress ?? null,
+                  destinationPhone: job.destinationPhone ?? null,
+                  source: job.source,
+                  blocklist,
+                  ourShopNames,
+        });
 
-      // 2. Classify issue.
-      const issue: ClassifyIssueResult = this.issueClassifier.classify({
-              reasonText: job.reasonText ?? null,
-              vehicleNotes: job.vehicleNotes ?? null,
-              motorClubServiceCode: job.motorClubServiceCode ?? null,
-      });
+        // 2. Classify issue.
+        const issue: ClassifyIssueResult = this.issueClassifier.classify({
+                  reasonText: job.reasonText ?? null,
+                  vehicleNotes: job.vehicleNotes ?? null,
+                  motorClubServiceCode: job.motorClubServiceCode ?? null,
+        });
 
-      // 3. Decide.
-      const decision: FlipDecision = decideFlip({
-              source: job.source,
-              destinationTag: destination.tag,
-              issueSubcategory: issue.subcategory,
-              issueConfidence: issue.confidence,
-              config: (config.config as Record<string, unknown>) ?? {},
-      });
+        // 3. Decide.
+        const decision: FlipDecision = decideFlip({
+                  source: job.source,
+                  destinationTag: destination.tag,
+                  issueSubcategory: issue.subcategory,
+                  issueConfidence: issue.confidence,
+                  config: (config.config as Record<string, unknown>) ?? {},
+        });
 
-      // 4. Pick nearest shop (only when we'll actually pitch a flip).
-      let nearestShopName: string | null = null;
-        let distanceMilesSaved: number | null = null;
-        if (decision.flipEligible && job.pickupLat != null && job.pickupLng != null) {
-                const pick = await this.flipEngine.pickNearestShop({
-                          tenantId,
-                          pickupLat: job.pickupLat,
-                          pickupLng: job.pickupLng,
-                          shopType: 'REPAIR',
-                });
-                nearestShopName = pick.shop?.name ?? null;
-                distanceMilesSaved = pick.distanceMiles;
+        // 4. Pick nearest shop (only when we'll actually pitch a flip).
+        let nearestShopName: string | null = null;
+          let distanceMilesSaved: number | null = null;
+          if (decision.flipEligible && job.pickupLat != null && job.pickupLng != null) {
+                    const pick = await this.flipEngine.pickNearestShop({
+                                tenantId,
+                                pickupLat: Number(job.pickupLat),
+                                pickupLng: Number(job.pickupLng),
+                                shopType: 'REPAIR',
+                    });
+                    nearestShopName = pick.shop?.name ?? null;
+                    distanceMilesSaved = pick.distanceMiles;
+          }
+
+        // 5. Build the full scripted call body via the scenario engine.
+        const cfg = (config.config as Record<string, unknown>) ?? {};
+          const mentionRentals = (cfg as { mention_rentals?: boolean })?.mention_rentals !== false;
+          const bodyShops = pickTwoBodyShops(ourShops);
+          const scenario = scenarioForDestinationTag(destination.tag);
+          const ctx: ScriptContext = {
+                    repName: (cfg.rep_name as string) || 'Sarah',
+                    companyName: job.companyName ?? ((cfg.company_name as string) || 'Roadside Towing'),
+                    motorClub: job.motorClub ?? '',
+                    callbackNumber: (cfg.callback_number as string) || '',
+                    conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+                    customerFirstName: firstNameOf(job.customerName),
+                    vehicle: job.vehicle ?? 'your vehicle',
+                    pickupLocation: job.pickupAddress ?? 'your location',
+                    destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
+                    issue: issuePhrase(issue.subcategory),
+                    issueSubcategory: issue.subcategory,
+                    nearestShop: decision.flipEligible ? nearestShopName : null,
+                    nearestShopDistanceMiles:
+                                decision.flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+                    bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
+                    bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
+                    rentalsAvailable: mentionRentals,
+          };
+          const fullBody = renderCallBody(scenario, ctx);
+
+        // 6. Persist log row before enqueue (so we have the trail even if
+        //    the orchestrator crashes mid-call).
+        const [logRow] = await this.db
+            .insert(outboundCallLogs)
+            .values({
+                        tenantId,
+                        customerName: job.customerName,
+                        customerPhone: job.customerPhone,
+                        motorClub: job.motorClub ?? null,
+                        vehicle: job.vehicle ?? null,
+                        issueType: issue.subcategory,
+                        originalDestination: job.destinationAddress ?? null,
+                        destinationTag: destination.tag,
+                        flipEligible: decision.flipEligible,
+                        flipReasonCode: decision.reasonCode,
+                        nearestShop: nearestShopName,
+                        conviniIntensity: decision.conviniIntensity,
+                        scriptBody: fullBody,
+                        flipOutcome: 'PENDING',
+                        source: job.source,
+                        jobId: job.jobId,
+            })
+            .returning();
+
+        // 7. Enqueue the outbound call.
+        try {
+                  await this.voice.enqueueCall({
+                              tenantId,
+                              purpose: 'custom',
+                              toPhone: job.customerPhone,
+                              toName: job.customerName ?? '',
+                              scriptTemplate: 'custom',
+                              scriptVariables: { body: fullBody },
+                              relatedJobId: job.jobId,
+                  });
+        } catch (err) {
+                  await this.db
+                    .update(outboundCallLogs)
+                    .set({ flipOutcome: 'ENQUEUE_FAILED' })
+                    .where(eq(outboundCallLogs.id, logRow.id));
+                  this.logger.warn(
+                              `[flip-orchestrator] enqueue failed for logRow ${logRow.id}: ${(err as Error).message}`,
+                            );
+                  return false;
         }
 
-      // 5. Build the full scripted call body via the scenario engine.
-      const cfg = (config.config as Record<string, unknown>) ?? {};
-        const mentionRentals = (cfg as { mention_rentals?: boolean })?.mention_rentals !== false;
-        const bodyShops = pickTwoBodyShops(ourShops);
-        const scenario = scenarioForDestinationTag(destination.tag);
-        const ctx: ScriptContext = {
-                repName: (cfg.rep_name as string) || 'Sarah',
-                companyName: job.companyName ?? ((cfg.company_name as string) || 'Roadside Towing'),
-                motorClub: job.motorClub ?? '',
-                callbackNumber: (cfg.callback_number as string) || '',
-                conviniLink: (cfg.convini_link as string) || 'https://convini.live',
-                customerFirstName: firstNameOf(job.customerName),
-                vehicle: job.vehicle ?? 'your vehicle',
-                pickupLocation: job.pickupAddress ?? 'your location',
-                destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
-                issue: issuePhrase(issue.subcategory),
-                issueSubcategory: issue.subcategory,
-                nearestShop: decision.flipEligible ? nearestShopName : null,
-                nearestShopDistanceMiles:
-                          decision.flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
-                bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
-                bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
-                rentalsAvailable: mentionRentals,
-        };
-        const fullBody = renderCallBody(scenario, ctx);
+        return true;
+  }
 
-      // 6. Persist log row before enqueue (so we have the trail even if
-      //    the orchestrator crashes mid-call).
-      const [logRow] = await this.db
-          .insert(outboundCallLogs)
-          .values({
-                    tenantId,
-                    customerName: job.customerName,
-                    customerPhone: job.customerPhone,
-                    motorClub: job.motorClub ?? null,
-                    vehicle: job.vehicle ?? null,
-                    issueType: issue.subcategory,
-                    originalDestination: job.destinationAddress ?? null,
-                    destinationTag: destination.tag,
-                    flipEligible: decision.flipEligible,
-                    flipReasonCode: decision.reasonCode,
-                    nearestShop: nearestShopName,
-                    conviniIntensity: decision.conviniIntensity,
-                    scriptBody: fullBody,
-                    flipOutcome: 'PENDING',
-                    source: job.source,
-                    jobId: job.jobId,
-          })
-          .returning();
+  /**
+       * Enqueue ONE combined welcome call on a newly-created unified_jobs row.
+       *
+       * Gated on tenant.outbound_voice_enabled (NOT the flip flag) so the
+       * welcome call works for any tenant that has opted into outbound voice,
+       * regardless of whether the flip engine is turned on.
+       *
+       * Script: confirm details + convini pitch always. Flip offers are layered
+       * in ONLY when the dropoff address classifies as a competing repair shop
+       * (destination.tag === 'competitor_repair'), so the call stays concise for
+       * jobs heading to the customer's home or a dealer.
+       *
+       * Dedup: uses the same in-memory `seen` map as the flip cron, keyed on
+       * `welcome:${tenantId}:${job.id}`, so a job that was already welcomed is
+       * never called a second time even if the cron tick fires concurrently.
+       */
+  async handleNewlyCreatedJob(tenantId: string, job: UnifiedJobRow): Promise<void> {
+          // Skip if no phone number — nothing to call.
+        if (!job.callerPhone) return;
 
-      // 7. Enqueue the outbound call.
-      try {
-              await this.voice.enqueueCall({
+        // Dedup: never enqueue the same job twice.
+        const seenKey = `welcome:${tenantId}:${job.id}`;
+          if (this.seen.has(seenKey)) return;
+          this.seen.set(seenKey, Date.now());
+
+        try {
+                  // Gate: only proceed if tenant has opted into outbound voice.
+            const tenantRows = await this.db
+                    .select({ outboundVoiceEnabled: tenants.outboundVoiceEnabled, flipEngineConfig: tenants.flipEngineConfig })
+                    .from(tenants)
+                    .where(eq(tenants.id, tenantId))
+                    .limit(1);
+                  const tenant = tenantRows[0];
+                  if (!tenant?.outboundVoiceEnabled) return;
+
+            // Classify destination to decide whether to layer in flip offers.
+            const [blocklistRows, ourShops] = await Promise.all([
+                        this.flipEngine.listBlocklist(tenantId),
+                        this.flipEngine.listActiveShops(tenantId),
+                      ]);
+                  const blocklist = blocklistRows
+                    .filter((b) => b.active)
+                    .map((b) => ({
+                                  matchType: b.matchType as 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE',
+                                  matchValue: b.matchValue,
+                                  active: b.active,
+                    }));
+                  const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+
+            const destination: ClassifyDestinationResult = await this.destinationClassifier.classify({
+                        destinationName: null,
+                        destinationAddress: job.dropoffAddress ?? null,
+                        destinationPhone: null,
+                        source: job.source,
+                        blocklist,
+                        ourShopNames,
+            });
+
+            const mentionRentals =
+                        (tenant.flipEngineConfig as { mention_rentals?: boolean })?.mention_rentals !== false;
+
+            // Always render confirm + convini.
+            const confirm = renderCallBody('unknown', {
+                        repName: 'Sarah',
+                        companyName: 'our team',
+                        motorClub: '',
+                        callbackNumber: '',
+                        conviniLink: 'https://convini.live',
+                        customerFirstName: firstNameOf(job.callerName),
+                        vehicle: job.vehicleDescription ?? 'your vehicle',
+                        pickupLocation: job.pickupAddress ?? 'your location',
+                        destination: job.dropoffAddress ?? 'your destination',
+                        issue: 'a service request',
+                        issueSubcategory: null,
+                        nearestShop: null,
+                        nearestShopDistanceMiles: null,
+                        bodyShop1: null,
+                        bodyShop2: null,
+                        rentalsAvailable: mentionRentals,
+            });
+
+            // Layer in flip offers.
+            let offers: string[] = [];
+                  if (destination.tag === 'competitor_repair') {
+                              let nearestShopName: string | null = null;
+                              let distanceMilesSaved: number | null = null;
+                              if (job.pickupLat != null && job.pickupLng != null) {
+                                            const pick = await this.flipEngine.pickNearestShop({
+                                                            tenantId,
+                                                            pickupLat: Number(job.pickupLat),
+                                                            pickupLng: Number(job.pickupLng),
+                                                            shopType: 'REPAIR',
+                                            });
+                                            nearestShopName = pick.shop?.name ?? null;
+                                            distanceMilesSaved = pick.distanceMiles;
+                              }
+                              if (nearestShopName) {
+                                            offers = [nearestShopName];
+                              }
+                  }
+
+            const convini = renderCallBody('unknown', {
+                        repName: 'Sarah',
+                        companyName: 'our team',
+                        motorClub: '',
+                        callbackNumber: '',
+                        conviniLink: 'https://convini.live',
+                        customerFirstName: firstNameOf(job.callerName),
+                        vehicle: job.vehicleDescription ?? 'your vehicle',
+                        pickupLocation: job.pickupAddress ?? 'your location',
+                        destination: job.dropoffAddress ?? 'your destination',
+                        issue: 'a service request',
+                        issueSubcategory: null,
+                        nearestShop: null,
+                        nearestShopDistanceMiles: null,
+                        bodyShop1: null,
+                        bodyShop2: null,
+                        rentalsAvailable: mentionRentals,
+            });
+
+            const fullBody = [confirm, ...offers, convini].join('\n\n');
+
+            await this.voice.enqueueCall({
                         tenantId,
-                        to: job.customerPhone,
                         purpose: 'custom',
+                        toPhone: job.callerPhone,
+                        toName: job.callerName ?? '',
+                        scriptTemplate: 'custom',
                         scriptVariables: { body: fullBody },
-                        metadata: { flipLogId: logRow.id, jobId: job.jobId, source: job.source },
-              });
-      } catch (err) {
-              await this.db
-                .update(outboundCallLogs)
-                .set({ flipOutcome: 'ENQUEUE_FAILED' })
-                .where(eq(outboundCallLogs.id, logRow.id));
-              this.logger.warn(
-                        `[flip-orchestrator] enqueue failed for logRow ${logRow.id}: ${(err as Error).message}`,
-                      );
-              return false;
-      }
-
-      return true;
+                        relatedJobId: job.id,
+            });
+        } catch (err) {
+                  this.logger.warn(
+                              `[flip-orchestrator] handleNewlyCreatedJob ${tenantId}:${job.id} threw: ${(err as Error).message}`,
+                            );
+        }
   }
 
   private gcSeen(): void {
-        const cutoff = Date.now() - this.RETAIN_MS;
-        for (const [key, ts] of this.seen.entries()) {
-                if (ts < cutoff) this.seen.delete(key);
-        }
+          const cutoff = Date.now() - this.RETAIN_MS;
+          for (const [key, ts] of this.seen.entries()) {
+                    if (ts < cutoff) this.seen.delete(key);
+          }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Types used internally by this service
-// ---------------------------------------------------------------------------
-
-interface PendingFlipJob {
-    jobId: string;
-    source: string;
-    customerName: string | null;
-    customerPhone: string;
-    companyName: string | null;
-    motorClub: string | null;
-    vehicle: string | null;
-    pickupAddress: string | null;
-    pickupLat: number | null;
-    pickupLng: number | null;
-    destinationName: string | null;
-    destinationAddress: string | null;
-    destinationPhone: string | null;
-    reasonText: string | null;
-    vehicleNotes: string | null;
-    motorClubServiceCode: string | null;
+function pickTwoBodyShops(
+      shops: Array<{ name: string; shopType: string; active: boolean }>,
+    ): { shop1: string; shop2: string } | undefined {
+      const body = shops.filter((s) => s.shopType === 'BODY' && s.active);
+      if (body.length === 0) return undefined;
+      return {
+              shop1: body[0].name,
+              shop2: body[1]?.name ?? body[0].name,
+      };
 }
 
-function pickTwoBodyShops(
-    shops: Array<{ name: string; shopType?: string | null }>,
-  ): { shop1: string; shop2: string } | null {
-    const bodyShops = shops.filter(
-          (s) => s.shopType?.toUpperCase() === 'BODY' || s.shopType?.toUpperCase() === 'COLLISION',
-        );
-    if (bodyShops.length < 2) return null;
-    return { shop1: bodyShops[0].name, shop2: bodyShops[1].name };
+export interface PendingFlipJob {
+      source: 'TOWBOOK' | 'AAA_PORTAL' | string;
+      jobId: string;
+      customerName: string;
+      customerPhone: string;
+      vehicle?: string | null;
+      motorClub?: string | null;
+      motorClubServiceCode?: string | null;
+      reasonText?: string | null;
+      vehicleNotes?: string | null;
+      pickupAddress?: string | null;
+      pickupLat?: number | null;
+      pickupLng?: number | null;
+      destinationName?: string | null;
+      destinationAddress?: string | null;
+      destinationPhone?: string | null;
+      companyName?: string | null;
 }
