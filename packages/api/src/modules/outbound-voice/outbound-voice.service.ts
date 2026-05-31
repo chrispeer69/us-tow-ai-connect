@@ -635,6 +635,63 @@ export class OutboundVoiceService {
     }
     return tenant;
   }
+
+  async testCall(
+    tenantId: string,
+    input: {
+      scenario: 'competitor_repair' | 'auto_body' | 'residence' | 'our_shop' | 'unknown';
+      toPhone: string;
+      customerName?: string;
+      vehicle?: string;
+      destination?: string;
+    },
+  ) {
+    const { renderCallBody } = await import('../flip-engine/flip-scripts');
+    const tenant = await this.assertEnabled(tenantId, 'custom');
+    const cfg = tenant.outboundVoiceConfig as Record<string, unknown> | null || {};
+
+    const ctx: any = {
+      repName: (cfg.rep_name as string) || 'Sarah',
+      companyName: (cfg.company_name as string) || 'Roadside Towing',
+      motorClub: 'Test',
+      callbackNumber: (cfg.callback_number as string) || '+18447011345',
+      conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+      customerFirstName: input.customerName?.split(' ')[0] || 'John',
+      vehicle: input.vehicle || '2019 Honda Civic',
+      pickupLocation: 'Test Location',
+      destination: input.destination || 'Test Shop',
+      issue: 'test issue',
+      issueSubcategory: null,
+      nearestShop: 'Downtown Auto Care',
+      nearestShopDistanceMiles: 3,
+      bodyShop1: null,
+      bodyShop2: null,
+      rentalsAvailable: true,
+    };
+
+    const fullBody = renderCallBody(input.scenario, ctx);
+
+    const result = await this.provider.placeCall({
+      toPhone: input.toPhone,
+      toName: input.customerName || 'Test Customer',
+      scriptBody: fullBody,
+      scriptTemplate: 'custom',
+      scriptVariables: { body: fullBody },
+      callId: 'test-' + Date.now(),
+      tenantId,
+      agentId: undefined,
+      callbackUrl: buildCallbackUrl(this.provider.providerName),
+    });
+
+    return {
+      success: !!result.providerCallId,
+      callId: result.providerCallId,
+      toPhone: input.toPhone,
+      scenario: input.scenario,
+      scriptPreview: fullBody.split('\n').slice(0, 10).join('\n') + '...',
+      message: `Test call placed to ${input.toPhone}. Ethan should call within 10 seconds.`,
+    };
+  }
 }
 
 const TERMINAL_STATUSES = new Set([

@@ -195,4 +195,21 @@ export class OutboundVoiceController {
     const result = await this.service.updateConfig(req.tenantId, body);
     return { status: 'success', data: result };
   }
+
+  // --- debug test endpoint ---
+
+  @Post('debug/test-call')
+  @UseGuards(AdminAuthGuard)
+  async testCall(
+    @Req() req: AdminRequest,
+    @Body() body: {
+      scenario: 'competitor_repair' | 'auto_body' | 'residence' | 'our_shop' | 'unknown';
+      toPhone: string;
+      customerName?: string;
+      vehicle?: string;
+      destination?: string;
+    },
+  ) {
+    return this.service.testCall(req.tenantId, body);
+  }
 }
