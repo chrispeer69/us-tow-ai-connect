@@ -684,8 +684,8 @@ export class OutboundVoiceService {
     });
 
     return {
-      success: !!result.providerCallId,
-      callId: result.providerCallId,
+      success: !!result?.providerCallId,
+      callId: result?.providerCallId ?? null,
       toPhone: input.toPhone,
       scenario: input.scenario,
       scriptPreview: fullBody.split('\n').slice(0, 10).join('\n') + '...',
