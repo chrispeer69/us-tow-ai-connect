@@ -63,7 +63,7 @@ type ConfigPatchBody = z.infer<typeof ConfigPatchSchema>;
 @Controller('v1/admin/outbound-voice')
 @UseGuards(AdminAuthGuard)
 export class OutboundVoiceController {
-  constructor(private readonly service: OutboundVoiceService) {}
+  constructor(private readonly service: OutboundVoiceService) { }
 
   // --- calls ---
 

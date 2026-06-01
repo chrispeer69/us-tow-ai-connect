@@ -651,7 +651,7 @@ export class OutboundVoiceService {
     const cfg = tenant.outboundVoiceConfig as Record<string, unknown> | null || {};
 
     const ctx: any = {
-      repName: (cfg.rep_name as string) || 'Sarah',
+      repName: (cfg.rep_name as string) || 'Ethan',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
       motorClub: 'Test',
       callbackNumber: (cfg.callback_number as string) || '+18447011345',

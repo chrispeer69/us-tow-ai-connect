@@ -77,7 +77,7 @@ export class TwilioOutboundService {
     const parts: string[] = [];
 
     parts.push(
-      `<Say voice="Polly.Joanna">Hi, this is Sarah calling from Roadside Towing on behalf of Triple A. Am I speaking with ${safeName}?</Say>`,
+      `<Say voice="Polly.Joanna">Hi, this is Ethan calling from Roadside Towing on behalf of Triple A. Am I speaking with ${safeName}?</Say>`,
     );
     parts.push(`<Pause length="2"/>`);
     parts.push(
