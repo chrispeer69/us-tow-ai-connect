@@ -647,6 +647,12 @@ export class OutboundVoiceService {
     },
   ) {
     const { renderCallBody } = await import('../flip-engine/flip-scripts');
+    
+    // Ensure strict E.164 formatting for Retell
+    let formattedPhone = input.toPhone.replace(/\D/g, '');
+    if (formattedPhone.length === 10) formattedPhone = '+1' + formattedPhone;
+    if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+    
     const tenant = await this.assertEnabled(tenantId, 'custom');
     const cfg = tenant.outboundVoiceConfig as Record<string, unknown> | null || {};
 
@@ -672,7 +678,7 @@ export class OutboundVoiceService {
     const fullBody = renderCallBody(input.scenario, ctx);
 
     const result = await this.provider.placeCall({
-      toPhone: input.toPhone,
+      toPhone: formattedPhone,
       toName: input.customerName || 'Test Customer',
       scriptBody: fullBody,
       scriptTemplate: 'custom',
@@ -686,10 +692,10 @@ export class OutboundVoiceService {
     return {
       success: !!result?.providerCallId,
       callId: result?.providerCallId ?? null,
-      toPhone: input.toPhone,
+      toPhone: formattedPhone,
       scenario: input.scenario,
       scriptPreview: fullBody.split('\n').slice(0, 10).join('\n') + '...',
-      message: `Test call placed to ${input.toPhone}. Ethan should call within 10 seconds.`,
+      message: `Test call placed to ${formattedPhone}. Ethan should call within 10 seconds.`,
     };
   }
 }
