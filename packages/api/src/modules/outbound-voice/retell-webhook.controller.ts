@@ -52,11 +52,12 @@ import { OutboundVoiceService } from './outbound-voice.service';
     private readonly apiKey: string | null;
 
   constructor(private readonly outboundVoice: OutboundVoiceService) {
-        const key = process.env.RETELL_API_KEY?.trim() ?? '';
+        // Retell now often uses a dedicated Webhook Secret instead of the API key
+        const key = (process.env.RETELL_WEBHOOK_SECRET?.trim() || process.env.RETELL_API_KEY?.trim()) ?? '';
         this.apiKey = key || null;
         if (!this.apiKey) {
                 this.logger.warn(
-                          'RETELL_API_KEY unset — Retell webhook signature verification is DISABLED',
+                          'RETELL_WEBHOOK_SECRET and RETELL_API_KEY unset — Retell webhook signature verification is DISABLED',
                         );
         }
   }

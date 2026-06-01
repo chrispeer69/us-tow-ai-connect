@@ -41,6 +41,7 @@ export default function CommandCenterPage() {
   const [showManualJob, setShowManualJob] = useState(false);
   const [showAddDriver, setShowAddDriver] = useState(false);
   const [showDriversModal, setShowDriversModal] = useState(false);
+  const [showTestAgent, setShowTestAgent] = useState(false);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
@@ -180,6 +181,9 @@ export default function CommandCenterPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowTestAgent(true)}>
+              Test Agent Call
+            </Button>
             <Button variant="outline" onClick={() => setShowDriversModal(true)}>
               Manage Drivers
             </Button>
@@ -233,6 +237,10 @@ export default function CommandCenterPage() {
           )}
         </div>
       </div>
+
+      {showTestAgent && (
+        <TestAgentModal onClose={() => setShowTestAgent(false)} />
+      )}
 
       {showManualJob && (
         <ManualJobModal
@@ -436,6 +444,91 @@ function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+function TestAgentModal({ onClose }: { onClose: () => void }) {
+  const [toPhone, setToPhone] = useState('');
+  const [scenario, setScenario] = useState('competitor_repair');
+  const [customerName, setCustomerName] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [destination, setDestination] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    setSuccess(false);
+    try {
+      await api(`/v1/admin/outbound-voice/debug/test-call`, {
+        method: 'POST',
+        json: {
+          toPhone,
+          scenario,
+          customerName: customerName || undefined,
+          vehicle: vehicle || undefined,
+          destination: destination || undefined,
+        },
+      });
+      setSuccess(true);
+      setTimeout(onClose, 2000);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Test Agent Call" onClose={onClose}>
+      {success ? (
+        <div className="p-4 text-center text-green-600 font-medium">Call triggered successfully!</div>
+      ) : (
+        <div className="space-y-3">
+          <label className="block text-sm font-medium text-zinc-900">
+            To Phone (required)
+            <Input value={toPhone} onChange={(e) => setToPhone(e.target.value)} placeholder="+1234567890" className="mt-1" />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Scenario
+            <select
+              value={scenario}
+              onChange={(e) => setScenario(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            >
+              <option value="competitor_repair">Competitor Repair</option>
+              <option value="auto_body">Auto Body</option>
+              <option value="residence">Residence</option>
+              <option value="our_shop">Our Shop</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Customer Name (optional)
+            <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="mt-1" />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Vehicle (optional)
+            <Input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="e.g. 2020 Honda Civic" className="mt-1" />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Destination (optional)
+            <Input value={destination} onChange={(e) => setDestination(e.target.value)} className="mt-1" />
+          </label>
+          {err && <p className="text-sm text-red-500">{err}</p>}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submit()} disabled={busy || !toPhone.trim()}>
+              {busy ? 'Triggering…' : 'Trigger Call'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
