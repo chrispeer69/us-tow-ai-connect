@@ -2,7 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCalls, tenants, type OutboundCallRow } from '../../db/schema';
+import { outboundCalls, tenants, alphaShops, type OutboundCallRow } from '../../db/schema';
+import type { UnifiedJobRow } from '../../db/schema';
 import {
   MissingVariableError,
   type OutboundVoicePurpose,
@@ -656,6 +657,14 @@ export class OutboundVoiceService {
     const tenant = await this.assertEnabled(tenantId, 'custom');
     const cfg = tenant.outboundVoiceConfig as Record<string, unknown> | null || {};
 
+    const activeShops = await this.db
+      .select()
+      .from(alphaShops)
+      .where(and(eq(alphaShops.tenantId, tenantId), eq(alphaShops.active, true)));
+
+    const repairShops = activeShops.filter((s) => s.shopType === 'REPAIR');
+    const bodyShops = activeShops.filter((s) => s.shopType === 'BODY');
+
     const ctx: any = {
       repName: (cfg.rep_name as string) || 'Ethan',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
@@ -668,10 +677,10 @@ export class OutboundVoiceService {
       destination: input.destination || 'Test Shop',
       issue: 'test issue',
       issueSubcategory: null,
-      nearestShop: 'Downtown Auto Care',
+      nearestShop: repairShops[0]?.name || 'Downtown Auto Care',
       nearestShopDistanceMiles: 3,
-      bodyShop1: null,
-      bodyShop2: null,
+      bodyShop1: bodyShops[0]?.name || null,
+      bodyShop2: bodyShops[1]?.name || bodyShops[0]?.name || null,
       rentalsAvailable: true,
     };
 

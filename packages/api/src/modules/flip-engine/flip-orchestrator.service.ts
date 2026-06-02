@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs, tenants } from '../../db/schema';
+import { outboundCallLogs, tenants, outboundCalls } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
 import { OutboundVoiceService } from '../outbound-voice/outbound-voice.service';
 import {
@@ -138,6 +138,24 @@ export class FlipOrchestratorService {
       jobsClassified += 1;
 
       try {
+        // DB-level deduplication to prevent looping across server restarts
+        const existingCalls = await this.db
+          .select({ id: outboundCalls.id })
+          .from(outboundCalls)
+          .where(
+            and(
+              eq(outboundCalls.tenantId, tenantId),
+              eq(outboundCalls.relatedJobId, job.jobId),
+              eq(outboundCalls.purpose, 'custom')
+            )
+          )
+          .limit(1);
+
+        if (existingCalls.length > 0) {
+          this.logger.debug(`[flip-orchestrator] job ${job.jobId} already called in DB, skipping`);
+          continue;
+        }
+
         const enqueued = await this.handleJob(tenantId, job);
         if (enqueued) callsEnqueued += 1;
       } catch (err) {
@@ -267,7 +285,7 @@ export class FlipOrchestratorService {
         toName: job.customerName,
         scriptTemplate: 'custom',
         scriptVariables: { body: fullBody },
-        relatedJobId: null, // job.jobId is the source-side id, not a UUID
+        relatedJobId: job.jobId,
       });
       return true;
     } catch (err) {
@@ -306,6 +324,25 @@ export class FlipOrchestratorService {
     // Dedup: never enqueue the same job twice.
     const seenKey = `welcome:${tenantId}:${job.id}`;
     if (this.seen.has(seenKey)) return;
+
+    // DB-level deduplication to prevent looping across server restarts
+    const existingCalls = await this.db
+      .select({ id: outboundCalls.id })
+      .from(outboundCalls)
+      .where(
+        and(
+          eq(outboundCalls.tenantId, tenantId),
+          eq(outboundCalls.relatedJobId, job.id),
+          eq(outboundCalls.purpose, 'custom')
+        )
+      )
+      .limit(1);
+
+    if (existingCalls.length > 0) {
+      this.seen.set(seenKey, Date.now()); // populate memory cache too
+      return;
+    }
+
     this.seen.set(seenKey, Date.now());
 
     try {
