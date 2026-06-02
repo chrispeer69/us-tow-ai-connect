@@ -299,7 +299,9 @@ export class FlipEngineService {
              pickup_address, pickup_lat, pickup_lng, dropoff_address,
              service_type
       FROM unified_jobs
-      WHERE tenant_id = ${tenantId} AND status = 'new'
+      WHERE tenant_id = ${tenantId} 
+        AND status = 'new'
+        AND created_at >= NOW() - INTERVAL '15 minutes'
       ORDER BY created_at ASC
       LIMIT 50
     `)) as unknown;
