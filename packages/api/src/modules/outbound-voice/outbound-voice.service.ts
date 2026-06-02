@@ -646,6 +646,8 @@ export class OutboundVoiceService {
       customerName?: string;
       vehicle?: string;
       destination?: string;
+      pickupLocation?: string;
+      motorClub?: string;
     },
   ) {
     const { renderCallBody } = await import('../flip-engine/flip-scripts');
@@ -669,14 +671,14 @@ export class OutboundVoiceService {
     const ctx: any = {
       repName: (cfg.rep_name as string) || 'Ethan',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
-      motorClub: 'Test',
+      motorClub: input.motorClub || 'Agero Motor Club',
       callbackNumber: (cfg.callback_number as string) || '+18447011345',
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
       customerFirstName: input.customerName?.split(' ')[0] || 'John',
       vehicle: input.vehicle || '2019 Honda Civic',
-      pickupLocation: 'Test Location',
-      destination: input.destination || 'Test Shop',
-      issue: 'test issue',
+      pickupLocation: input.pickupLocation || '123 Main Street',
+      destination: input.destination || 'Collision Center',
+      issue: 'a breakdown',
       issueSubcategory: null,
       nearestShop: repairShops[0]?.name || 'Downtown Auto Care',
       nearestShopDistanceMiles: 3,

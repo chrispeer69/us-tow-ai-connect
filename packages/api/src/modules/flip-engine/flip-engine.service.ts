@@ -300,7 +300,7 @@ export class FlipEngineService {
              service_type
       FROM unified_jobs
       WHERE tenant_id = ${tenantId} 
-        AND status = 'new'
+        AND status IN ('new', 'assigned', 'en_route')
         AND created_at >= NOW() - INTERVAL '15 minutes'
       ORDER BY created_at ASC
       LIMIT 50

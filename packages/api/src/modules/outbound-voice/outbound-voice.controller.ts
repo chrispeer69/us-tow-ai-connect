@@ -208,6 +208,8 @@ export class OutboundVoiceController {
       customerName?: string;
       vehicle?: string;
       destination?: string;
+      pickupLocation?: string;
+      motorClub?: string;
     },
   ) {
     return this.service.testCall(req.tenantId, body);

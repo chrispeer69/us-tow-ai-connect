@@ -306,6 +306,7 @@ function ManualJobModal({
   const [callerName, setCallerName] = useState('');
   const [callerPhone, setCallerPhone] = useState('');
   const [pickupAddress, setPickupAddress] = useState('');
+  const [dropoffAddress, setDropoffAddress] = useState('');
   const [serviceType, setServiceType] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -320,6 +321,7 @@ function ManualJobModal({
           caller_name: callerName,
           caller_phone: callerPhone || null,
           pickup_address: pickupAddress || null,
+          dropoff_address: dropoffAddress || null,
           service_type: serviceType || null,
           priority: 'normal',
         },
@@ -345,6 +347,10 @@ function ManualJobModal({
       <label className="block text-sm font-medium text-zinc-900">
         Pickup address
         <Input value={pickupAddress} onChange={(e) => setPickupAddress(e.target.value)} className="mt-1" />
+      </label>
+      <label className="block text-sm font-medium text-zinc-900">
+        Dropoff address
+        <Input value={dropoffAddress} onChange={(e) => setDropoffAddress(e.target.value)} className="mt-1" />
       </label>
       <label className="block text-sm font-medium text-zinc-900">
         Service type
@@ -453,6 +459,8 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
   const [customerName, setCustomerName] = useState('');
   const [vehicle, setVehicle] = useState('');
   const [destination, setDestination] = useState('');
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [motorClub, setMotorClub] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -470,6 +478,8 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
           customerName: customerName || undefined,
           vehicle: vehicle || undefined,
           destination: destination || undefined,
+          pickupLocation: pickupLocation || undefined,
+          motorClub: motorClub || undefined,
         },
       });
       setSuccess(true);
@@ -516,6 +526,14 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
           <label className="block text-sm font-medium text-zinc-900">
             Destination (optional)
             <Input value={destination} onChange={(e) => setDestination(e.target.value)} className="mt-1" />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Pickup Location (optional)
+            <Input value={pickupLocation} onChange={(e) => setPickupLocation(e.target.value)} placeholder="e.g. 123 Main St" className="mt-1" />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Motor Club (optional)
+            <Input value={motorClub} onChange={(e) => setMotorClub(e.target.value)} placeholder="e.g. Agero Motor Club" className="mt-1" />
           </label>
           {err && <p className="text-sm text-red-500">{err}</p>}
           <div className="flex justify-end gap-2 mt-4">

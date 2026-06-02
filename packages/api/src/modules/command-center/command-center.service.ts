@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, notInArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
@@ -499,6 +499,43 @@ export class CommandCenterService {
     }
 
     return { job: row, created, statusChanged };
+  }
+
+  /**
+   * Archives active jobs for a tenant/source that are missing from the
+   * current active scrape list. This acts as the "Cleanup Rule" to remove
+   * jobs from the Tow Command dashboard that were completed/canceled in Towbook.
+   */
+  async archiveMissingJobs(tenantId: string, source: string, activeSourceJobIds: string[]) {
+    // If the active array is empty, and we mark everything completed, that might be dangerous 
+    // if the scraper simply failed to read the board. But typically if it's empty, it's empty.
+    // Drizzle `notInArray` with an empty array can throw, so handle that explicitly.
+    const notInClause = activeSourceJobIds.length > 0
+      ? sql`${unifiedJobs.sourceJobId} NOT IN ${activeSourceJobIds}`
+      : sql`1=1`; // if 0 active jobs on the board, archive ALL active jobs for this tenant/source
+
+    const updated = await this.db
+      .update(unifiedJobs)
+      .set({ status: 'completed', updatedAt: new Date(), completedAt: new Date() })
+      .where(
+        and(
+          eq(unifiedJobs.tenantId, tenantId),
+          eq(unifiedJobs.source, source),
+          notInArray(unifiedJobs.status, ['completed', 'canceled', 'declined']),
+          notInClause
+        )
+      )
+      .returning();
+
+    for (const job of updated) {
+      await this.writeEvent(job.id, 'status_changed', {
+        from: 'active',
+        to: 'completed',
+        source: 'cleanup_rule',
+        notes: 'Archived automatically because job disappeared from Towbook active board',
+      });
+      this.broadcast(tenantId, 'job.updated', job);
+    }
   }
 
   /**

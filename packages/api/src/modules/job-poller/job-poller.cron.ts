@@ -163,6 +163,8 @@ export class JobPollerCron {
   }
 
   private async ingestJobs(tenantId: string, source: UnifiedJobSource, jobs: ActiveJob[]) {
+    const activeSourceJobIds: string[] = [];
+
     for (const job of jobs) {
       let input: UnifiedJobInput;
       switch (source) {
@@ -175,6 +177,8 @@ export class JobPollerCron {
         default:
           continue;
       }
+
+      activeSourceJobIds.push(input.sourceJobId);
 
       try {
         const result = await this.commandCenter.upsertJob(input);
@@ -192,6 +196,14 @@ export class JobPollerCron {
           `Upsert failed for ${source}:${input.sourceJobId} (tenant ${tenantId}): ${(err as Error).message}`,
         );
       }
+    }
+
+    try {
+      await this.commandCenter.archiveMissingJobs(tenantId, source, activeSourceJobIds);
+    } catch (err) {
+      this.logger.error(
+        `Failed to run cleanup rule (archiveMissingJobs) for tenant ${tenantId}, source ${source}: ${(err as Error).message}`,
+      );
     }
   }
 }
