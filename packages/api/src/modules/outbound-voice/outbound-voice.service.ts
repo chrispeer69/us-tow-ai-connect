@@ -231,6 +231,7 @@ export class OutboundVoiceService {
             lt(outboundCalls.scheduledFor, now),
           ),
           eq(tenants.outboundVoiceEnabled, true),
+          sql`${outboundCalls.createdAt} >= NOW() - INTERVAL '15 minutes'`
         ),
       )
       .orderBy(asc(outboundCalls.createdAt))

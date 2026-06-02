@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { eq } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import { tenantCredentials, tenants } from '../../db/schema';
@@ -47,7 +47,7 @@ export class JobPollerCron {
     private readonly dispatchEngine: DispatchRulesEngineService,
   ) {}
 
-  @Cron('*/60 * * * * *')
+  @Cron(CronExpression.EVERY_MINUTE)
   async pollAllTenants(): Promise<void> {
     if (!process.env.DATABASE_URL) {
       // Skip silently when DB not configured (boot-without-DB dev case).

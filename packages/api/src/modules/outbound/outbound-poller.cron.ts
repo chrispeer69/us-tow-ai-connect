@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -26,7 +26,7 @@ export class OutboundPollerCron {
     private readonly twilioOutbound: TwilioOutboundService,
   ) {}
 
-  @Cron('*/60 * * * * *')
+  @Cron(CronExpression.EVERY_MINUTE)
   async checkForNewJobs(): Promise<void> {
     if (!process.env.DATABASE_URL) {
       return;
