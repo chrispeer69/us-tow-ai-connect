@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,12 +75,12 @@ export default function Home() {
             <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
-            {/* 
-            <a href="#" className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Log In</a>
-            <Button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/30">
-              Start Free Trial
-            </Button>
-            */}
+            <Link href="/admin/command-center" className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Log In</Link>
+            <Link href="/admin/command-center">
+              <Button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/30">
+                Start Free Trial
+              </Button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -154,10 +155,12 @@ export default function Home() {
                     That's $84.50 for your first month of inbound + outbound AI dispatch.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Button size="lg" className="flex-1 bg-white hover:bg-white/95 text-blue-700 font-black text-base h-14 shadow-xl transition-all hover:scale-[0.98]">
-                      Start My Free Trial
-                      <ArrowRight className="w-5 h-5 ml-2" />
-                    </Button>
+                    <Link href="/admin/command-center" className="flex-1">
+                      <Button size="lg" className="w-full bg-white hover:bg-white/95 text-blue-700 font-black text-base h-14 shadow-xl transition-all hover:scale-[0.98]">
+                        Start My Free Trial
+                        <ArrowRight className="w-5 h-5 ml-2" />
+                      </Button>
+                    </Link>
                     <Button size="lg" variant="outline" className="flex-1 sm:flex-none border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white h-14 px-6 text-base font-bold">
                       Watch 90-Sec Demo
                     </Button>
@@ -361,10 +364,12 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <Button size="lg" className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow-lg shadow-cyan-500/30">
-                Start Generating Revenue
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              <Link href="/admin/command-center">
+                <Button size="lg" className="h-14 px-8 text-base bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-xl shadow-blue-500/30">
+                  Start Generating Revenue
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
             </div>
             <div className="lg:col-span-7">
               <LiveCallDemo />
@@ -711,15 +716,29 @@ export default function Home() {
                   </div>
                   <div className="text-sm text-muted-foreground mb-1">{plan.tag}</div>
                   <div className="text-xs text-blue-400 font-medium mb-6">{plan.rate}</div>
-                  <Button
-                    className={`w-full mb-6 font-bold ${
-                      plan.popular
-                        ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-                        : "bg-card border border-border hover:bg-muted text-foreground"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Button>
+                  {plan.cta === "Talk to Sales" ? (
+                    <Button
+                      className={`w-full mb-6 font-bold ${
+                        plan.popular
+                          ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                          : "bg-card border border-border hover:bg-muted text-foreground"
+                      }`}
+                    >
+                      {plan.cta}
+                    </Button>
+                  ) : (
+                    <Link href="/admin/command-center" className="w-full">
+                      <Button
+                        className={`w-full mb-6 font-bold ${
+                          plan.popular
+                            ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                            : "bg-card border border-border hover:bg-muted text-foreground"
+                        }`}
+                      >
+                        {plan.cta}
+                      </Button>
+                    </Link>
+                  )}
                   <Separator className="mb-6" />
                   <ul className="space-y-3">
                     {plan.features.map((f, j) => (
