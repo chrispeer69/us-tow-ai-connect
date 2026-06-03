@@ -11,7 +11,7 @@ interface Message {
 
 const SCRIPT: Message[] = [
   { speaker: "system", text: "New tow detected in Towbook · Calling customer...", delay: 800 },
-  { speaker: "ai", text: "Hi, this is Sarah from Roadside Towing on behalf of AAA. Am I speaking with Jazmine?", delay: 1500 },
+  { speaker: "ai", text: "Hi, this is Ethan from Roadside Towing on behalf of AAA. Am I speaking with Jazmine?", delay: 1500 },
   { speaker: "customer", text: "Yes, this is Jazmine.", delay: 1200 },
   { speaker: "ai", text: "I'm confirming your tow request — 2019 Honda Civic, going to Midas Auto Repair. Is that correct?", delay: 2200 },
   { speaker: "customer", text: "Yes, that's right.", delay: 1100 },
