@@ -1,23 +1,11 @@
-import { type ClassValue } from 'clsx';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
 /**
- * Lightweight clsx-style class merger; avoids pulling in `clsx` as a dep
- * for one-line usage across the dashboard.
+ * Enhanced clsx-style class merger that supports tailwind-merge.
  */
 export function cn(...inputs: ClassValue[]): string {
-  const flatten = (v: ClassValue): string => {
-    if (!v) return '';
-    if (typeof v === 'string' || typeof v === 'number') return String(v);
-    if (Array.isArray(v)) return v.map(flatten).filter(Boolean).join(' ');
-    if (typeof v === 'object') {
-      return Object.entries(v)
-        .filter(([, on]) => Boolean(on))
-        .map(([k]) => k)
-        .join(' ');
-    }
-    return '';
-  };
-  return inputs.map(flatten).filter(Boolean).join(' ');
+  return twMerge(clsx(inputs));
 }
 
 export const TENANT_HEADER = 'x-tenant-id';
