@@ -669,7 +669,7 @@ export class OutboundVoiceService {
     const bodyShops = activeShops.filter((s) => s.shopType === 'BODY');
 
     const ctx: any = {
-      repName: (cfg.rep_name as string) || 'Ethan',
+      repName: 'Ethan',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
       motorClub: input.motorClub || 'Agero Motor Club',
       callbackNumber: (cfg.callback_number as string) || '+18447011345',

@@ -235,7 +235,7 @@ export class FlipOrchestratorService {
     const bodyShops = pickTwoBodyShops(ourShops);
     const scenario = scenarioForDestinationTag(destination.tag);
     const ctx: ScriptContext = {
-      repName: (cfg.rep_name as string) || 'Ethan',
+      repName: 'Ethan',
       companyName: job.companyName ?? ((cfg.company_name as string) || 'Roadside Towing'),
       motorClub: job.motorClub ?? '',
       callbackNumber: (cfg.callback_number as string) || '',
@@ -399,7 +399,7 @@ export class FlipOrchestratorService {
       const scenario = scenarioForDestinationTag(destination.tag);
       const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
       const ctx: ScriptContext = {
-        repName: (cfg.rep_name as string) || 'Ethan',
+        repName: 'Ethan',
         companyName: (cfg.company_name as string) || 'Roadside Towing',
         motorClub: '',
         callbackNumber: (cfg.callback_number as string) || '',
