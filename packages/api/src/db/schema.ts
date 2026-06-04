@@ -988,6 +988,7 @@ export const outboundCalls = pgTable(
     durationSeconds: integer('duration_seconds'),
     transcript: text('transcript'),
     recordingUrl: text('recording_url'),
+    analysisData: jsonb('analysis_data').default(null),
     outcome: jsonb('outcome'),
     error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
