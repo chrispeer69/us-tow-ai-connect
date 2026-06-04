@@ -274,7 +274,7 @@ export class FlipOrchestratorService {
         toName: job.customerName,
         scriptTemplate: 'custom',
         scriptVariables: { body: fullBody },
-        relatedJobId: job.jobId,
+        relatedJobId: null, // job.jobId is the source-side id, not a UUID
       });
       return true;
     } catch (err) {
