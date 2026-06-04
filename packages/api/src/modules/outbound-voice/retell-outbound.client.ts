@@ -74,7 +74,7 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     }
     // Always include the rendered body so the agent has the full script
     // text available even if the prompt template references individual vars.
-    dynamicVariables.script_body = params.scriptBody;
+    dynamicVariables.script_body = dynamicVariables.body;
     dynamicVariables.script_template = params.scriptTemplate;
     dynamicVariables.tenant_id = params.tenantId;
     dynamicVariables.ustow_call_id = params.callId;
