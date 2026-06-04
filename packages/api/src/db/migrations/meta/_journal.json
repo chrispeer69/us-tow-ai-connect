@@ -204,6 +204,13 @@
       "when": 1780552270412,
       "tag": "0030_add_invite_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1780552812987,
+      "tag": "0031_add_more_invite_columns",
+      "breakpoints": true
     }
   ]
 }
