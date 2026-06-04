@@ -383,7 +383,7 @@ export class OutboundVoiceService {
   /**
    * Session 68 — provider-agnostic webhook event handler. Idempotent on
    * the provider-specific call id column. Webhook controllers verify
-   * signatures before calling this.
+   * signatures before calling this. Accepts analysisData for call outcome.
    */
   async handleProviderWebhookEvent(event: {
     provider: 'retell' | 'thinkrr';
