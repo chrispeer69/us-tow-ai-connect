@@ -392,6 +392,21 @@ export class OutboundVoiceService {
     durationSeconds?: number | null;
     transcript?: string | null;
     recordingUrl?: string | null;
+    analysisData: {
+      call_summary?: string | null;
+      call_successful?: boolean | null;
+      user_sentiment?: string | null;
+      flip_eligible?: boolean | null;
+      flip_outcome?: string | null;
+      offer_1_result?: string | null;
+      offer_2_result?: string | null;
+      offer_3_result?: string | null;
+      convini_link_sent?: boolean | null;
+      convini_sell_type?: string | null;
+      corrections_made?: string | null;
+      nearest_our_shop?: string | null;
+      destination_type?: string | null;
+    };
     outcome?: Record<string, unknown> | null;
     error?: string | null;
     timestampIso?: string | null;
@@ -436,6 +451,8 @@ export class OutboundVoiceService {
       patch.outcome = merged as never;
     }
     if (event.error != null) patch.error = event.error;
+
+    patch.analysisData = event.analysisData;
 
     await this.db.update(outboundCalls).set(patch).where(eq(outboundCalls.id, existing.id));
     return { matched: true, previousStatus: existing.status, newStatus };
