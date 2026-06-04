@@ -138,23 +138,12 @@ export class FlipOrchestratorService {
       jobsClassified += 1;
 
       try {
-        // DB-level deduplication to prevent looping across server restarts
-        const existingCalls = await this.db
-          .select({ id: outboundCalls.id })
-          .from(outboundCalls)
-          .where(
-            and(
-              eq(outboundCalls.tenantId, tenantId),
-              eq(outboundCalls.relatedJobId, job.jobId),
-              eq(outboundCalls.purpose, 'custom')
-            )
-          )
-          .limit(1);
-
-        if (existingCalls.length > 0) {
-          this.logger.debug(`[flip-orchestrator] job ${job.jobId} already called in DB, skipping`);
-          continue;
-        }
+        // NOTE: cross-restart DB dedup intentionally not done here. job.jobId is a
+        // source-side string (e.g. Towbook ID), not a UUID, so querying or writing
+        // it into outboundCalls.relatedJobId (uuid column) throws. Within-process
+        // dedup is handled by the in-memory `seen` map above. Proper cross-restart
+        // dedup would require mapping source IDs to unified_jobs.id UUIDs, which is
+        // a future enhancement.
 
         const enqueued = await this.handleJob(tenantId, job);
         if (enqueued) callsEnqueued += 1;
