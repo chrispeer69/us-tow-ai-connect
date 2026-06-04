@@ -25,27 +25,27 @@ import { api } from '@/lib/utils';
 
 interface OutboundCallRow {
   id: string;
-  tenant_id: string;
+  tenantId: string;
   purpose: string;
-  related_job_id: string | null;
-  to_phone: string;
-  to_name: string | null;
-  script_template: string;
-  script_variables: Record<string, unknown>;
-  thinkrr_call_id: string | null;
+  relatedJobId: string | null;
+  toPhone: string;
+  toName: string | null;
+  scriptTemplate: string;
+  scriptVariables: Record<string, unknown>;
+  thinkrrCallId: string | null;
   status: string;
   attempts: number;
-  max_attempts: number;
-  scheduled_for: string | null;
-  started_at: string | null;
-  ended_at: string | null;
-  duration_seconds: number | null;
+  maxAttempts: number;
+  scheduledFor: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
   transcript: string | null;
-  recording_url: string | null;
+  recordingUrl: string | null;
   outcome: Record<string, unknown> | null;
   error: string | null;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface ListResponse {
@@ -122,9 +122,9 @@ export default function OutboundVoicePage() {
   const [actionPending, setActionPending] = useState<string | null>(null);
 
   const stats = useMemo(() => {
-    const last24h = rows.filter((r) => Date.now() - new Date(r.created_at).getTime() < 24 * 60 * 60 * 1000);
+    const last24h = rows.filter((r) => Date.now() - new Date(r.createdAt).getTime() < 24 * 60 * 60 * 1000);
     const completed = last24h.filter((r) => r.status === 'completed');
-    const totalDuration = completed.reduce((acc, r) => acc + (r.duration_seconds ?? 0), 0);
+    const totalDuration = completed.reduce((acc, r) => acc + (r.durationSeconds ?? 0), 0);
     const queued = rows.filter((r) => r.status === 'queued');
     return {
       total24h: last24h.length,
@@ -310,20 +310,20 @@ export default function OutboundVoicePage() {
                 <Fragment key={r.id}>
                   <TableRow className="cursor-pointer" onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
                     <TableCell className="text-xs text-zinc-400">
-                      {new Date(r.created_at).toLocaleString()}
+                      {new Date(r.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell>{purposeLabel(r.purpose)}</TableCell>
                     <TableCell>
-                      <div className="font-mono text-xs">{r.to_phone}</div>
-                      {r.to_name && <div className="text-xs text-zinc-500">{r.to_name}</div>}
+                      <div className="font-mono text-xs">{r.toPhone}</div>
+                      {r.toName && <div className="text-xs text-zinc-500">{r.toName}</div>}
                     </TableCell>
                     <TableCell>
                       <Badge className={STATUS_COLOR[r.status] ?? 'bg-zinc-700 text-zinc-200'}>
                         {r.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{r.attempts}/{r.max_attempts}</TableCell>
-                    <TableCell>{r.duration_seconds != null ? `${r.duration_seconds}s` : '—'}</TableCell>
+                    <TableCell>{r.attempts}/{r.maxAttempts}</TableCell>
+                    <TableCell>{r.durationSeconds != null ? `${r.durationSeconds}s` : '—'}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       {(r.status === 'queued' || r.status === 'dialing' || r.status === 'in_progress') && (
                         <Button
@@ -395,11 +395,11 @@ function DetailDrawer({ call }: { call: OutboundCallRow }) {
     <div className="space-y-3 p-3 text-sm">
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
         <Field label="Call ID" value={call.id} mono />
-        <Field label="Thinkrr ID" value={call.thinkrr_call_id ?? '—'} mono />
-        <Field label="Template" value={call.script_template} />
-        <Field label="Started" value={call.started_at ?? '—'} />
-        <Field label="Ended" value={call.ended_at ?? '—'} />
-        <Field label="Related job" value={call.related_job_id ?? '—'} mono />
+        <Field label="Thinkrr ID" value={call.thinkrrCallId ?? '—'} mono />
+        <Field label="Template" value={call.scriptTemplate} />
+        <Field label="Started" value={call.startedAt ?? '—'} />
+        <Field label="Ended" value={call.endedAt ?? '—'} />
+        <Field label="Related job" value={call.relatedJobId ?? '—'} mono />
       </div>
 
       {call.transcript && (
@@ -411,10 +411,10 @@ function DetailDrawer({ call }: { call: OutboundCallRow }) {
         </div>
       )}
 
-      {call.recording_url && (
+      {call.recordingUrl && (
         <div>
           <div className="text-xs uppercase tracking-wide text-zinc-500">Recording</div>
-          <audio controls className="mt-1 w-full" src={call.recording_url} />
+          <audio controls className="mt-1 w-full" src={call.recordingUrl} />
         </div>
       )}
 
@@ -439,7 +439,7 @@ function DetailDrawer({ call }: { call: OutboundCallRow }) {
       <details>
         <summary className="cursor-pointer text-xs text-zinc-400">Variables</summary>
         <pre className="mt-1 rounded bg-zinc-950 p-3 text-xs text-zinc-300">
-          {JSON.stringify(call.script_variables, null, 2)}
+          {JSON.stringify(call.scriptVariables, null, 2)}
         </pre>
       </details>
     </div>

@@ -37,7 +37,7 @@ interface Step3 {
 }
 interface Step4 {
   greetingMessage: string;
-  voicePreference: 'Polly.Joanna' | 'Polly.Matthew' | 'Polly.Amy' | 'Polly.Brian';
+  voicePreference: 'Polly.Joanna' | 'Polly.Joanna' | 'Polly.Amy' | 'Polly.Brian';
   transferNumber: string;
   defaultEtaMins: number;
 }
@@ -454,7 +454,6 @@ export function OnboardingClient() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Polly.Joanna">Joanna (US female)</SelectItem>
-                      <SelectItem value="Polly.Matthew">Matthew (US male)</SelectItem>
                       <SelectItem value="Polly.Amy">Amy (UK female)</SelectItem>
                       <SelectItem value="Polly.Brian">Brian (UK male)</SelectItem>
                     </SelectContent>

@@ -32,7 +32,7 @@ export const OnboardingIntegrationStep = z.object({
 
 export const OnboardingAgentStep = z.object({
   greetingMessage: z.string().min(1).max(500),
-  voicePreference: z.enum(['Polly.Joanna', 'Polly.Matthew', 'Polly.Amy', 'Polly.Brian']).default('Polly.Joanna'),
+  voicePreference: z.enum(['Polly.Joanna', 'Polly.Joanna', 'Polly.Amy', 'Polly.Brian']).default('Polly.Joanna'),
   transferNumber: e164,
   defaultEtaMins: z.number().int().min(0).max(600).default(45),
 });

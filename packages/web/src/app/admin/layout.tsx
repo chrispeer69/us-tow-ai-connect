@@ -5,6 +5,8 @@ import { Sidebar } from '@/components/admin/Sidebar';
 import { TopBar } from '@/components/admin/TopBar';
 import { UtilityBar } from '@/components/admin/UtilityBar';
 
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+
 const DEFAULT_TENANT_ID =
   process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID ||
   '00000000-0000-0000-0000-000000000001';
@@ -15,7 +17,8 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <BrandingProvider tenantId={DEFAULT_TENANT_ID} source="admin">
+    <ProtectedRoute>
+      <BrandingProvider tenantId={DEFAULT_TENANT_ID} source="admin">
       <div className="admin-shell flex min-h-screen flex-col bg-[var(--surface-bg)] text-[var(--text-main)]">
         <ImpersonationBanner />
         <TopBar />
@@ -26,5 +29,6 @@ export default function AdminLayout({
         </div>
       </div>
     </BrandingProvider>
+    </ProtectedRoute>
   );
 }

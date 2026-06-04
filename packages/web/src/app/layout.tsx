@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Manrope, Work_Sans } from "next/font/google";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -38,7 +39,9 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${manrope.variable} ${workSans.variable}`}
     >
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

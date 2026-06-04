@@ -75,8 +75,8 @@ export default function Home() {
             <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/admin/command-center" className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Log In</Link>
-            <Link href="/admin/command-center">
+            <Link href="/sign-in" className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Log In</Link>
+            <Link href="/sign-up">
               <Button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/30">
                 Start Free Trial
               </Button>
@@ -155,7 +155,7 @@ export default function Home() {
                     That's $84.50 for your first month of inbound + outbound AI dispatch.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Link href="/admin/command-center" className="flex-1">
+                    <Link href="/sign-up" className="flex-1">
                       <Button size="lg" className="w-full bg-white hover:bg-white/95 text-blue-700 font-black text-base h-14 shadow-xl transition-all hover:scale-[0.98]">
                         Start My Free Trial
                         <ArrowRight className="w-5 h-5 ml-2" />
@@ -364,7 +364,7 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <Link href="/admin/command-center">
+              <Link href="/sign-up">
                 <Button size="lg" className="h-14 px-8 text-base bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-xl shadow-blue-500/30">
                   Start Generating Revenue
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -727,7 +727,7 @@ export default function Home() {
                       {plan.cta}
                     </Button>
                   ) : (
-                    <Link href="/admin/command-center" className="w-full">
+                    <Link href="/sign-up" className="w-full">
                       <Button
                         className={`w-full mb-6 font-bold ${
                           plan.popular

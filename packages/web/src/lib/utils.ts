@@ -28,6 +28,13 @@ export async function api<T = unknown>(
     [TENANT_HEADER]: DEFAULT_TENANT_ID,
     ...(headers as Record<string, string> | undefined),
   };
+
+  if (typeof window !== 'undefined') {
+    const token = window.localStorage.getItem('access_token');
+    if (token) {
+      finalHeaders['Authorization'] = `Bearer ${token}`;
+    }
+  }
   if (json !== undefined) {
     finalHeaders['Content-Type'] = 'application/json';
   }
@@ -38,7 +45,16 @@ export async function api<T = unknown>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+    try {
+      const parsed = JSON.parse(text);
+      const msg = parsed.message || parsed.error;
+      if (msg) {
+        throw new Error(Array.isArray(msg) ? msg.join(', ') : String(msg));
+      }
+    } catch {
+      // If it's not JSON or doesn't have a message, fall through
+    }
+    throw new Error(text || `HTTP ${res.status} ${res.statusText}`);
   }
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {

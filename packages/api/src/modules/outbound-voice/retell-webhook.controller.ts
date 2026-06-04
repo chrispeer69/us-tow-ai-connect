@@ -86,13 +86,10 @@ import { OutboundVoiceService } from './outbound-voice.service';
                     .digest('hex');
 
             if (!signature || !timingSafeEqual(signature, expected)) {
-                      this.logger.error(`🚨 [WEBHOOK DEBUG] Signature Mismatch!
-  Received: ${signature}
-  Expected: ${expected}
-  Did we use RETELL_WEBHOOK_SECRET? ${!!process.env.RETELL_WEBHOOK_SECRET}
-  Length of key used: ${this.apiKey?.length}`);
-                      // TEMPORARILY disable 401 throw so we can see the logs and let Chris test!
-                      // throw new UnauthorizedException('invalid signature');
+                      this.logger.warn(
+                        `Retell webhook signature mismatch from ${(req as any).ip ?? 'unknown'} — rejecting`,
+                      );
+                      throw new UnauthorizedException('invalid signature');
             }
           }
 

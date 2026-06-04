@@ -44,6 +44,9 @@ export function resolveEndpointGroup(path: string): EndpointGroup | null {
   if (path.startsWith('/public/')) return 'public';
   if (path.startsWith('/track/')) return 'public';
   if (path.startsWith('/v1/admin/')) return 'admin';
+  // Auth routes (login, signup, google) — IP-keyed like public to prevent
+  // brute-force attacks. Sits in the 'public' tier (60 req/min per IP).
+  if (path.startsWith('/v1/auth/')) return 'public';
   // Driver-facing endpoints live under both /v1/driver/* and /v1/ai-connect/*.
   if (path.startsWith('/v1/ai-connect/')) return 'tenant_api';
   if (path.startsWith('/v1/driver/')) return 'tenant_api';

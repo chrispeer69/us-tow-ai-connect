@@ -73,12 +73,15 @@ export default function IntegrationsPage() {
     setError(null);
     setSuccess(null);
     try {
-      await api('/v1/admin/credentials', {
+      const response = await api<{ warning?: string }>('/v1/admin/credentials', {
         method: 'POST',
         json: { username, password, softwareType },
       });
       await handleTest();
       setShowCredentialsForm(false);
+      if (response && response.warning) {
+        setSuccess(response.warning);
+      }
     } catch (err) {
       setStatus('FAILED');
       setError((err as Error).message);

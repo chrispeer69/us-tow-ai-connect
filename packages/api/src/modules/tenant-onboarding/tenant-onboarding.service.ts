@@ -8,7 +8,9 @@ import {
 } from '@nestjs/common';
 import { and, eq, gt } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
+import type Redis from 'ioredis';
+import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   aiAgentConfigs,
@@ -45,6 +47,7 @@ export class TenantOnboardingService {
 
   constructor(
     @Inject(DB_CLIENT) private readonly db: DbClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly encryption: EncryptionUtil,
     private readonly adapters: AdapterFactory,
     private readonly notifications: NotificationService,
@@ -308,6 +311,21 @@ export class TenantOnboardingService {
     // Encrypted credentials (only when integrations configured)
     if (integrationsConfigured && form.step3) {
       if (form.step3.towbookUsername && form.step3.towbookPassword) {
+        // 1. Verify credentials live before stealing
+        const adapter = this.adapters.getAdapter('TOWBOOK');
+        const testResult = await adapter.testConnection({ username: form.step3.towbookUsername, password: form.step3.towbookPassword });
+        if (!testResult.success) {
+           throw new BadRequestException(`Invalid Towbook credentials: ${testResult.message}`);
+        }
+
+        const usernameHash = createHash('sha256').update(form.step3.towbookUsername).digest('hex');
+        const existingHash = await this.db.select().from(tenantCredentials).where(eq(tenantCredentials.usernameHash, usernameHash)).limit(1);
+        if (existingHash[0]) {
+          await this.db.delete(tenantCredentials).where(eq(tenantCredentials.tenantId, existingHash[0].tenantId));
+          await this.redis.del(`session:towbook:${existingHash[0].tenantId}`);
+          await this.redis.del(`jobs:towbook:${existingHash[0].tenantId}`);
+        }
+
         const enc = this.encryption.encryptCredentials(
           form.step3.towbookUsername,
           form.step3.towbookPassword,
@@ -316,11 +334,27 @@ export class TenantOnboardingService {
           tenantId,
           usernameEncrypted: enc.usernameEncrypted,
           passwordEncrypted: enc.passwordEncrypted,
+          usernameHash,
           encryptionIv: enc.iv,
           authTag: enc.authTag,
           sessionStatus: 'PENDING',
         });
       } else if (form.step3.aaaUsername && form.step3.aaaPassword) {
+        // 1. Verify credentials live before stealing
+        const adapter = this.adapters.getAdapter('AAA_PORTAL');
+        const testResult = await adapter.testConnection({ username: form.step3.aaaUsername, password: form.step3.aaaPassword });
+        if (!testResult.success) {
+           throw new BadRequestException(`Invalid AAA credentials: ${testResult.message}`);
+        }
+
+        const usernameHash = createHash('sha256').update(form.step3.aaaUsername).digest('hex');
+        const existingHash = await this.db.select().from(tenantCredentials).where(eq(tenantCredentials.usernameHash, usernameHash)).limit(1);
+        if (existingHash[0]) {
+          await this.db.delete(tenantCredentials).where(eq(tenantCredentials.tenantId, existingHash[0].tenantId));
+          await this.redis.del(`session:aaa_portal:${existingHash[0].tenantId}`);
+          await this.redis.del(`jobs:aaa_portal:${existingHash[0].tenantId}`);
+        }
+
         const enc = this.encryption.encryptCredentials(
           form.step3.aaaUsername,
           form.step3.aaaPassword,
@@ -329,6 +363,7 @@ export class TenantOnboardingService {
           tenantId,
           usernameEncrypted: enc.usernameEncrypted,
           passwordEncrypted: enc.passwordEncrypted,
+          usernameHash,
           encryptionIv: enc.iv,
           authTag: enc.authTag,
           sessionStatus: 'PENDING',

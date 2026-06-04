@@ -50,19 +50,19 @@ a:hover {
   --card-foreground: #0a0f1e;
   --popover: #ffffff;
   --popover-foreground: #0a0f1e;
-  --primary: #1e40af;
+  --primary: var(--brand-primary, #1e40af);
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
+  --secondary: var(--brand-secondary, #f1f5f9);
   --secondary-foreground: #0a0f1e;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
-  --accent: #3b82f6;
+  --accent: var(--brand-accent, #3b82f6);
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
   --border: #e2e8f0;
   --input: #e2e8f0;
-  --ring: #3b82f6;
+  --ring: var(--brand-primary, #3b82f6);
 }
 
 .dark {
@@ -72,19 +72,19 @@ a:hover {
   --card-foreground: #ffffff;
   --popover: #0d1530;
   --popover-foreground: #ffffff;
-  --primary: #3b82f6;
+  --primary: var(--brand-primary, #3b82f6);
   --primary-foreground: #ffffff;
-  --secondary: #131b3a;
+  --secondary: var(--brand-secondary, #131b3a);
   --secondary-foreground: #cbd5e1;
   --muted: #131b3a;
   --muted-foreground: #94a3b8;
-  --accent: #2563eb;
+  --accent: var(--brand-accent, #2563eb);
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
   --border: rgba(59, 130, 246, 0.15);
   --input: rgba(59, 130, 246, 0.2);
-  --ring: #3b82f6;
+  --ring: var(--brand-primary, #3b82f6);
 }
 
 @layer components {

@@ -18,6 +18,7 @@ import { relations } from 'drizzle-orm';
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().defaultRandom(),
   companyName: varchar('company_name', { length: 255 }).notNull(),
+  ownerId: uuid('owner_id'), // added in S66 for auth
   ownerEmail: varchar('owner_email', { length: 255 }).notNull(),
   timezone: varchar('timezone', { length: 50 }).notNull().default('America/New_York'),
   targetSoftwareType: varchar('target_software_type', { length: 50 }).notNull(),
@@ -86,6 +87,7 @@ export const tenantCredentials = pgTable('tenant_credentials', {
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   usernameEncrypted: text('username_encrypted').notNull(),
+  usernameHash: varchar('username_hash', { length: 255 }).unique(),
   passwordEncrypted: text('password_encrypted').notNull(),
   encryptionIv: text('encryption_iv').notNull(),
   authTag: text('auth_tag').notNull(),
@@ -273,6 +275,7 @@ export const tenantMembers = pgTable('tenant_members', {
   tenantId: uuid('tenant_id')
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id'), // added in S66 for auth
   email: varchar('email', { length: 255 }).notNull(),
   name: varchar('name', { length: 255 }),
   // RBAC role (Session 45). UPPERCASE to match existing rows + the onboarding
@@ -946,6 +949,8 @@ export const users = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     email: varchar('email', { length: 255 }).notNull().unique(),
+    passwordHash: varchar('password_hash', { length: 255 }),
+    googleId: varchar('google_id', { length: 255 }).unique(),
     name: varchar('name', { length: 255 }),
     platformRole: varchar('platform_role', { length: 20 }).notNull().default('tenant_user'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -7,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, desc, asc, like, gte, lte, SQL, sql } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -117,6 +118,29 @@ export class AdminService {
   async saveCredentials(tenantId: string, body: SaveCredentialsBody) {
     try {
       await this.ensureTenant(tenantId, body.softwareType);
+      const usernameHash = createHash('sha256').update(body.username).digest('hex');
+
+      // 1. Verify credentials live BEFORE allowing a possible reassignment to prevent DoS
+      const adapter = this.adapters.getAdapter(body.softwareType);
+      const testResult = await adapter.testConnection({ username: body.username, password: body.password });
+      if (!testResult.success) {
+        throw new BadRequestException(`Invalid credentials: ${testResult.message}`);
+      }
+
+      // 2. Check if this Towbook account is already connected to another tenant
+      const existingHash = await this.db
+        .select()
+        .from(tenantCredentials)
+        .where(eq(tenantCredentials.usernameHash, usernameHash))
+        .limit(1);
+      
+      let warning: string | undefined = undefined;
+      if (existingHash[0] && existingHash[0].tenantId !== tenantId) {
+        // Disconnect old tenant
+        await this.deleteCredentials(existingHash[0].tenantId);
+        warning = 'Previously associated account was disconnected. To share this integration, use the Members tab to invite users to a single workspace.';
+      }
+
       const enc = this.encryption.encryptCredentials(body.username, body.password);
       const existing = await this.db
         .select()
@@ -130,6 +154,7 @@ export class AdminService {
           .set({
             usernameEncrypted: enc.usernameEncrypted,
             passwordEncrypted: enc.passwordEncrypted,
+            usernameHash,
             encryptionIv: enc.iv,
             authTag: enc.authTag,
             sessionStatus: 'PENDING',
@@ -141,13 +166,14 @@ export class AdminService {
           tenantId,
           usernameEncrypted: enc.usernameEncrypted,
           passwordEncrypted: enc.passwordEncrypted,
+          usernameHash,
           encryptionIv: enc.iv,
           authTag: enc.authTag,
           sessionStatus: 'PENDING',
           updatedAt: now,
         });
       }
-      return { status: 'success' };
+      return { status: 'success', warning };
     } catch (err) {
       this.logger.error(`saveCredentials failed for tenant ${tenantId}: ${(err as Error).message}`, (err as Error).stack);
       throw err;

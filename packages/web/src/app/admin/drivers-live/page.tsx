@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GoogleMap, LoadScript, Marker } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { api } from '@/lib/utils';
 
 interface LatestDriver {
@@ -55,6 +55,11 @@ export default function DriversLivePage() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [ageFilter, setAgeFilter] = useState<AgeFilter>('any');
   const [jobFilter, setJobFilter] = useState<JobFilter>('any');
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: MAP_KEY,
+  });
 
   const refresh = useCallback(async () => {
     try {
@@ -209,8 +214,7 @@ export default function DriversLivePage() {
               </p>
             </div>
           )}
-          {MAP_KEY && (
-            <LoadScript googleMapsApiKey={MAP_KEY}>
+          {MAP_KEY && isLoaded && (
               <GoogleMap
                 mapContainerStyle={{ width: '100%', height: '100%' }}
                 center={center}
@@ -239,7 +243,6 @@ export default function DriversLivePage() {
                   />
                 ))}
               </GoogleMap>
-            </LoadScript>
           )}
         </section>
 

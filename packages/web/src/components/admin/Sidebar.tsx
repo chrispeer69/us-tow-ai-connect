@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Icon } from '@/components/ui/icons';
 import { useBranding } from '@/components/branding/BrandingProvider';
+import { useAuth } from '@/contexts/AuthContext';
 import { NAV_GROUPS, isActiveHref } from './nav-config';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'v0.1.0';
@@ -18,6 +19,7 @@ const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'v0.1.0';
 export function Sidebar() {
   const pathname = usePathname();
   const { branding } = useBranding();
+  const { logout } = useAuth();
   return (
     <aside className="hidden w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--surface-card)] lg:flex lg:flex-col">
       <nav className="sticky top-[70px] flex max-h-[calc(100vh-70px)] flex-col gap-6 overflow-y-auto p-5">
@@ -51,6 +53,18 @@ export function Sidebar() {
             })}
           </div>
         ))}
+
+        <button
+          onClick={logout}
+          className="mt-2 flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors text-left"
+        >
+          <svg className="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span className="truncate">Log Out</span>
+        </button>
 
         <SidebarFooter tenantName={branding.companyDisplayName} />
       </nav>

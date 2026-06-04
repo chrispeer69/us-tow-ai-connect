@@ -33,7 +33,8 @@ export type IconName =
   | 'search'
   | 'bell'
   | 'chevron-right'
-  | 'chevron-down';
+  | 'chevron-down'
+  | 'reports';
 
 // Path data drawn in a 24×24 box. Each entry is one or more <path d> strings.
 const PATHS: Record<IconName, string[]> = {
@@ -63,7 +64,11 @@ const PATHS: Record<IconName, string[]> = {
   branding: ['M12 3l2.5 5 5.5.8-4 4 1 5.6L12 21l-5-2.9 1-5.6-4-4 5.5-.8z'],
   company: ['M4 21V6l8-3v18M12 21h8V9l-8-3', 'M8 9h.01M8 13h.01M16 12h.01M16 16h.01'],
   members: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M3 20a6 6 0 0 1 12 0', 'M16 5a3 3 0 0 1 0 6m1 8a6 6 0 0 0-3-5'],
-  'api-keys': ['M10 14a4 4 0 1 0-3.9-5', 'M10 14l-6 6 2 2M14 9l7-7', 'M7 17l2 2'],
+  'api-keys': [
+    'm15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4',
+    'm21 2-9.6 9.6',
+    'M13 15.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0Z'
+  ],
   billing: ['M3 7h18v10H3z', 'M3 11h18', 'M7 15h3'],
   'audit-log': ['M6 3h9l4 4v14H6z', 'M10 12l2 2 4-4', 'M9 7h3'],
   tenants: ['M3 21V8l6-4 6 4', 'M9 21V12h6v9', 'M15 21h6V11l-6-3', 'M18 14h.01M18 17h.01'],
@@ -73,6 +78,7 @@ const PATHS: Record<IconName, string[]> = {
   bell: ['M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z', 'M10 19a2 2 0 0 0 4 0'],
   'chevron-right': ['M9 6l6 6-6 6'],
   'chevron-down': ['M6 9l6 6 6-6'],
+  reports: ['M18 20V10', 'M12 20V4', 'M6 20v-6'],
 };
 
 export interface IconProps extends React.SVGProps<SVGSVGElement> {

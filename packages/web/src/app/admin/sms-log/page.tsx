@@ -26,17 +26,17 @@ import { api } from '@/lib/utils';
 interface SmsRow {
   id: string;
   direction: 'inbound' | 'outbound';
-  to_phone: string;
-  from_phone: string;
+  toPhone: string;
+  fromPhone: string;
   body: string;
   status: string;
-  twilio_sid: string | null;
-  related_tracking_link_id: string | null;
-  related_flip_request_id: string | null;
-  sent_at: string | null;
-  delivered_at: string | null;
+  twilioSid: string | null;
+  relatedTrackingLinkId: string | null;
+  relatedFlipRequestId: string | null;
+  sentAt: string | null;
+  deliveredAt: string | null;
   error: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
 interface ApiResponse {
@@ -212,15 +212,15 @@ export default function SmsLogPage() {
                         onClick={() => setExpanded(isExpanded ? null : row.id)}
                       >
                         <TableCell className="font-mono text-xs whitespace-nowrap">
-                          {new Date(row.created_at).toLocaleString()}
+                          {new Date(row.createdAt).toLocaleString()}
                         </TableCell>
                         <TableCell>
                           <Badge className={DIRECTION_COLOR[row.direction] ?? ''}>{row.direction}</Badge>
                         </TableCell>
                         <TableCell className="font-mono text-xs">
-                          {row.direction === 'outbound' ? row.to_phone : row.from_phone}
+                          {row.direction === 'outbound' ? row.toPhone : row.fromPhone}
                           <div className="text-zinc-500">
-                            {row.direction === 'outbound' ? `← ${row.from_phone}` : `→ ${row.to_phone}`}
+                            {row.direction === 'outbound' ? `← ${row.fromPhone}` : `→ ${row.toPhone}`}
                           </div>
                         </TableCell>
                         <TableCell className="max-w-md truncate">{row.body}</TableCell>
@@ -230,10 +230,10 @@ export default function SmsLogPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs">
-                          {row.related_tracking_link_id && (
+                          {row.relatedTrackingLinkId && (
                             <span className="text-emerald-400">tracking</span>
                           )}
-                          {row.related_flip_request_id && (
+                          {row.relatedFlipRequestId && (
                             <span className="text-amber-400 ml-2">flip</span>
                           )}
                         </TableCell>
@@ -249,15 +249,15 @@ export default function SmsLogPage() {
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
                                   <span className="text-zinc-500">Twilio SID: </span>
-                                  {row.twilio_sid ?? '—'}
+                                  {row.twilioSid ?? '—'}
                                 </div>
                                 <div>
                                   <span className="text-zinc-500">Sent: </span>
-                                  {row.sent_at ? new Date(row.sent_at).toLocaleString() : '—'}
+                                  {row.sentAt ? new Date(row.sentAt).toLocaleString() : '—'}
                                 </div>
                                 <div>
                                   <span className="text-zinc-500">Delivered: </span>
-                                  {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
+                                  {row.deliveredAt ? new Date(row.deliveredAt).toLocaleString() : '—'}
                                 </div>
                                 <div>
                                   <span className="text-zinc-500">Error: </span>
@@ -265,11 +265,11 @@ export default function SmsLogPage() {
                                 </div>
                                 <div>
                                   <span className="text-zinc-500">Tracking link: </span>
-                                  {row.related_tracking_link_id ?? '—'}
+                                  {row.relatedTrackingLinkId ?? '—'}
                                 </div>
                                 <div>
                                   <span className="text-zinc-500">Flip request: </span>
-                                  {row.related_flip_request_id ?? '—'}
+                                  {row.relatedFlipRequestId ?? '—'}
                                 </div>
                               </div>
                             </div>

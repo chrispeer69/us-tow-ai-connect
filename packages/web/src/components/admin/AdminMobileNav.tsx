@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Icon } from '@/components/ui/icons';
 import { useBranding } from '@/components/branding/BrandingProvider';
+import { useAuth } from '@/contexts/AuthContext';
 import { NAV_GROUPS, isActiveHref } from './nav-config';
 import { SidebarFooter } from './Sidebar';
 
@@ -18,6 +19,7 @@ export function AdminMobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { branding } = useBranding();
+  const { logout } = useAuth();
 
   // Close on navigation.
   useEffect(() => {
@@ -100,6 +102,19 @@ export function AdminMobileNav() {
                   })}
                 </div>
               ))}
+              
+              <button
+                onClick={logout}
+                className="mt-2 flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors text-left"
+              >
+                <svg className="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+                <span className="truncate">Log Out</span>
+              </button>
+
               <SidebarFooter tenantName={branding.companyDisplayName} />
             </nav>
           </aside>
