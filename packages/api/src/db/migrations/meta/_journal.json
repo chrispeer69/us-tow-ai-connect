@@ -190,6 +190,13 @@
       "when": 1780548767385,
       "tag": "0028_fix_auth_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1780551429906,
+      "tag": "0029_add_user_id_tenant_members",
+      "breakpoints": true
     }
   ]
 }
