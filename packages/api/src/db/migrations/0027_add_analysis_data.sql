@@ -1,2 +1,0 @@
-ALTER TABLE outbound_calls 
-ADD COLUMN analysis_data jsonb DEFAULT NULL;
