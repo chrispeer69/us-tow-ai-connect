@@ -99,6 +99,24 @@ import { OutboundVoiceService } from './outbound-voice.service';
                   return { matched: false };
           }
 
+        const analysis = body.call.call_analysis || {};
+
+        const analysisData = {
+            call_summary: analysis.call_summary as string | null,
+            call_successful: analysis.call_successful as boolean | null,
+            user_sentiment: analysis.user_sentiment as string | null,
+            flip_eligible: analysis.flip_eligible as boolean | null,
+            flip_outcome: analysis.flip_outcome as string | null,
+            offer_1_result: analysis.offer_1_result as string | null,
+            offer_2_result: analysis.offer_2_result as string | null,
+            offer_3_result: analysis.offer_3_result as string | null,
+            convini_link_sent: analysis.convini_link_sent as boolean | null,
+            convini_sell_type: analysis.convini_sell_type as string | null,
+            corrections_made: analysis.corrections_made as string | null,
+            nearest_our_shop: analysis.nearest_our_shop as string | null,
+            destination_type: analysis.destination_type as string | null,
+        };
+
       const result = await this.outboundVoice.handleProviderWebhookEvent({
               provider: 'retell',
               callId,
@@ -108,9 +126,7 @@ import { OutboundVoiceService } from './outbound-voice.service';
                         : null,
               transcript: body.call.transcript ?? null,
               recordingUrl: body.call.recording_url ?? null,
-              outcome: body.call.call_analysis
-                ? (body.call.call_analysis as Record<string, unknown>)
-                        : null,
+              analysisData,
               error: body.call.disconnection_reason ?? null,
               timestampIso: body.call.end_timestamp
                 ? new Date(body.call.end_timestamp).toISOString()
@@ -168,7 +184,22 @@ interface RetellWebhookBody {
       recording_url?: string;
       start_timestamp?: number;
       end_timestamp?: number;
-      call_analysis?: Record<string, unknown>;
+      call_analysis?: {
+        call_summary?: string;
+        call_successful?: boolean;
+        user_sentiment?: string;
+        flip_eligible?: boolean;
+        flip_outcome?: string;
+        offer_1_result?: string;
+        offer_2_result?: string;
+        offer_3_result?: string;
+        convini_link_sent?: boolean;
+        convini_sell_type?: string;
+        corrections_made?: string;
+        nearest_our_shop?: string;
+        destination_type?: string;
+        [key: string]: unknown;
+      };
       metadata?: Record<string, unknown>;
     };
 }
