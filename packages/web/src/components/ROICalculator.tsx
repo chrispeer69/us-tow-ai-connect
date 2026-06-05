@@ -4,8 +4,8 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, DollarSign, Calculator } from "lucide-react";
 
-const OUR_RATE = 0.23;
-const THEIR_RATE = 0.30;
+const OUR_RATE = 0.20; // AI-Connect Shareholder rate (lowest tier)
+const THEIR_RATE = 0.30; // TowPilot AI retail
 
 export function ROICalculator() {
   const [callsPerDay, setCallsPerDay] = useState([40]);
@@ -90,7 +90,7 @@ export function ROICalculator() {
             <div className="text-2xl font-black tabular-nums">{calculations.monthlyMinutes.toLocaleString()}</div>
           </div>
           <div className="bg-card/50 border border-border rounded-lg p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-1">TowPilot Cost</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold mb-1">TowPilot @ $0.30/min</div>
             <div className="text-2xl font-black tabular-nums text-muted-foreground line-through">
               ${calculations.theirMonthlyCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
@@ -99,7 +99,7 @@ export function ROICalculator() {
 
         <div className="bg-gradient-to-br from-blue-500/15 to-cyan-500/10 border border-blue-500/40 rounded-xl p-5">
           <div className="flex items-baseline justify-between mb-2">
-            <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold">You Save Monthly</div>
+            <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold">Shareholders Save Monthly</div>
             <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/40 text-[10px]">
               <TrendingUp className="w-3 h-3 mr-1" />
               {calculations.percentSavings}% LESS

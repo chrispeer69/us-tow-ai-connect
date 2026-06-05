@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, X } from "lucide-react";
 
@@ -26,10 +27,10 @@ export function StickyComparisonBar() {
         <div className="flex items-start gap-4">
           <div className="flex-1">
             <div className="flex items-baseline gap-2 mb-1">
-              <span className="text-[10px] uppercase tracking-wider text-white/70 font-bold">Save 23% vs TowPilot</span>
+              <span className="text-[10px] uppercase tracking-wider text-white/70 font-bold">Shareholders · 33% less than TowPilot</span>
             </div>
             <div className="flex items-baseline gap-3">
-              <span className="text-3xl font-black text-white tracking-tight">$0.23</span>
+              <span className="text-3xl font-black text-white tracking-tight">$0.20</span>
               <span className="text-white/80 text-sm">/min</span>
               <span className="text-white/50 text-sm line-through">vs $0.30</span>
             </div>
@@ -42,10 +43,12 @@ export function StickyComparisonBar() {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <Button className="w-full mt-3 bg-white hover:bg-white/95 text-blue-700 font-bold h-11">
-          Start Free Trial
-          <ArrowRight className="w-4 h-4 ml-1" />
-        </Button>
+        <Link href="/sign-up" className="block">
+          <Button className="w-full mt-3 bg-white hover:bg-white/95 text-blue-700 font-bold h-11">
+            Start Free Trial
+            <ArrowRight className="w-4 h-4 ml-1" />
+          </Button>
+        </Link>
       </div>
     </div>
   );

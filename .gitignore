@@ -23,3 +23,8 @@ docs/diagnostics/*.png
 scripts/security/bin/
 docs/security/gitleaks-report.json
 # Adapter discovery screenshots may contain real customer PII — keep them local.
+# Local Claude Code settings (personal permissions/allowlists).
+.claude/settings.local.json
+# Extracted reference zips (Manus source for the landing page port). Source of
+# truth is the original .zip on disk — keep extracted output out of git.
+reference/

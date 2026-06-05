@@ -42,6 +42,7 @@ import {
   Package,
   PenTool,
   Star,
+  Terminal,
   Truck,
   Wrench,
 } from "lucide-react";
@@ -98,17 +99,27 @@ export default function Home() {
             <div className="lg:col-span-7">
               <div id="trial" className="inline-flex items-center gap-2 mb-6 bg-blue-500/15 border border-blue-500/40 rounded-full px-4 py-2 text-xs font-bold tracking-wider uppercase animate-float-up">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-                <span className="text-blue-300">14-DAY FREE TRIAL</span>
+                <span className="text-blue-300">Setup Fee Waived</span>
                 <span className="text-muted-foreground/70">·</span>
-                <span className="text-cyan-400">First Month 50% Off</span>
+                <span className="text-cyan-400">When You Switch from TowPilot AI</span>
               </div>
               <h1 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[5.5rem] font-black leading-[1.02] tracking-tight mb-6 animate-float-up">
-                Your AI Dispatcher.
+                Your 24 Hr
+                <br />
+                AI Dispatcher
+                <br />
+                Sales Team.
                 <br />
                 <span className="text-gradient-blue">Always Working.</span>
               </h1>
               <p className="text-lg lg:text-xl text-muted-foreground max-w-2xl mb-10 leading-relaxed animate-float-up">
-                AI-Connect answers every inbound call <span className="text-foreground font-semibold">and</span> calls every new tow customer to confirm details, refer top auto shops, and grow your revenue. All for less than what TowPilot AI charges.
+                AI-Connect not only answers every inbound call — it's built with{" "}
+                <span className="text-foreground font-semibold">sales logic for outbound calls</span>{" "}
+                and <span className="text-foreground font-semibold">customer retention</span>.
+                Our AI agent calls every job, confirms details, and offers discounts at
+                preferred auto repair shops of your choosing. It also offers the{" "}
+                <span className="text-foreground font-semibold">CONVINI app link</span> —
+                driving more revenue, opportunity, and customer development to your business.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mb-10">
@@ -117,67 +128,58 @@ export default function Home() {
                     Us
                   </div>
                   <CardContent className="p-6">
-                    <div className="text-xs uppercase tracking-wider text-blue-400 font-bold mb-1">US Tow AI-Connect</div>
-                    <div className="text-5xl font-black text-foreground tracking-tight">
-                      $0.23<span className="text-lg text-muted-foreground font-medium">/min</span>
+                    <div className="text-xs uppercase tracking-wider text-blue-400 font-bold mb-3">US Tow AI-Connect</div>
+                    <div className="space-y-2.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-bold">Alliance Profile</span>
+                        <span className="text-2xl font-black tracking-tight tabular-nums text-cyan-300">
+                          $0.30<span className="text-xs text-muted-foreground font-medium">/min</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2 pt-2 border-t border-cyan-500/20">
+                        <span className="text-[10px] uppercase tracking-wider text-yellow-300 font-bold">Alliance Elite</span>
+                        <span className="text-3xl font-black tracking-tight tabular-nums text-yellow-300">
+                          $0.25<span className="text-xs text-muted-foreground font-medium">/min</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2 pt-2 border-t border-amber-500/30">
+                        <span className="text-[10px] uppercase tracking-wider text-amber-400 font-bold flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          Shareholders
+                        </span>
+                        <span className="text-3xl font-black tracking-tight tabular-nums text-amber-400">
+                          $0.20<span className="text-xs text-muted-foreground font-medium">/min</span>
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-400 font-bold mt-2">Alliance Members</div>
                   </CardContent>
                 </Card>
-                <Card className="bg-card/30 border-border/40 backdrop-blur-sm relative overflow-hidden opacity-60">
+                <Card className="bg-card/30 border-border/40 backdrop-blur-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 bg-muted text-muted-foreground text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-bl-lg">
+                    Them
+                  </div>
                   <CardContent className="p-6">
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-1">TowPilot AI</div>
-                    <div className="text-5xl font-black tracking-tight">
-                      <span className="line-through text-muted-foreground">$0.30</span>
-                      <span className="text-lg text-muted-foreground font-medium">/min</span>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-3">TowPilot AI</div>
+                    <div className="space-y-2.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Retail</span>
+                        <span className="text-2xl font-black tracking-tight tabular-nums">
+                          $0.30<span className="text-xs text-muted-foreground font-medium">/min</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pt-3">
+                        <X className="w-4 h-4 text-muted-foreground/60" />
+                        <span className="text-xs text-muted-foreground">No Alliance tiers</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <X className="w-4 h-4 text-muted-foreground/60" />
+                        <span className="text-xs text-muted-foreground">No volume discount</span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              <Card className="bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 border-blue-400/40 shadow-2xl shadow-blue-500/40 max-w-xl overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl"></div>
-                <CardContent className="p-6 lg:p-8 relative">
-                  <div className="flex items-baseline gap-3 mb-4">
-                    <Badge className="bg-cyan-400 text-blue-900 border-0 font-black text-[10px] uppercase tracking-wider px-2.5 py-1">
-                      <Sparkles className="w-3 h-3 mr-1" />
-                      Launch Offer
-                    </Badge>
-                    <span className="text-cyan-300 text-xs font-bold uppercase tracking-wider">No card required</span>
-                  </div>
-                  <h3 className="text-2xl lg:text-3xl font-black text-white mb-2 tracking-tight">
-                    Try Free for 14 Days
-                  </h3>
-                  <p className="text-blue-100 text-sm mb-1">
-                    Then get your <span className="font-bold text-white">first month 50% off</span>.
-                  </p>
-                  <p className="text-blue-200/80 text-xs mb-5">
-                    That's $84.50 for your first month of inbound + outbound AI dispatch.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Link href="/sign-up" className="flex-1">
-                      <Button size="lg" className="w-full bg-white hover:bg-white/95 text-blue-700 font-black text-base h-14 shadow-xl transition-all hover:scale-[0.98]">
-                        Start My Free Trial
-                        <ArrowRight className="w-5 h-5 ml-2" />
-                      </Button>
-                    </Link>
-                    <Button size="lg" variant="outline" className="flex-1 sm:flex-none border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white h-14 px-6 text-base font-bold">
-                      Watch 90-Sec Demo
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-4 mt-5 text-xs text-blue-200">
-                    <div className="flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5" /> No contracts
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5" /> Setup in minutes
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5" /> Cancel anytime
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             {/* Hero right: Live dispatch preview */}
@@ -228,7 +230,7 @@ export default function Home() {
             {[
               { label: "Calls Handled / Month", end: 100000, suffix: "+", icon: Phone },
               { label: "Avg Response Time", end: 2.4, suffix: "s", decimals: 1, icon: Clock },
-              { label: "Avg Cost Savings", end: 23, suffix: "%", icon: DollarSign },
+              { label: "Shareholder Savings vs TowPilot", end: 33, suffix: "%", icon: DollarSign },
               { label: "Towing Software Supported", end: 6, suffix: "+", icon: Network },
             ].map((stat, i) => (
               <div key={i} className="text-center lg:text-left">
@@ -327,6 +329,152 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Industry First — Outbound Sales AI */}
+      <section id="industry-first" className="py-24 lg:py-32 relative overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-background to-blue-500/10"></div>
+          <div className="absolute inset-0 bg-grid opacity-20"></div>
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-cyan-500/15 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="container relative z-10">
+          <div className="max-w-4xl mx-auto text-center mb-16">
+            <Badge className="mb-6 bg-cyan-500/15 text-cyan-300 border-cyan-500/40 px-4 py-2 text-[10px] font-black tracking-[0.25em] uppercase">
+              <Award className="w-3.5 h-3.5 mr-2" />
+              Industry First · Category Creator
+            </Badge>
+            <h2 className="text-4xl lg:text-6xl xl:text-7xl font-black tracking-tight mb-6 leading-[1.05]">
+              The towing industry's
+              <br />
+              <span className="text-gradient-cyan">first &amp; only</span>
+              <br />
+              <span className="whitespace-nowrap text-yellow-300">OUTBOUND SALES</span>
+              <br />
+              <span className="whitespace-nowrap">AI attendant.</span>
+            </h2>
+            <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed max-w-3xl mx-auto">
+              AI-Connect doesn't just answer calls — it makes them. Outbound sales calls
+              for <span className="text-foreground font-semibold">customer retention</span>{" "}
+              and <span className="text-foreground font-semibold">new customer development</span>.
+              Plus a one-of-a-kind referral engine that sends every tow to your preferred
+              auto repair shops.
+            </p>
+          </div>
+
+          {/* Flow diagram */}
+          <Card className="bg-gradient-to-br from-cyan-500/5 via-card to-blue-500/5 border-cyan-500/30 max-w-5xl mx-auto mb-12 overflow-hidden glow-blue">
+            <CardContent className="p-8 lg:p-12">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-6 items-center">
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center mb-3 mx-auto">
+                    <Truck className="w-8 h-8 text-cyan-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">Step 01</div>
+                  <div className="text-sm font-bold">New tow detected</div>
+                </div>
+                <div className="hidden md:flex justify-center">
+                  <ArrowRight className="w-6 h-6 text-cyan-400/60" />
+                </div>
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center mb-3 mx-auto animate-pulse-glow">
+                    <PhoneOutgoing className="w-8 h-8 text-cyan-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">Step 02</div>
+                  <div className="text-sm font-bold">AI sales call placed</div>
+                </div>
+                <div className="hidden md:flex justify-center">
+                  <ArrowRight className="w-6 h-6 text-cyan-400/60" />
+                </div>
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-500/15 border border-blue-500/40 flex items-center justify-center mb-3 mx-auto">
+                    <Wrench className="w-8 h-8 text-blue-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">Step 03</div>
+                  <div className="text-sm font-bold">Referred to your shop</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pillars */}
+          <div className="max-w-7xl mx-auto">
+            <div className="flex justify-center mb-6">
+              <div className="inline-flex items-center gap-2 bg-cyan-400 text-blue-950 text-xs font-black uppercase tracking-[0.2em] px-5 py-2 rounded-full shadow-xl shadow-cyan-500/40">
+                <Sparkles className="w-3.5 h-3.5" />
+                Category-Defining
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="bg-card/60 border-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 group">
+                <CardContent className="p-7">
+                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                    <Users className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 01</div>
+                  <h3 className="text-xl font-black mb-2 tracking-tight">Customer Retention</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    AI calls past customers with status updates, follow-ups, and loyalty
+                    offers. They come back to you instead of shopping competitors.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/60 border-cyan-500/40 hover:border-cyan-500/70 transition-all duration-300 group relative shadow-xl shadow-cyan-500/10">
+                <CardContent className="p-7">
+                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                    <Sparkles className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 02</div>
+                  <h3 className="text-xl font-black mb-2 tracking-tight">New Customer Development</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    AI prospects leads in your service area, qualifies them, and books tows.
+                    The first true outbound sales engine in towing — nothing else like it
+                    exists.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/60 border-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 group">
+                <CardContent className="p-7">
+                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                    <Wrench className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 03</div>
+                  <h3 className="text-xl font-black mb-2 tracking-tight">Preferred Shop Referrals</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    AI confirms each tow's destination, then offers your preferred auto
+                    repair shops with incentives. A one-of-a-kind referral engine — recurring
+                    revenue on every call.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/60 border-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 group">
+                <CardContent className="p-7">
+                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                    <Terminal className="w-6 h-6 text-cyan-400" />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 04</div>
+                  <h3 className="text-xl font-black mb-2 tracking-tight">Engineered. Not Scripted.</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    We don't paste prompts into website chat boxes. Every conversation,
+                    workflow, and integration is written in hard code — production-grade
+                    software, not a no-code sandbox.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          <div className="text-center mt-12">
+            <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Zap className="w-4 h-4 text-cyan-400" />
+              <span>No competitor in the towing space offers outbound sales AI. We built it first.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Live Demo */}
       <section id="demo" className="py-24 lg:py-32 relative">
         <div className="absolute inset-0 z-0 opacity-30">
@@ -406,7 +554,7 @@ export default function Home() {
                   <div className="w-8 h-8 rounded-md bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
                     <Check className="w-4 h-4 text-blue-400" strokeWidth={3} />
                   </div>
-                  <div className="text-sm">23% less per minute than TowPilot AI</div>
+                  <div className="text-sm">Up to 33% less per minute (Shareholders vs TowPilot)</div>
                 </div>
                 <div className="flex items-center gap-3 p-3 bg-card/60 border border-border rounded-lg">
                   <div className="w-8 h-8 rounded-md bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
@@ -526,7 +674,9 @@ export default function Home() {
                     { f: "AAA Portal Integration", us: true, them: false, highlight: true },
                     { f: "Native Zero-Latency Mode", us: "Coming", them: false, highlight: true },
                     { f: "US Tow Alliance Network", us: true, them: false, highlight: true },
-                    { f: "Per-Minute Rate", us: "$0.23", them: "$0.30", price: true },
+                    { f: "Alliance Profile Rate", us: "$0.30", them: "$0.30", price: true },
+                    { f: "Alliance Elite Rate", us: "$0.25", them: false, highlight: true, price: true },
+                    { f: "AI-Connect Shareholder Rate", us: "$0.20", them: false, highlight: true, price: true },
                   ].map((row, i) => (
                     <tr key={i} className={`border-b border-border/40 ${row.highlight ? "bg-blue-500/5" : ""}`}>
                       <td className="py-4 px-6 text-sm font-medium">
@@ -640,12 +790,13 @@ export default function Home() {
               Pricing
             </Badge>
             <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4">
-              23% less per minute.
+              Same retail.
               <br />
-              <span className="text-gradient-blue">Twice the engine.</span>
+              <span className="text-gradient-blue">Alliance unlocks more.</span>
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Honest per-minute pricing. No credit games. No surprise overages.
+              Alliance Profile pays $0.30/min. Alliance Elite pays $0.25/min.
+              AI-Connect Shareholders pay $0.20/min. No credit games. No surprise overages.
             </p>
           </div>
 
@@ -654,8 +805,8 @@ export default function Home() {
               {
                 name: "Starter",
                 price: "$169",
-                tag: "1,000 minutes/mo",
-                rate: "$0.23/min overage",
+                tag: "1,000 minutes/mo · Alliance Profile",
+                rate: "$0.30/min overage",
                 features: [
                   "Inbound AI phone answering",
                   "Live ETA lookups",
@@ -668,8 +819,8 @@ export default function Home() {
               {
                 name: "Professional",
                 price: "$399",
-                tag: "2,500 minutes/mo",
-                rate: "$0.20/min overage",
+                tag: "2,500 minutes/mo · Alliance Elite",
+                rate: "$0.25/min overage",
                 features: [
                   "Everything in Starter",
                   "Outbound confirmation calls",
@@ -683,8 +834,8 @@ export default function Home() {
               {
                 name: "Enterprise",
                 price: "$699",
-                tag: "5,000 minutes/mo",
-                rate: "$0.18/min overage",
+                tag: "5,000 minutes/mo · Shareholders",
+                rate: "$0.20/min overage",
                 features: [
                   "Everything in Professional",
                   "AAA Portal integration",
@@ -758,10 +909,12 @@ export default function Home() {
               <CardContent className="p-4 flex items-center gap-3">
                 <ShieldCheck className="w-5 h-5 text-blue-400 flex-shrink-0" />
                 <p className="text-sm text-left">
-                  <span className="text-blue-300 font-bold">Alliance Membership Required.</span>
-                  <span className="text-muted-foreground"> Complete your free profile at </span>
+                  <span className="text-blue-300 font-bold">Alliance Membership unlocks lower rates.</span>
+                  <span className="text-muted-foreground"> Profile $0.30/min · Elite $0.25/min · </span>
+                  <span className="text-amber-400 font-semibold">Shareholders $0.20/min</span>
+                  <span className="text-muted-foreground">. Complete your free profile at </span>
                   <a href="https://www.ustowalliance.com" target="_blank" rel="noreferrer" className="text-cyan-300 font-semibold hover:underline">ustowalliance.com</a>
-                  <span className="text-muted-foreground"> to unlock these rates and the ownership opportunity.</span>
+                  <span className="text-muted-foreground"> to qualify.</span>
                 </p>
               </CardContent>
             </Card>
@@ -789,20 +942,36 @@ export default function Home() {
                   <span className="text-gradient-cyan">what you use.</span>
                 </h2>
                 <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed mb-6">
-                  US Tow Alliance is releasing up to <span className="text-foreground font-bold">33% ownership</span> of every solution we build — reserved exclusively for towing business owners. <span className="text-foreground font-bold">660 shares total</span>, first come first served.
+                  US Tow Alliance is releasing up to <span className="text-foreground font-bold">33% ownership</span> of every solution we build — reserved exclusively for towing business owners. <span className="text-foreground font-bold">This offering is for US Tow AI-Connect — 660 shares total</span>, first come first served.
                 </p>
                 <p className="text-base text-muted-foreground leading-relaxed mb-6">
                   This is a <span className="text-foreground font-semibold">closed investment opportunity</span>. Not open to the public. Not open to outside venture capital. Just towing owners building for and partnering with towing owners.
                 </p>
+
+                <Card className="bg-amber-500/10 border-amber-500/40 mb-6">
+                  <CardContent className="p-4 flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <span className="font-bold text-amber-300">US Tow AI-Connect shares only.</span>
+                      <span className="text-muted-foreground"> The 660 shares on this page are shares of </span>
+                      <span className="text-foreground font-semibold">US Tow AI-Connect</span>
+                      <span className="text-muted-foreground"> — not US Tow Alliance, and not other Blue Collar AI solutions. Each solution in the ecosystem has its own separate share offering. Shareholders may purchase shares in additional solutions individually.</span>
+                    </div>
+                  </CardContent>
+                </Card>
 
                 <Card className="bg-blue-500/10 border-blue-500/40 mb-8">
                   <CardContent className="p-4 flex items-start gap-3">
                     <ShieldCheck className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
                       <span className="font-bold text-blue-300">Alliance Membership Required.</span>
-                      <span className="text-muted-foreground"> Complete your free US Tow Alliance member profile to unlock the </span>
-                      <span className="text-foreground font-semibold">$0.23/min rate</span>
-                      <span className="text-muted-foreground"> and qualify for the ownership opportunity.</span>
+                      <span className="text-muted-foreground"> Complete your free US Tow Alliance member profile to unlock </span>
+                      <span className="text-foreground font-semibold">$0.30/min Profile</span>
+                      <span className="text-muted-foreground"> or </span>
+                      <span className="text-foreground font-semibold">$0.25/min Elite</span>
+                      <span className="text-muted-foreground"> rates. Become a </span>
+                      <span className="text-amber-400 font-semibold">Shareholder for $0.20/min</span>
+                      <span className="text-muted-foreground"> — the lowest rate available.</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -829,19 +998,23 @@ export default function Home() {
                   <Card className="bg-card/60 border-cyan-500/30 backdrop-blur-sm">
                     <CardContent className="p-4">
                       <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-1">Dividends</div>
-                      <div className="text-2xl lg:text-3xl font-black tracking-tight">Quarterly</div>
+                      <div className="text-xl lg:text-2xl font-black tracking-tight whitespace-nowrap">Quarterly</div>
                     </CardContent>
                   </Card>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button size="lg" className="bg-cyan-500 hover:bg-cyan-400 text-blue-950 font-black text-base h-14 px-8 shadow-xl shadow-cyan-500/40">
-                    Complete Alliance Profile & Reserve Shares
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                  <Button size="lg" variant="outline" className="border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200 h-14 px-8 text-base font-bold">
-                    Inquire About More Ownership
-                  </Button>
+                  <a href="https://www.ustowalliance.com" target="_blank" rel="noreferrer">
+                    <Button size="lg" className="bg-cyan-500 hover:bg-cyan-400 text-blue-950 font-black text-base h-14 px-8 shadow-xl shadow-cyan-500/40">
+                      Complete Alliance Profile & Reserve Shares
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </a>
+                  <Link href="/inquire-shares">
+                    <Button size="lg" variant="outline" className="border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200 h-14 px-8 text-base font-bold">
+                      Inquire About Purchasing Shares
+                    </Button>
+                  </Link>
                 </div>
                 <p className="text-xs text-muted-foreground mt-4 italic">
                   Towing owners building for and partnering with towing owners. Own what you use.
@@ -866,17 +1039,17 @@ export default function Home() {
                       Up to 33% Ownership
                     </div>
                     <div className="text-sm text-blue-200 mb-6">
-                      Of every Blue Collar AI solution. Reserved for towing business owners only.
+                      In US Tow AI-Connect specifically. Reserved for towing business owners only.
                     </div>
 
                     <Separator className="bg-cyan-500/20 mb-6" />
 
                     <div className="space-y-3 mb-6">
                       {[
-                        "Quarterly profit-sharing dividends",
+                        "Quarterly profit-sharing dividends (AI-Connect only)",
                         "Closed to outside investors — owners only",
-                        "21+ solutions to share ownership in",
-                        "Pathway to expand ownership over time",
+                        "21+ other solutions available as separate share offerings",
+                        "Shareholders may purchase shares in other solutions individually",
                       ].map((item, i) => (
                         <div key={i} className="flex items-start gap-3 text-sm text-blue-100">
                           <Check className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" strokeWidth={3} />
@@ -919,26 +1092,28 @@ export default function Home() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
             {[
+              // US Tow branded — surfaced first
               { name: "US Tow Alliance", icon: Users, desc: "National membership network" },
-              { name: "US Tow Dispatch", icon: Building2, desc: "Native dispatch software" },
-              { name: "US Tow AI-Connect", icon: Phone, desc: "AI phone attendant (this product)" },
+              { name: "US Tow Dispatch", icon: Building2, desc: "Dispatch management software" },
+              { name: "US Tow AI-Connect", icon: Phone, desc: "Inbound / outbound AI phone attendant" },
+              { name: "US Tow Bid", icon: Gavel, desc: "Tow truck only online auction & sales" },
+              { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers" },
+              { name: "US Tow Marketing", icon: Megaphone, desc: "24/7 lead generation engine" },
+              { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs" },
+              { name: "US Tow Fleet", icon: ShieldCheck, desc: "Fleet management software" },
+              { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
+              { name: "US Tow Shield", icon: ShieldCheck, desc: "Damages claims management" },
+              { name: "US Tow Credit", icon: DollarSign, desc: "Credit repair solutions" },
+              // Other ecosystem solutions
               { name: "CONVINI", icon: Sparkles, desc: "Vehicle transport & logistics" },
-              { name: "FleetGuard Pro", icon: ShieldCheck, desc: "Fleet insurance solutions" },
-              { name: "TowBid", icon: Gavel, desc: "Auction-based recovery pricing" },
-              { name: "TowTruckJobs", icon: Briefcase, desc: "Talent marketplace for towers" },
               { name: "RECON AI", icon: Bot, desc: "AI bookkeeping & reconciliation" },
               { name: "RECON AI DIY Toolkit", icon: PenTool, desc: "Self-service AI prompts & workflows" },
               { name: "PEER Field Press", icon: BookOpen, desc: "10-book towing leadership library" },
-              { name: "FleetCommand", icon: Camera, desc: "GPS tracking & dash cameras" },
-              { name: "AI Marketing In A Box", icon: Megaphone, desc: "24/7 lead generation engine" },
-              { name: "Your AI Phone Attendant", icon: Bot, desc: "AI receptionist for any business" },
               { name: "Capital Bridge", icon: DollarSign, desc: "Business financing & capital" },
               { name: "MCA Debt Solutions", icon: ClipboardCheck, desc: "Merchant cash advance relief" },
-              { name: "Iron Horse Tow Trucks", icon: Truck, desc: "Truck sales & equipment" },
+              { name: "Iron Horse Tow Trucks", icon: Truck, desc: "Custom built tow trucks" },
               { name: "WrenchLink", icon: Wrench, desc: "Mechanic & shop network" },
-              { name: "TowCommand", icon: Gauge, desc: "Command-center dispatch ops" },
-              { name: "TowGrade", icon: Star, desc: "Performance ratings & reviews" },
-              { name: "Insurance Solutions", icon: ShieldCheck, desc: "Tailored coverage for blue collar" },
+              { name: "Insurance Solutions", icon: ShieldCheck, desc: "Get the best insurance rates in the country" },
               { name: "Shift Track", icon: Activity, desc: "Driver shift reporting app" },
             ].map((item, i) => (
               <Card key={i} className="bg-card/60 border-border hover:border-cyan-500/40 transition-all duration-300 group hover:scale-[1.02]">
@@ -977,13 +1152,17 @@ export default function Home() {
                 14-day free trial. No credit card required. Setup in minutes. Cancel anytime.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-base h-14 px-8 shadow-xl shadow-blue-500/40">
-                  Start Your Free Trial
-                  <ArrowRight className="w-5 h-5 ml-2" />
-                </Button>
-                <Button size="lg" variant="outline" className="border-border h-14 px-8 text-base font-semibold hover:bg-card">
-                  Schedule a Demo
-                </Button>
+                <Link href="/sign-up">
+                  <Button size="lg" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-base h-14 px-8 shadow-xl shadow-blue-500/40">
+                    Start Your Free Trial
+                    <ArrowRight className="w-5 h-5 ml-2" />
+                  </Button>
+                </Link>
+                <Link href="/inquire-shares">
+                  <Button size="lg" variant="outline" className="border-border h-14 px-8 text-base font-semibold hover:bg-card">
+                    Schedule a Demo
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>
@@ -1005,7 +1184,7 @@ export default function Home() {
                 </div>
               </div>
               <p className="text-sm text-muted-foreground max-w-md leading-relaxed mb-4">
-                The AI dispatcher built for towing companies. 23% cheaper than TowPilot AI. Plus the features they don't have.
+                The AI dispatcher built for towing companies. Alliance Profile pricing from $0.30/min — Shareholders pay just $0.20. Plus the features TowPilot doesn't have.
               </p>
               <div className="text-xs text-muted-foreground">
                 Chris Peer · Founder & Lead AI Architect
@@ -1026,9 +1205,9 @@ export default function Home() {
               <div className="text-xs uppercase tracking-[0.15em] font-bold mb-4 text-muted-foreground">Company</div>
               <ul className="space-y-2 text-sm">
                 <li><a href="https://www.ustowalliance.com" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors">US Tow Alliance</a></li>
-                <li><a href="#" className="hover:text-blue-400 transition-colors">Blue Collar AI</a></li>
-                <li><a href="#" className="hover:text-blue-400 transition-colors">Contact</a></li>
-                <li><a href="#" className="hover:text-blue-400 transition-colors">Legal</a></li>
+                <li><a href="https://www.bluecollarai.online" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors">Blue Collar AI</a></li>
+                <li><a href="mailto:chris@bluecollarai.online" className="hover:text-blue-400 transition-colors">Contact</a></li>
+                <li><a href="/privacy" className="hover:text-blue-400 transition-colors">Legal</a></li>
               </ul>
             </div>
           </div>
