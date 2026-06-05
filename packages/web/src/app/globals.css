@@ -31,6 +31,20 @@ a:hover {
   color: var(--alliance-blue-dark);
 }
 
+/* Inside the dark-themed marketing pages, the admin design system's hard-coded
+ * heading/anchor colors above would render dark navy on a dark background.
+ * Defer to the parent text color (which Tailwind's text-foreground already
+ * sets to white via --foreground) so headings and links stay legible. */
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6,
+.dark a {
+  color: inherit;
+}
+
 .font-label {
   font-family: var(--font-label, 'Work Sans', system-ui, sans-serif);
 }
