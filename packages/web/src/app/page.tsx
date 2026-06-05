@@ -38,7 +38,9 @@ import {
   Gauge,
   Gavel,
   Hammer,
+  Hash,
   Megaphone,
+  Newspaper,
   Package,
   PenTool,
   Star,
@@ -1099,6 +1101,8 @@ export default function Home() {
               { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
               { name: "US Tow Shield", icon: ShieldCheck, desc: "Damages claims management" },
               { name: "US Tow Credit", icon: DollarSign, desc: "Credit repair solutions" },
+              { name: "US Tow News", icon: Newspaper, desc: "Industry news and events" },
+              { name: "US Tow X", icon: Hash, desc: "X for towing professionals" },
               // Other ecosystem solutions
               { name: "CONVINI", icon: Sparkles, desc: "Vehicle transport & logistics" },
               { name: "RECON AI", icon: Bot, desc: "AI bookkeeping & reconciliation" },
