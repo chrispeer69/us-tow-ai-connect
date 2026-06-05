@@ -177,6 +177,14 @@ export function mapPlaceTypesToTag(types: string[]): DestinationTag {
   if (set.has('home_goods_store') || set.has('lodging') || set.has('locality')) {
     return 'residence';
   }
+  if (
+    set.has('street_address') ||
+    set.has('premise') ||
+    set.has('subpremise') ||
+    set.has('neighborhood')
+  ) {
+    return 'residence';
+  }
   if (set.has('point_of_interest') || set.has('store') || set.has('establishment')) {
     return 'unknown';
   }

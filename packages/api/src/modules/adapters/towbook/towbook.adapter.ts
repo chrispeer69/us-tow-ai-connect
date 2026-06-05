@@ -100,6 +100,7 @@ export function isPlausibleAddress(text: string): boolean {
   if (/^\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}$/.test(t)) return false; // bare phone
   if (/^\d{1,2}:\d{2}$/.test(t)) return false; // clock ETA "01:25"
   if (/^\d+\s*(h(r)?|m(in)?)\b/i.test(t)) return false; // duration ETA "15 min"
+  if (t.length > 150) return false; // massive blobs of motor-club dispatch notes
   return true;
 }
 
