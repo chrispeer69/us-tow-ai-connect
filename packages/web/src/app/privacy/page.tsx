@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="dark min-h-screen bg-background text-foreground">
       <header className="border-b border-border sticky top-0 z-30 bg-background/70 backdrop-blur-xl">
         <div className="container flex items-center justify-between h-16 lg:h-20">
           <Link href="/" className="flex items-center gap-3">

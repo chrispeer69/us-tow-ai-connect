@@ -53,7 +53,7 @@ const DASHBOARD_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/31051966348867183
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
       <StickyComparisonBar />
 
       {/* Navigation */}
