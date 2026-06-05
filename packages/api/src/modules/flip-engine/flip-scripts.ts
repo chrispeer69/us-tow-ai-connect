@@ -193,8 +193,8 @@ function scenarioA(ctx: ScriptContext): string {
         `[AGENT: If YES -> go to FLIP SUCCESS. If NO -> go to CONVINI SOFT CLOSE.]`,
         ``,
         `--- FLIP SUCCESS (any offer accepted) ---`,
-        `AI: "Wonderful! I'm switching your destination to {{nearest_shop}} right now. Your driver has been notified. When you arrive, just let them know you're a tow customer and they'll get you the free diagnostic and your 10 percent discount. Is there anything else I can help with?"`,
-        `[AGENT: A flip was accepted — the destination change and management notification are handled by the system after the call. Then close warmly and END.]`,
+        `AI: "Wonderful! I'm switching your destination to {{nearest_shop}} right now. Your driver has been notified. When you arrive, just let them know you're a tow customer and they'll get you the free diagnostic and your 10 percent discount. Before I let you go, our company also offers a free app called CONVINIcar that gives you direct access to roadside assistance, discounts, and more. Can I text you a link to download it for free?"`,
+        `[AGENT: If YES -> system sends the link automatically. If NO -> acknowledge politely. Then close warmly and END.]`,
       ].join('\n')
     : [
         ``,

@@ -580,15 +580,19 @@ export interface PendingFlipJob {
 
 /**
  * Pronounces 4-digit years correctly (e.g. "2015" -> "twenty fifteen")
- * so the TTS engine doesn't read them as individual digits ("two zero one five").
+ * and strips out license plates / VINs so they aren't read aloud.
  */
 function formatVehicleYear(vehicle: string | null | undefined): string {
   if (!vehicle) return 'your vehicle';
   
+  // Strip license plates / VINs
+  let clean = vehicle.split(/(?:\/|\||\n| - )/)[0].trim();
+  clean = clean.replace(/\b(?:LP|Lic(?:ense)?(?: Plate)?|Plate|VIN)[:#-]?\s*[A-Z0-9]+\b.*/i, '').trim();
+  
   const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
   const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
   
-  return vehicle.replace(/\b(19|20)(\d{2})\b/g, (match, century, year) => {
+  return clean.replace(/\b(19|20)(\d{2})\b/g, (match, century, year) => {
     const y = Number(year);
     if (century === '20') {
       if (y === 0) return 'two thousand';
