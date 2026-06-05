@@ -1146,16 +1146,11 @@ export default function Home() {
               <p className="text-lg text-muted-foreground leading-relaxed mb-10 max-w-2xl mx-auto">
                 14-day free trial. No credit card required. Setup in minutes. Cancel anytime.
               </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Link href="/sign-up">
+              <div className="flex justify-center">
+                <Link href="/schedule-demo">
                   <Button size="lg" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-base h-14 px-8 shadow-xl shadow-blue-500/40">
-                    Start Your Free Trial
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </Button>
-                </Link>
-                <Link href="/inquire-shares">
-                  <Button size="lg" variant="outline" className="bg-[#1a365d] border-blue-400/40 text-white hover:bg-blue-900 hover:text-white h-14 px-8 text-base font-semibold">
                     Schedule a Demo
+                    <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </Link>
               </div>
