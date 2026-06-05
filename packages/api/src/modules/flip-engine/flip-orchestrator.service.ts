@@ -232,7 +232,7 @@ export class FlipOrchestratorService {
       callbackNumber: (cfg.callback_number as string) || '',
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
       customerFirstName: firstNameOf(job.customerName),
-      vehicle: job.vehicle ?? 'your vehicle',
+      vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
       destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
       issue: issuePhrase(issue.subcategory),
@@ -576,4 +576,31 @@ export interface PendingFlipJob {
   destinationAddress?: string | null;
   destinationPhone?: string | null;
   companyName?: string | null;
+}
+
+/**
+ * Pronounces 4-digit years correctly (e.g. "2015" -> "twenty fifteen")
+ * so the TTS engine doesn't read them as individual digits ("two zero one five").
+ */
+function formatVehicleYear(vehicle: string | null | undefined): string {
+  if (!vehicle) return 'your vehicle';
+  
+  const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  
+  return vehicle.replace(/\b(19|20)(\d{2})\b/g, (match, century, year) => {
+    const y = Number(year);
+    if (century === '20') {
+      if (y === 0) return 'two thousand';
+      if (y < 10) return `two thousand ${ones[y]}`;
+      if (y < 20) return `twenty ${ones[y]}`;
+      return `twenty ${tens[Math.floor(y/10)]} ${ones[y%10]}`.trim();
+    }
+    if (century === '19') {
+      if (y === 0) return 'nineteen hundred';
+      if (y < 20) return `nineteen ${ones[y]}`;
+      return `nineteen ${tens[Math.floor(y/10)]} ${ones[y%10]}`.trim();
+    }
+    return match;
+  });
 }
