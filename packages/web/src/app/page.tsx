@@ -77,11 +77,6 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-3">
             <Link href="/sign-in" className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Log In</Link>
-            <Link href="/sign-up">
-              <Button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/30">
-                Start Free Trial
-              </Button>
-            </Link>
           </div>
         </div>
       </nav>
@@ -1011,7 +1006,7 @@ export default function Home() {
                     </Button>
                   </a>
                   <Link href="/inquire-shares">
-                    <Button size="lg" variant="outline" className="border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-200 h-14 px-8 text-base font-bold">
+                    <Button size="lg" variant="outline" className="bg-[#1a365d] border-cyan-500/40 text-cyan-300 hover:bg-blue-900 hover:text-cyan-200 h-14 px-8 text-base font-bold">
                       Inquire About Purchasing Shares
                     </Button>
                   </Link>
@@ -1159,7 +1154,7 @@ export default function Home() {
                   </Button>
                 </Link>
                 <Link href="/inquire-shares">
-                  <Button size="lg" variant="outline" className="border-border h-14 px-8 text-base font-semibold hover:bg-card">
+                  <Button size="lg" variant="outline" className="bg-[#1a365d] border-blue-400/40 text-white hover:bg-blue-900 hover:text-white h-14 px-8 text-base font-semibold">
                     Schedule a Demo
                   </Button>
                 </Link>
