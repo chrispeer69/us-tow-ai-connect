@@ -71,23 +71,23 @@ type Tab = 'shops' | 'blocklist' | 'settings' | 'activity';
 
 interface FlipActivityRow {
   id: string;
-  tenant_id: string;
-  customer_name: string;
-  customer_phone: string;
-  motor_club: string | null;
+  tenantId: string;
+  customerName: string;
+  customerPhone: string;
+  motorClub: string | null;
   vehicle: string | null;
-  issue_type: string | null;
-  original_destination: string | null;
-  destination_business_name: string | null;
-  destination_type: string | null;
-  flip_eligible: boolean;
-  nearest_our_shop: string | null;
-  offer_1_result: string | null;
-  offer_2_result: string | null;
-  offer_3_result: string | null;
-  flip_outcome: string | null;
-  convini_link_sent: boolean;
-  call_time: string;
+  issueType: string | null;
+  originalDestination: string | null;
+  destinationBusinessName: string | null;
+  destinationType: string | null;
+  flipEligible: boolean;
+  nearestOurShop: string | null;
+  offer1Result: string | null;
+  offer2Result: string | null;
+  offer3Result: string | null;
+  flipOutcome: string | null;
+  conviniLinkSent: boolean;
+  callTime: string;
 }
 
 interface FlipActivityResponse {
@@ -836,8 +836,8 @@ const OUTCOME_COLOR: Record<string, string> = {
 };
 
 function bucketOutcome(r: FlipActivityRow): 'WIN' | 'LOSS' | 'SKIPPED' {
-  if (r.flip_outcome && /WIN|ACCEPTED/i.test(r.flip_outcome)) return 'WIN';
-  if (!r.flip_eligible) return 'SKIPPED';
+  if (r.flipOutcome && /WIN|ACCEPTED/i.test(r.flipOutcome)) return 'WIN';
+  if (!r.flipEligible) return 'SKIPPED';
   return 'LOSS';
 }
 
@@ -913,6 +913,7 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
               <TableHead>When</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Vehicle</TableHead>
+              <TableHead>Classification</TableHead>
               <TableHead>Original → Redirected</TableHead>
               <TableHead>Outcome</TableHead>
               <TableHead>CONVINI</TableHead>
@@ -921,7 +922,7 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
           <TableBody>
             {(!data || data.items.length === 0) && !loading && (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-sm text-zinc-500">
+                <TableCell colSpan={7} className="py-8 text-center text-sm text-zinc-500">
                   No flip activity yet. Once the engine is enabled and the
                   job poller starts feeding new motor club jobs, attempts
                   will land here.
@@ -933,17 +934,28 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
               return (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs text-zinc-400">
-                    {new Date(r.call_time).toLocaleString()}
+                    {new Date(r.callTime).toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm">{r.customer_name}</div>
-                    <div className="text-xs text-zinc-500 font-mono">{r.customer_phone}</div>
+                    <div className="text-sm">{r.customerName}</div>
+                    <div className="text-xs text-zinc-500 font-mono">{r.customerPhone}</div>
                   </TableCell>
                   <TableCell className="text-xs">{r.vehicle ?? '—'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {r.destinationType && (
+                        <Badge variant="outline" className="w-fit text-[10px]">{r.destinationType}</Badge>
+                      )}
+                      {r.issueType && (
+                        <Badge variant="secondary" className="w-fit text-[10px]">{r.issueType}</Badge>
+                      )}
+                      {!r.destinationType && !r.issueType && <span className="text-zinc-500 text-xs">—</span>}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-xs">
-                    <div>{r.original_destination ?? '—'}</div>
-                    {r.nearest_our_shop && (
-                      <div className="text-emerald-300">→ {r.nearest_our_shop}</div>
+                    <div>{r.originalDestination ?? '—'}</div>
+                    {r.nearestOurShop && (
+                      <div className="text-emerald-300">→ {r.nearestOurShop}</div>
                     )}
                   </TableCell>
                   <TableCell>
@@ -951,7 +963,7 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
                       {bucket}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-xs">{r.convini_link_sent ? 'sent' : '—'}</TableCell>
+                  <TableCell className="text-xs">{r.conviniLinkSent ? 'sent' : '—'}</TableCell>
                 </TableRow>
               );
             })}
