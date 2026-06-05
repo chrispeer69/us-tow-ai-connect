@@ -80,6 +80,7 @@ a:hover {
 }
 
 .dark {
+  /* shadcn tokens consumed by Tailwind utilities (bg-background, text-foreground …) */
   --background: #050a18;
   --foreground: #ffffff;
   --card: #0d1530;
@@ -99,6 +100,23 @@ a:hover {
   --border: rgba(59, 130, 246, 0.15);
   --input: rgba(59, 130, 246, 0.2);
   --ring: var(--brand-primary, #3b82f6);
+
+  /* Admin design-tokens.css values referenced directly by the dev's existing
+   * Card / CardContent / Button components (e.g. bg-[var(--surface-card)],
+   * text-[var(--text-secondary)]). Without these overrides, every card on the
+   * marketing pages renders white with dark-grey body text. Mirrors the
+   * [data-theme='dark'] block in design-tokens.css. */
+  --text-main: #ffffff;
+  --text-secondary: #e2e8f0;
+  --text-muted: #94a3b8;
+  --surface-bg: #050a18;
+  --surface-card: #0d1530;
+  --surface-low: #0d2547;
+  --surface: #102a52;
+  --surface-high: #163364;
+  --glass-bg: rgba(10, 31, 61, 0.8);
+  --border-color: rgba(59, 130, 246, 0.18);
+  --border-strong: rgba(59, 130, 246, 0.45);
 }
 
 @layer components {
