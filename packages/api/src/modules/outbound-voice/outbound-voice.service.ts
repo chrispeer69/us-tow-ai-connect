@@ -675,13 +675,14 @@ export class OutboundVoiceService {
   async testCall(
     tenantId: string,
     input: {
-      scenario: 'competitor_repair' | 'auto_body' | 'residence' | 'our_shop' | 'unknown';
+      scenario?: 'competitor_repair' | 'auto_body' | 'residence' | 'our_shop' | 'unknown';
       toPhone: string;
       customerName?: string;
       vehicle?: string;
       destination?: string;
       pickupLocation?: string;
       motorClub?: string;
+      scriptBody?: string;
     },
   ) {
     const { renderCallBody } = await import('../flip-engine/flip-scripts');
@@ -721,7 +722,7 @@ export class OutboundVoiceService {
       rentalsAvailable: true,
     };
 
-    const fullBody = renderCallBody(input.scenario, ctx);
+    const fullBody = input.scriptBody || (input.scenario ? renderCallBody(input.scenario, ctx) : '');
 
     const result = await this.provider.placeCall({
       toPhone: formattedPhone,

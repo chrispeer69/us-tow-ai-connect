@@ -18,6 +18,6 @@ import { BillingModule } from '../billing/billing.module';
     TowbookNormalizer,
     AaaNormalizer,
   ],
-  exports: [CommandCenterService, TowbookNormalizer, AaaNormalizer],
+  exports: [CommandCenterService, TowbookNormalizer, AaaNormalizer, GeocoderService],
 })
 export class CommandCenterModule {}

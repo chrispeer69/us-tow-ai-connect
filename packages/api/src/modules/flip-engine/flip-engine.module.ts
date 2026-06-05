@@ -9,6 +9,7 @@ import { IssueClassifierService } from './issue-classifier.service';
 import { FlipOrchestratorService } from './flip-orchestrator.service';
 import { FlipNotifierService } from './flip-notifier.service';
 import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
+import { CommandCenterModule } from '../command-center/command-center.module';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -22,7 +23,7 @@ import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
  */
 @Global()
 @Module({
-  imports: [ScheduleModule.forRoot(), TenantsModule, OutboundVoiceModule],
+  imports: [ScheduleModule.forRoot(), TenantsModule, OutboundVoiceModule, CommandCenterModule],
   controllers: [FlipEngineController, FlipActivityController],
   providers: [
     FlipEngineService,

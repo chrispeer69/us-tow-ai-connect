@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 import { FlipEngineService } from './flip-engine.service';
+import { FlipOrchestratorService } from './flip-orchestrator.service';
 
 const ShopTypeEnum = z.enum(['REPAIR', 'BODY']);
 
@@ -88,7 +89,10 @@ type NearestQueryBody = z.infer<typeof NearestQuerySchema>;
 @Controller('v1/admin/flip-engine')
 @UseGuards(AdminAuthGuard)
 export class FlipEngineController {
-  constructor(private readonly service: FlipEngineService) {}
+  constructor(
+    private readonly service: FlipEngineService,
+    private readonly orchestrator: FlipOrchestratorService,
+  ) {}
 
   // ----- shops -----
 
@@ -256,5 +260,24 @@ export class FlipEngineController {
   async patchConfig(@Req() req: AdminRequest, @Body() body: ConfigPatchBody) {
     const result = await this.service.updateConfig(req.tenantId, body);
     return { status: 'success', data: result };
+  }
+
+  // ----- debug -----
+
+  @Post('debug/live-test-call')
+  @HttpCode(200)
+  async liveTestCall(
+    @Req() req: AdminRequest,
+    @Body()
+    body: {
+      toPhone: string;
+      customerName?: string;
+      vehicle?: string;
+      destination?: string;
+      pickupLocation?: string;
+      motorClub?: string;
+    },
+  ) {
+    return this.orchestrator.simulateLiveCall(req.tenantId, body);
   }
 }

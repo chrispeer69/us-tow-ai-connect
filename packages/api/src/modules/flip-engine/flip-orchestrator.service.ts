@@ -20,6 +20,7 @@ import {
   scenarioForDestinationTag,
   type ScriptContext,
 } from './flip-scripts';
+import { GeocoderService } from '../command-center/geocoder.service';
 
 function issuePhrase(subcategory: string | null | undefined): string {
   switch (subcategory) {
@@ -83,6 +84,7 @@ export class FlipOrchestratorService {
     private readonly destinationClassifier: DestinationClassifierService,
     private readonly issueClassifier: IssueClassifierService,
     private readonly voice: OutboundVoiceService,
+    private readonly geocoder: GeocoderService,
   ) {}
 
   @Cron('0 */1 * * * *') // every 60s
@@ -435,6 +437,114 @@ export class FlipOrchestratorService {
     for (const [k, t] of this.seen) {
       if (t < cutoff) this.seen.delete(k);
     }
+  }
+
+  /**
+   * Simulates a live call flow from the Test Agent Modal, returning the synchronous call result.
+   */
+  async simulateLiveCall(
+    tenantId: string,
+    input: {
+      toPhone: string;
+      customerName?: string;
+      vehicle?: string;
+      destination?: string;
+      pickupLocation?: string;
+      motorClub?: string;
+    },
+  ): Promise<any> {
+    const [config, blocklistRows, ourShops] = await Promise.all([
+      this.flipEngine.getConfig(tenantId),
+      this.flipEngine.listBlocklist(tenantId),
+      this.flipEngine.listActiveShops(tenantId),
+    ]);
+
+    const blocklist = blocklistRows
+      .filter((b) => b.active)
+      .map((b) => ({
+        matchType: b.matchType as 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE',
+        matchValue: b.matchValue,
+        active: b.active,
+      }));
+    const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+
+    const geocoded = input.pickupLocation ? await this.geocoder.geocode(input.pickupLocation) : null;
+
+    const destination = await this.destinationClassifier.classify({
+      destinationName: null,
+      destinationAddress: input.destination ?? null,
+      destinationPhone: null,
+      source: 'SIMULATION',
+      blocklist,
+      ourShopNames,
+    });
+
+    const issue = this.issueClassifier.classify({
+      reasonText: null,
+      vehicleNotes: null,
+      motorClubServiceCode: null,
+    });
+
+    const cfg = (config.config as Record<string, unknown>) ?? {};
+    const decision = decideFlip({
+      source: 'SIMULATION',
+      destinationTag: destination.tag,
+      issueSubcategory: issue.subcategory,
+      issueConfidence: issue.confidence,
+      config: cfg,
+    });
+
+    let nearestShopName: string | null = null;
+    let distanceMilesSaved: number | null = null;
+    if (decision.flipEligible && geocoded) {
+      const pick = await this.flipEngine.pickNearestShop({
+        tenantId,
+        pickupLat: geocoded.lat,
+        pickupLng: geocoded.lng,
+        shopType: 'REPAIR',
+      });
+      nearestShopName = pick.shop?.name ?? null;
+      distanceMilesSaved = pick.distanceMiles;
+    }
+
+    const mentionRentals = (cfg as { mention_rentals?: boolean })?.mention_rentals !== false;
+    const bodyShops = pickTwoBodyShops(ourShops);
+    const scenario = scenarioForDestinationTag(destination.tag);
+    
+    // If we have a car_repair tag but couldn't find a nearest shop, fallback to Convini
+    const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
+    const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
+
+    const ctx: ScriptContext = {
+      repName: 'Ethan',
+      companyName: (cfg.company_name as string) || 'Roadside Towing',
+      motorClub: input.motorClub || '',
+      callbackNumber: (cfg.callback_number as string) || '',
+      conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+      customerFirstName: firstNameOf(input.customerName),
+      vehicle: input.vehicle || 'your vehicle',
+      pickupLocation: input.pickupLocation || 'your location',
+      destination: destination.resolvedAddress ?? input.destination ?? 'your destination',
+      issue: issuePhrase(issue.subcategory),
+      issueSubcategory: issue.subcategory,
+      nearestShop: flipEligible ? nearestShopName : null,
+      nearestShopDistanceMiles: flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
+      bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
+      rentalsAvailable: mentionRentals,
+    };
+
+    const fullBody = renderCallBody(actualScenario, ctx);
+
+    return this.voice.testCall(tenantId, {
+      toPhone: input.toPhone,
+      customerName: input.customerName,
+      vehicle: input.vehicle,
+      destination: destination.resolvedAddress ?? input.destination,
+      pickupLocation: input.pickupLocation,
+      motorClub: input.motorClub,
+      scriptBody: fullBody,
+    });
   }
 }
 

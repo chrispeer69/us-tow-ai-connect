@@ -454,6 +454,7 @@ function Modal({
 }
 
 function TestAgentModal({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState('explicit');
   const [toPhone, setToPhone] = useState('');
   const [scenario, setScenario] = useState('competitor_repair');
   const [customerName, setCustomerName] = useState('');
@@ -470,11 +471,12 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
     setErr(null);
     setSuccess(false);
     try {
-      await api(`/v1/admin/outbound-voice/debug/test-call`, {
+      const endpoint = mode === 'live' ? `/v1/admin/flip-engine/debug/live-test-call` : `/v1/admin/outbound-voice/debug/test-call`;
+      await api(endpoint, {
         method: 'POST',
         json: {
           toPhone,
-          scenario,
+          scenario: mode === 'explicit' ? scenario : undefined,
           customerName: customerName || undefined,
           vehicle: vehicle || undefined,
           destination: destination || undefined,
@@ -498,11 +500,23 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
       ) : (
         <div className="space-y-3">
           <label className="block text-sm font-medium text-zinc-900">
+            Mode
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              className="mt-1 block w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            >
+              <option value="explicit">Explicit Scenario (Fast Test)</option>
+              <option value="live">Live AI Simulation (Full Engine)</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
             To Phone (required)
             <Input value={toPhone} onChange={(e) => setToPhone(e.target.value)} placeholder="+1234567890" className="mt-1" />
           </label>
-          <label className="block text-sm font-medium text-zinc-900">
-            Scenario
+          {mode === 'explicit' && (
+            <label className="block text-sm font-medium text-zinc-900">
+              Scenario
             <select
               value={scenario}
               onChange={(e) => setScenario(e.target.value)}
@@ -514,7 +528,8 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
               <option value="our_shop">Our Shop</option>
               <option value="unknown">Unknown</option>
             </select>
-          </label>
+            </label>
+          )}
           <label className="block text-sm font-medium text-zinc-900">
             Customer Name (optional)
             <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="mt-1" />

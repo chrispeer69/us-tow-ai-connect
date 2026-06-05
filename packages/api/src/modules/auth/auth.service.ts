@@ -45,9 +45,7 @@ export class AuthService {
       role: member?.role,
     };
 
-    return {
-      access_token: this.jwtService.sign(payload),
-    };
+    try { return { access_token: this.jwtService.sign(payload) }; } catch (e: any) { throw new Error("JWT Crash: " + e.message); }
   }
 
   async register(data: any) {
