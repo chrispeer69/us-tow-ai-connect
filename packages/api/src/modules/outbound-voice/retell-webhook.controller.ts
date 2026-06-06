@@ -80,14 +80,19 @@ import { OutboundVoiceService } from './outbound-voice.service';
                             throw new BadRequestException('raw body unavailable');
                   }
 
-            const expected = crypto
+            const expectedHex = crypto
                     .createHmac('sha256', this.apiKey)
                     .update(rawBody)
                     .digest('hex');
+                    
+            const expectedB64 = crypto
+                    .createHmac('sha256', this.apiKey)
+                    .update(rawBody)
+                    .digest('base64');
 
-            if (!signature || !timingSafeEqual(signature, expected)) {
+            if (!signature || (!timingSafeEqual(signature, expectedHex) && !timingSafeEqual(signature, expectedB64))) {
                       this.logger.warn(
-                        `[outbound-voice] Signature mismatch! Received: ${signature}, Expected: ${expected}. Key length: ${this.apiKey?.length}. rawBody length: ${rawBody.length}`
+                        `[outbound-voice] Signature mismatch! Received: ${signature}. ExpectedHex: ${expectedHex}. ExpectedB64: ${expectedB64}. Key length: ${this.apiKey?.length}. rawBody length: ${rawBody.length}`
                       );
                       throw new UnauthorizedException('invalid signature');
             }
