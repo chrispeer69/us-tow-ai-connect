@@ -1112,8 +1112,7 @@ export default function Home() {
                 { name: "US Tow News", icon: Newspaper, desc: "Industry news and events", href: "https://www.ustownews.com" },
                 { name: "US Tow X", icon: Hash, desc: "X for towing professionals", href: "https://www.ustowx.com" },
                 // Other ecosystem solutions
-                { name: "CONVINI", icon: Sparkles, desc: "Vehicle transport & logistics", href: "https://convini.manus.space/" },
-                { name: "CONVINI App", icon: Sparkles, desc: "Direct link to the CONVINI app", href: "https://www.convinicar.online" },
+                { name: "Convini-CAR", icon: Sparkles, desc: "Vehicle transport & logistics", href: "https://www.convinicar.online" },
                 { name: "RECON AI", icon: Bot, desc: "AI bookkeeping & reconciliation" },
                 { name: "RECON AI DIY Toolkit", icon: PenTool, desc: "Self-service AI prompts & workflows" },
                 { name: "PEER Field Press", icon: BookOpen, desc: "10-book towing leadership library" },
