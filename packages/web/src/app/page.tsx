@@ -1077,6 +1077,162 @@ export default function Home() {
         </div>
       </section>
 
+      {/* CONVINI · Investor & Franchise Opportunity */}
+      <section className="py-24 lg:py-32 relative overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-background to-blue-500/10"></div>
+          <div className="absolute inset-0 bg-grid opacity-15"></div>
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-emerald-500/15 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="container relative z-10">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid lg:grid-cols-12 gap-10 items-center">
+              {/* Left: pitch */}
+              <div className="lg:col-span-7">
+                <Badge className="mb-4 bg-emerald-500/15 text-emerald-300 border-emerald-500/40 px-3 py-1.5 text-[10px] font-black tracking-[0.25em] uppercase">
+                  <Sparkles className="w-3 h-3 mr-2" />
+                  CONVINI · Investor & Franchise Partner Opportunity
+                </Badge>
+                <h2 className="text-4xl lg:text-6xl font-black tracking-tight mb-6 leading-[1.05]">
+                  Own AI-Connect.
+                  <br />
+                  <span className="text-gradient-cyan">Or own a city.</span>
+                </h2>
+                <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed mb-4">
+                  CONVINI is a parent brand that operates a member-app ecosystem across
+                  cities — auto, insurance, travel, tickets, rewards, and beyond. Each
+                  brand uses the same Blue Collar AI tools you're seeing in AI-Connect
+                  today.
+                </p>
+                <p className="text-base text-muted-foreground leading-relaxed mb-8">
+                  If buying shares in AI-Connect is the small-ticket entry, becoming a{" "}
+                  <span className="text-foreground font-semibold">
+                    CONVINI City Franchise Partner
+                  </span>{" "}
+                  is the bigger move — launch the entire ecosystem in your market and
+                  run it as the local operator.
+                </p>
+
+                {/* CONVINI brand strip */}
+                <div className="mb-8">
+                  <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-300 font-bold mb-3">
+                    CONVINI Brands
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "ConViniCar",
+                      "ConviniINSURANCE",
+                      "ConviniTRAVEL",
+                      "ConviniTICKETS",
+                      "ConviniPOINTS",
+                      "ConviniREWARDS",
+                    ].map((brand) => (
+                      <span
+                        key={brand}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-xs font-bold text-emerald-200"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        {brand}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <a
+                    href="https://www.convini.vip"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button
+                      size="lg"
+                      className="bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-black text-base h-14 px-8 shadow-xl shadow-emerald-500/40"
+                    >
+                      Open CONVINI Investor Portal
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </a>
+                  <Link href="/inquire-shares">
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="bg-[#1a365d] border-emerald-500/40 text-emerald-200 hover:bg-blue-900 hover:text-emerald-100 h-14 px-8 text-base font-bold"
+                    >
+                      Inquire as a Partner
+                    </Button>
+                  </Link>
+                </div>
+                <p className="text-xs text-muted-foreground mt-4 italic">
+                  Powered by Alpha Business Solutions · Blue Collar AI runs the
+                  intelligence layer.
+                </p>
+              </div>
+
+              {/* Right: certificate-style card */}
+              <div className="lg:col-span-5">
+                <Card className="bg-gradient-to-br from-emerald-900/40 via-blue-950 to-black border-emerald-500/30 overflow-hidden relative shadow-2xl shadow-emerald-500/20">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-400/10 rounded-full blur-3xl"></div>
+                  <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl"></div>
+                  <CardContent className="p-8 relative">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <Award className="w-5 h-5 text-emerald-400" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] text-emerald-300 font-bold">
+                          CONVINI City Franchise
+                        </span>
+                      </div>
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[9px]">
+                        CONVINI BRANDS
+                      </Badge>
+                    </div>
+                    <div className="text-2xl font-black text-white mb-1 tracking-tight">
+                      Launch Your Market
+                    </div>
+                    <div className="text-sm text-emerald-100/80 mb-6">
+                      Bring the full CONVINI ecosystem to your city as the local
+                      operator and equity partner.
+                    </div>
+
+                    <Separator className="bg-emerald-500/20 mb-6" />
+
+                    <div className="space-y-3 mb-6">
+                      {[
+                        "Exclusive city territory rights",
+                        "Multi-brand revenue (Car · Insurance · Travel · Tickets …)",
+                        "Blue Collar AI tooling included for partners",
+                        "Founder-led onboarding & playbook",
+                      ].map((item, i) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 text-sm text-emerald-50"
+                        >
+                          <Check
+                            className="w-4 h-4 text-emerald-300 flex-shrink-0 mt-0.5"
+                            strokeWidth={3}
+                          />
+                          <span>{item}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
+                      <div className="text-[10px] uppercase tracking-wider text-emerald-200 font-bold mb-1">
+                        Why an AI-Connect customer?
+                      </div>
+                      <div className="text-sm text-emerald-50">
+                        You already run AI in a real market. CONVINI is the same
+                        playbook, scaled across services.
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Ecosystem */}
       <section className="py-24 lg:py-32">
         <div className="container">
@@ -1102,9 +1258,9 @@ export default function Home() {
                 { name: "US Tow Dispatch", icon: Building2, desc: "Dispatch management software", href: "https://www.ustowdispatch.com" },
                 { name: "US Tow AI-Connect", icon: Phone, desc: "Inbound / outbound AI phone attendant", href: "https://www.ustowaiconnect.com" },
                 { name: "US Tow Bid", icon: Gavel, desc: "Tow truck only online auction & sales", href: "https://www.ustowbid.com" },
-                { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers", href: "https://www.ustowjobs.com" },
+                { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers", href: "https://www.towtruckjobs.online" },
                 { name: "US Tow Marketing", icon: Megaphone, desc: "24/7 lead generation engine" },
-                { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs", href: "https://www.ustowgrade.com" },
+                { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs", href: "https://www.towgrade.com" },
                 { name: "US Tow Fleet", icon: ShieldCheck, desc: "Fleet management software", href: "https://www.ustowfleet.com" },
                 { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
                 { name: "US Tow Shield", icon: ShieldCheck, desc: "Damages claims management", href: "https://www.ustowshield.com" },
