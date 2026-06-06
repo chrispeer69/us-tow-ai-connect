@@ -115,7 +115,14 @@ export default function Home() {
                 and <span className="text-foreground font-semibold">customer retention</span>.
                 Our AI agent calls every job, confirms details, and offers discounts at
                 preferred auto repair shops of your choosing. It also offers the{" "}
-                <span className="text-foreground font-semibold">CONVINI app link</span> —
+                <a
+                  href="https://www.convinicar.online"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-foreground font-semibold underline decoration-cyan-400/60 underline-offset-4 hover:decoration-cyan-300"
+                >
+                  CONVINI app link
+                </a> —
                 driving more revenue, opportunity, and customer development to your business.
               </p>
 
@@ -1088,43 +1095,65 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
-            {[
-              // US Tow branded — surfaced first
-              { name: "US Tow Alliance", icon: Users, desc: "National membership network" },
-              { name: "US Tow Dispatch", icon: Building2, desc: "Dispatch management software" },
-              { name: "US Tow AI-Connect", icon: Phone, desc: "Inbound / outbound AI phone attendant" },
-              { name: "US Tow Bid", icon: Gavel, desc: "Tow truck only online auction & sales" },
-              { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers" },
-              { name: "US Tow Marketing", icon: Megaphone, desc: "24/7 lead generation engine" },
-              { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs" },
-              { name: "US Tow Fleet", icon: ShieldCheck, desc: "Fleet management software" },
-              { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
-              { name: "US Tow Shield", icon: ShieldCheck, desc: "Damages claims management" },
-              { name: "US Tow Credit", icon: DollarSign, desc: "Credit repair solutions" },
-              { name: "US Tow News", icon: Newspaper, desc: "Industry news and events" },
-              { name: "US Tow X", icon: Hash, desc: "X for towing professionals" },
-              // Other ecosystem solutions
-              { name: "CONVINI", icon: Sparkles, desc: "Vehicle transport & logistics" },
-              { name: "RECON AI", icon: Bot, desc: "AI bookkeeping & reconciliation" },
-              { name: "RECON AI DIY Toolkit", icon: PenTool, desc: "Self-service AI prompts & workflows" },
-              { name: "PEER Field Press", icon: BookOpen, desc: "10-book towing leadership library" },
-              { name: "Capital Bridge", icon: DollarSign, desc: "Business financing & capital" },
-              { name: "MCA Debt Solutions", icon: ClipboardCheck, desc: "Merchant cash advance relief" },
-              { name: "Iron Horse Tow Trucks", icon: Truck, desc: "Custom built tow trucks" },
-              { name: "WrenchLink", icon: Wrench, desc: "Mechanic & shop network" },
-              { name: "Insurance Solutions", icon: ShieldCheck, desc: "Get the best insurance rates in the country" },
-              { name: "Shift Track", icon: Activity, desc: "Driver shift reporting app" },
-            ].map((item, i) => (
-              <Card key={i} className="bg-card/60 border-border hover:border-cyan-500/40 transition-all duration-300 group hover:scale-[1.02]">
-                <CardContent className="p-5">
-                  <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                    <item.icon className="w-5 h-5 text-cyan-400" />
-                  </div>
-                  <div className="font-bold text-sm mb-1">{item.name}</div>
-                  <div className="text-xs text-muted-foreground">{item.desc}</div>
-                </CardContent>
-              </Card>
-            ))}
+            {(
+              [
+                // US Tow branded — surfaced first
+                { name: "US Tow Alliance", icon: Users, desc: "National membership network", href: "https://www.ustowalliance.com" },
+                { name: "US Tow Dispatch", icon: Building2, desc: "Dispatch management software", href: "https://www.ustowdispatch.com" },
+                { name: "US Tow AI-Connect", icon: Phone, desc: "Inbound / outbound AI phone attendant", href: "https://www.ustowaiconnect.com" },
+                { name: "US Tow Bid", icon: Gavel, desc: "Tow truck only online auction & sales", href: "https://www.ustowbid.com" },
+                { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers", href: "https://www.ustowjobs.com" },
+                { name: "US Tow Marketing", icon: Megaphone, desc: "24/7 lead generation engine" },
+                { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs", href: "https://www.ustowgrade.com" },
+                { name: "US Tow Fleet", icon: ShieldCheck, desc: "Fleet management software", href: "https://www.ustowfleet.com" },
+                { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
+                { name: "US Tow Shield", icon: ShieldCheck, desc: "Damages claims management", href: "https://www.ustowshield.com" },
+                { name: "US Tow Credit", icon: DollarSign, desc: "Credit repair solutions", href: "https://www.ustowcredit.com" },
+                { name: "US Tow News", icon: Newspaper, desc: "Industry news and events", href: "https://www.ustownews.com" },
+                { name: "US Tow X", icon: Hash, desc: "X for towing professionals", href: "https://www.ustowx.com" },
+                // Other ecosystem solutions
+                { name: "CONVINI", icon: Sparkles, desc: "Vehicle transport & logistics", href: "https://convini.manus.space/" },
+                { name: "CONVINI App", icon: Sparkles, desc: "Direct link to the CONVINI app", href: "https://www.convinicar.online" },
+                { name: "RECON AI", icon: Bot, desc: "AI bookkeeping & reconciliation" },
+                { name: "RECON AI DIY Toolkit", icon: PenTool, desc: "Self-service AI prompts & workflows" },
+                { name: "PEER Field Press", icon: BookOpen, desc: "10-book towing leadership library" },
+                { name: "Capital Bridge", icon: DollarSign, desc: "Business financing & capital" },
+                { name: "MCA Debt Solutions", icon: ClipboardCheck, desc: "Merchant cash advance relief" },
+                { name: "Iron Horse Tow Trucks", icon: Truck, desc: "Custom built tow trucks" },
+                { name: "WrenchLink", icon: Wrench, desc: "Mechanic & shop network" },
+                { name: "Insurance Solutions", icon: ShieldCheck, desc: "Get the best insurance rates in the country" },
+                { name: "Shift Track", icon: Activity, desc: "Driver shift reporting app" },
+              ] as Array<{
+                name: string;
+                icon: typeof Users;
+                desc: string;
+                href?: string;
+              }>
+            ).map((item, i) => {
+              const card = (
+                <Card key={i} className="bg-card/60 border-border hover:border-cyan-500/40 transition-all duration-300 group hover:scale-[1.02] h-full">
+                  <CardContent className="p-5">
+                    <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                      <item.icon className="w-5 h-5 text-cyan-400" />
+                    </div>
+                    <div className="font-bold text-sm mb-1 flex items-center gap-1.5">
+                      {item.name}
+                      {item.href && (
+                        <ArrowRight className="w-3 h-3 text-cyan-400 opacity-0 group-hover:opacity-100 -rotate-45 transition-opacity" />
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{item.desc}</div>
+                  </CardContent>
+                </Card>
+              );
+              return item.href ? (
+                <a key={i} href={item.href} target="_blank" rel="noreferrer" className="block">
+                  {card}
+                </a>
+              ) : (
+                <div key={i}>{card}</div>
+              );
+            })}
           </div>
         </div>
       </section>
