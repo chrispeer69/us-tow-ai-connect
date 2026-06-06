@@ -1157,6 +1157,93 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Join the Ecosystem — Convini-CAR vendor recruitment */}
+      <section className="py-24 lg:py-32 relative overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <img
+            src="https://files.manuscdn.com/webdev_screenshots/2026/04/24/Jsz276N5eoCU7td6NvVGVt.png?x-oss-process=image/resize,w_1600"
+            alt="ConViniCar vendor network — auto repair, tow, body shops, and rental services connected through one intelligent system"
+            className="w-full h-full object-cover opacity-20"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/85 via-background/90 to-background"></div>
+          <div className="absolute inset-0 bg-grid opacity-15"></div>
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-emerald-500/15 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="container relative z-10">
+          <div className="max-w-4xl mx-auto text-center mb-12">
+            <Badge className="mb-6 bg-emerald-500/15 text-emerald-300 border-emerald-500/40 px-4 py-2 text-[10px] font-black tracking-[0.25em] uppercase">
+              <Sparkles className="w-3.5 h-3.5 mr-2" />
+              Convini-CAR · Vendor Network
+            </Badge>
+            <h2 className="text-4xl lg:text-6xl font-black tracking-tight mb-6 leading-[1.05]">
+              Join the Ecosystem That
+              <br />
+              <span className="text-gradient-cyan">Moves a City Forward.</span>
+            </h2>
+            <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed max-w-3xl mx-auto mb-4">
+              ConViniCar isn't just an app — it's a{" "}
+              <span className="text-foreground font-semibold">
+                living, breathing network
+              </span>{" "}
+              of auto repair shops, tow companies, body shops, and rental services all
+              connected through one intelligent system. Designed to serve the community
+              with convenience, speed, and value.
+            </p>
+            <p className="text-base lg:text-lg font-bold tracking-wide text-emerald-300 mt-6">
+              One Network. One Mission. One Community.
+            </p>
+          </div>
+
+          {/* Vendor category strip */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto mb-12">
+            {[
+              { name: "Auto Repair", icon: Wrench },
+              { name: "Tow Companies", icon: Truck },
+              { name: "Body Shops", icon: Hammer },
+              { name: "Rental Services", icon: Car },
+            ].map((cat, i) => (
+              <div
+                key={i}
+                className="flex flex-col items-center gap-2 p-4 rounded-lg bg-card/40 border border-emerald-500/20 backdrop-blur-sm hover:border-emerald-500/50 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                  <cat.icon className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div className="text-xs font-bold uppercase tracking-wider text-center">
+                  {cat.name}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <a
+              href="https://www.convinicar.online/vendor-apply"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Button
+                size="lg"
+                className="bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-black text-base h-14 px-8 shadow-xl shadow-emerald-500/40"
+              >
+                Become a Vendor
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </a>
+            <a href="https://www.convinicar.online" target="_blank" rel="noreferrer">
+              <Button
+                size="lg"
+                variant="outline"
+                className="bg-[#1a365d] border-emerald-500/40 text-emerald-200 hover:bg-blue-900 hover:text-emerald-100 h-14 px-8 text-base font-bold"
+              >
+                Learn About Convini-CAR
+              </Button>
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* Final CTA */}
       <section className="py-24 lg:py-32 relative overflow-hidden">
         <div className="absolute inset-0 z-0">
