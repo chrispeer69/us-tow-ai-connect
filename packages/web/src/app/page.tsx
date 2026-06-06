@@ -1303,7 +1303,7 @@ export default function Home() {
                 { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs", href: "https://www.towgrade.com" },
                 { name: "US Tow Fleet", icon: ShieldCheck, desc: "Fleet management software", href: "https://www.ustowfleet.com" },
                 { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
-                { name: "US Tow Shield", icon: ShieldCheck, desc: "Damages claims management", href: "https://claimshield-production.up.railway.app" },
+                { name: "US Tow Shield", icon: ShieldCheck, desc: "Win damage-claim disputes", href: "https://claimshield-production.up.railway.app" },
                 { name: "US Tow Credit", icon: DollarSign, desc: "Credit repair solutions", href: "https://www.ustowcredit.com" },
                 { name: "US Tow News", icon: Newspaper, desc: "Industry news and events", href: "https://www.ustownews.com" },
                 { name: "US Tow X", icon: Hash, desc: "X for towing professionals", href: "https://www.ustowx.com" },
