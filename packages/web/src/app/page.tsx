@@ -1317,11 +1317,11 @@ export default function Home() {
       <section className="py-24 lg:py-32 relative overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src="https://files.manuscdn.com/webdev_screenshots/2026/04/24/Jsz276N5eoCU7td6NvVGVt.png?x-oss-process=image/resize,w_1600"
+            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/Vv2UwtRczgts7bjQRsKEeR/vendor-network-hero_1e7b5699.png"
             alt="ConViniCar vendor network — auto repair, tow, body shops, and rental services connected through one intelligent system"
-            className="w-full h-full object-cover opacity-20"
+            className="w-full h-full object-cover opacity-40"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-background/85 via-background/90 to-background"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/85 to-background"></div>
           <div className="absolute inset-0 bg-grid opacity-15"></div>
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-emerald-500/15 rounded-full blur-3xl"></div>
         </div>
