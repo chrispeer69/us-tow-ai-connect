@@ -805,56 +805,75 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {[
-              {
-                name: "Starter",
-                price: "$169",
-                tag: "1,000 minutes/mo · Alliance Profile",
-                rate: "$0.30/min overage",
-                features: [
-                  "Inbound AI phone answering",
-                  "Live ETA lookups",
-                  "Impound inquiries",
-                  "Smart call transfers",
-                  "Email support",
-                ],
-                cta: "Start Free Trial",
-              },
-              {
-                name: "Professional",
-                price: "$399",
-                tag: "2,500 minutes/mo · Alliance Elite",
-                rate: "$0.25/min overage",
-                features: [
-                  "Everything in Starter",
-                  "Outbound confirmation calls",
-                  "Auto shop referral engine",
-                  "CONVINI app integration",
-                  "Priority support",
-                ],
-                cta: "Start Free Trial",
-                popular: true,
-              },
-              {
-                name: "Enterprise",
-                price: "$699",
-                tag: "5,000 minutes/mo · Shareholders",
-                rate: "$0.20/min overage",
-                features: [
-                  "Everything in Professional",
-                  "AAA Portal integration",
-                  "Custom adapter requests",
-                  "Multi-company dashboard",
-                  "Dedicated account manager",
-                ],
-                cta: "Talk to Sales",
-              },
-            ].map((plan, i) => (
+            {(
+              [
+                {
+                  name: "Profile Member",
+                  setup: "$499",
+                  setupNote: "one-time setup",
+                  rate: "30¢",
+                  tag: "Alliance Profile · Entry tier",
+                  features: [
+                    "Inbound AI phone answering with ETA updates",
+                    "Smart call transfers",
+                    "Outbound call job detail confirmations",
+                    "Outbound sales flip logic",
+                    "Outbound CONVINI offer",
+                  ],
+                  cta: "Get Started",
+                  href: "/sign-up",
+                },
+                {
+                  name: "Elite Member",
+                  setup: "$399",
+                  setupNote: "lower setup",
+                  rate: "25¢",
+                  tag: "Alliance Elite · Upgrade tier",
+                  features: [
+                    "Everything in Profile Member",
+                    "Outbound customer retention logic",
+                    "Outbound customer development logic",
+                  ],
+                  cta: "Get Started",
+                  href: "/sign-up",
+                  popular: true,
+                },
+                {
+                  name: "Shareholder Member",
+                  setup: "Waived",
+                  setupNote: "no setup fee",
+                  rate: "20¢",
+                  tag: "AI-Connect Shareholder · Lowest rate",
+                  features: [
+                    "Everything in Elite Member",
+                    "Setup fee fully waived",
+                    "Quarterly profit-sharing dividends",
+                    "Equity stake in US Tow AI-Connect",
+                  ],
+                  cta: "Become a Shareholder",
+                  href: "/inquire-shares",
+                  shareholder: true,
+                },
+              ] as Array<{
+                name: string;
+                setup: string;
+                setupNote: string;
+                rate: string;
+                tag: string;
+                features: string[];
+                cta: string;
+                href: string;
+                popular?: boolean;
+                shareholder?: boolean;
+              }>
+            ).map((plan, i) => (
               <Card
                 key={i}
                 className={`relative ${
                   plan.popular
                     ? "bg-gradient-to-b from-blue-500/10 to-card border-blue-500/40 lg:scale-105 shadow-xl shadow-blue-500/20 glow-blue"
+                    : plan.shareholder
+                    ? "bg-gradient-to-b from-amber-500/10 to-card border-amber-500/40 shadow-xl shadow-amber-500/20"
                     : "bg-card/80 border-border"
                 }`}
               >
@@ -863,42 +882,63 @@ export default function Home() {
                     Most Popular
                   </div>
                 )}
-                <CardContent className="p-8">
-                  <div className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-2">{plan.name}</div>
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-5xl font-black tracking-tight">{plan.price}</span>
-                    <span className="text-muted-foreground">/mo</span>
+                {plan.shareholder && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-400 text-amber-950 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg whitespace-nowrap">
+                    Lowest Rate · Equity Tier
                   </div>
-                  <div className="text-sm text-muted-foreground mb-1">{plan.tag}</div>
-                  <div className="text-xs text-blue-400 font-medium mb-6">{plan.rate}</div>
-                  {plan.cta === "Talk to Sales" ? (
+                )}
+                <CardContent className="p-8">
+                  <div
+                    className={`text-sm font-bold uppercase tracking-wider mb-2 ${
+                      plan.shareholder ? "text-amber-400" : "text-blue-400"
+                    }`}
+                  >
+                    {plan.name}
+                  </div>
+
+                  {/* Setup fee */}
+                  <div className="flex items-baseline gap-2 mb-0.5">
+                    <span className="text-5xl font-black tracking-tight">{plan.setup}</span>
+                    <span className="text-xs text-muted-foreground">{plan.setupNote}</span>
+                  </div>
+
+                  {/* Per-minute rate */}
+                  <div className="flex items-baseline gap-1 mb-2">
+                    <span
+                      className={`text-2xl font-black tracking-tight ${
+                        plan.shareholder ? "text-amber-400" : "text-blue-400"
+                      }`}
+                    >
+                      {plan.rate}
+                    </span>
+                    <span className="text-sm text-muted-foreground">/min usage</span>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground mb-6">{plan.tag}</div>
+
+                  <Link href={plan.href} className="block">
                     <Button
                       className={`w-full mb-6 font-bold ${
                         plan.popular
                           ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                          : plan.shareholder
+                          ? "bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-lg shadow-amber-500/30"
                           : "bg-card border border-border hover:bg-muted text-foreground"
                       }`}
                     >
                       {plan.cta}
                     </Button>
-                  ) : (
-                    <Link href="/sign-up" className="w-full">
-                      <Button
-                        className={`w-full mb-6 font-bold ${
-                          plan.popular
-                            ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-                            : "bg-card border border-border hover:bg-muted text-foreground"
-                        }`}
-                      >
-                        {plan.cta}
-                      </Button>
-                    </Link>
-                  )}
+                  </Link>
+
                   <Separator className="mb-6" />
                   <ul className="space-y-3">
                     {plan.features.map((f, j) => (
                       <li key={j} className="flex items-start gap-3 text-sm">
-                        <Check className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                        <Check
+                          className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
+                            plan.shareholder ? "text-amber-400" : "text-blue-400"
+                          }`}
+                        />
                         <span>{f}</span>
                       </li>
                     ))}
