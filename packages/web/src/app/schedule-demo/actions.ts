@@ -50,61 +50,41 @@ export async function submitDemoRequest(
   ];
   const body = lines.join('\n');
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
-  const toNumber = process.env.DEMO_SMS_TO || DEFAULT_RECIPIENT;
+  const payload = {
+    name,
+    businessName,
+    city,
+    state,
+    phone,
+    email,
+    annualRevenue,
+    fleetSize,
+    formattedBody: body // You can use this single string in n8n if you just want to send the raw text!
+  };
 
-  if (!accountSid || !authToken || !fromNumber) {
-    console.error(
-      '[schedule-demo] Twilio env vars missing — demo request from %s (%s) NOT sent:\n%s',
-      name,
-      phone,
-      body,
-    );
-    return {
-      ok: false,
-      error:
-        'SMS service is not configured on the server. Your request was logged — please call 614-633-7935 directly.',
-    };
-  }
-
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
-  const auth = Buffer.from(`${accountSid}:${authToken}`, 'utf8').toString('base64');
-
-  const formBody = new URLSearchParams();
-  formBody.set('From', fromNumber);
-  formBody.set('To', toNumber);
-  formBody.set('Body', body);
+  const webhookUrl = 'https://n8n.fractio.services/webhook/schedule-demo';
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: formBody.toString(),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      console.error(
-        '[schedule-demo] Twilio rejected: %s %s — %s',
-        res.status,
-        res.statusText,
-        errBody,
-      );
+      console.error('[schedule-demo] n8n rejected:', res.status, res.statusText);
       return {
         ok: false,
-        error: `SMS service returned ${res.status}. Please call 614-633-7935 directly.`,
+        error: `Could not send request. Please call 614-633-7935 directly.`,
       };
     }
   } catch (err) {
-    console.error('[schedule-demo] Twilio request failed:', err);
+    console.error('[schedule-demo] n8n webhook request failed:', err);
     return {
       ok: false,
-      error: 'Could not reach SMS service. Please call 614-633-7935 directly.',
+      error: 'Could not reach server. Please call 614-633-7935 directly.',
     };
   }
 

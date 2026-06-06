@@ -233,8 +233,8 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
       customerFirstName: firstNameOf(job.customerName),
       vehicle: formatVehicleYear(job.vehicle),
-      pickupLocation: formatSpokenAddress(job.pickupAddress ?? 'your location'),
-      destination: formatSpokenAddress(destination.resolvedAddress ?? job.destinationAddress ?? 'your destination'),
+      pickupLocation: job.pickupAddress ?? 'your location',
+      destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
       issue: issuePhrase(issue.subcategory),
       issueSubcategory: issue.subcategory,
       nearestShop: decision.flipEligible ? nearestShopName : null,
@@ -400,8 +400,8 @@ export class FlipOrchestratorService {
           [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
             .filter(Boolean)
             .join(' ') || 'your vehicle',
-        pickupLocation: formatSpokenAddress(job.pickupAddress ?? 'your location'),
-        destination: formatSpokenAddress(destination.resolvedAddress ?? job.dropoffAddress ?? 'your destination'),
+        pickupLocation: job.pickupAddress ?? 'your location',
+        destination: destination.resolvedAddress ?? job.dropoffAddress ?? 'your destination',
         issue: 'a service request',
         issueSubcategory: null,
         nearestShop: flipEligible ? nearestShopName : null,
@@ -523,8 +523,8 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
       customerFirstName: firstNameOf(input.customerName),
       vehicle: input.vehicle || 'your vehicle',
-      pickupLocation: formatSpokenAddress(input.pickupLocation || 'your location'),
-      destination: formatSpokenAddress(destination.resolvedAddress ?? input.destination ?? 'your destination'),
+      pickupLocation: input.pickupLocation || 'your location',
+      destination: destination.resolvedAddress ?? input.destination ?? 'your destination',
       issue: issuePhrase(issue.subcategory),
       issueSubcategory: issue.subcategory,
       nearestShop: flipEligible ? nearestShopName : null,
@@ -607,12 +607,4 @@ function formatVehicleYear(vehicle: string | null | undefined): string {
     }
     return match;
   });
-}
-
-/**
- * Strips out "USA" or "United States" from addresses so the TTS engine doesn't read them.
- */
-function formatSpokenAddress(address: string | null | undefined): string {
-  if (!address) return '';
-  return address.replace(/,\s*(?:USA|United States)\b/i, '').replace(/\s+(?:USA|United States)\b/i, '').trim();
 }
