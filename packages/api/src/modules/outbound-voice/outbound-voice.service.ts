@@ -692,8 +692,14 @@ export class OutboundVoiceService {
     if (formattedPhone.length === 10) formattedPhone = '+1' + formattedPhone;
     if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
     
-    const tenant = await this.assertEnabled(tenantId, 'custom');
-    const cfg = tenant.outboundVoiceConfig as Record<string, unknown> | null || {};
+    const rows = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const tenant = rows[0];
+    if (!tenant) throw new Error('Tenant not found');
+    const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) || {};
 
     const activeShops = await this.db
       .select()

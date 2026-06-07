@@ -1,13 +1,13 @@
 import {
-    BadRequestException,
-    Body,
-    Controller,
-    Headers,
-    HttpCode,
-    Logger,
-    Post,
-    Req,
-    UnauthorizedException,
+  BadRequestException,
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  Logger,
+  Post,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import type { Request } from 'express';
@@ -47,124 +47,124 @@ import { OutboundVoiceService } from './outbound-voice.service';
  *   production must set it.
  */
 @Controller('webhooks/retell')
-  export class RetellWebhookController {
-    private readonly logger = new Logger(RetellWebhookController.name);
-    private readonly apiKey: string | null;
+export class RetellWebhookController {
+  private readonly logger = new Logger(RetellWebhookController.name);
+  private readonly apiKey: string | null;
 
   constructor(private readonly outboundVoice: OutboundVoiceService) {
-        // Retell now often uses a dedicated Webhook Secret instead of the API key
-        const key = (process.env.RETELL_WEBHOOK_SECRET?.trim() || process.env.RETELL_API_KEY?.trim()) ?? '';
-        this.apiKey = key || null;
-        if (!this.apiKey) {
-                this.logger.warn(
-                          'RETELL_WEBHOOK_SECRET and RETELL_API_KEY unset — Retell webhook signature verification is DISABLED',
-                        );
-        }
+    // Retell now often uses a dedicated Webhook Secret instead of the API key
+    const key = (process.env.RETELL_WEBHOOK_SECRET?.trim() || process.env.RETELL_API_KEY?.trim()) ?? '';
+    this.apiKey = key || null;
+    if (!this.apiKey) {
+      this.logger.warn(
+        'RETELL_WEBHOOK_SECRET and RETELL_API_KEY unset — Retell webhook signature verification is DISABLED',
+      );
+    }
   }
 
   @Post('outbound-result')
-    @HttpCode(200)
-    async handleEvent(
-          @Req() req: Request,
-          @Headers('x-retell-signature') signature: string | undefined,
-          @Body() body: RetellWebhookBody,
-        ): Promise<{ matched: boolean }> {
-          if (this.apiKey) {
-                  // req.rawBody is a Buffer set by NestJS when rawBody: true is passed to
-            // NestFactory.create().  We MUST hash the exact bytes Retell signed —
-            // re-serialising the parsed object (JSON.stringify) reorders/reformats
-            // keys and the HMAC will never match.
-            const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-                  if (!rawBody || rawBody.length === 0) {
-                            this.logger.warn('[outbound-voice] rawBody unavailable — rejecting');
-                            throw new BadRequestException('raw body unavailable');
-                  }
+  @HttpCode(200)
+  async handleEvent(
+    @Req() req: Request,
+    @Headers('x-retell-signature') signature: string | undefined,
+    @Body() body: RetellWebhookBody,
+  ): Promise<{ matched: boolean }> {
+    if (this.apiKey) {
+      // req.rawBody is a Buffer set by NestJS when rawBody: true is passed to
+      // NestFactory.create().  We MUST hash the exact bytes Retell signed —
+      // re-serialising the parsed object (JSON.stringify) reorders/reformats
+      // keys and the HMAC will never match.
+      const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+      if (!rawBody || rawBody.length === 0) {
+        this.logger.warn('[outbound-voice] rawBody unavailable — rejecting');
+        throw new BadRequestException('raw body unavailable');
+      }
 
-            const expectedHex = crypto
-                    .createHmac('sha256', this.apiKey)
-                    .update(rawBody)
-                    .digest('hex');
-                    
-            const expectedB64 = crypto
-                    .createHmac('sha256', this.apiKey)
-                    .update(rawBody)
-                    .digest('base64');
+      const expectedHex = crypto
+        .createHmac('sha256', this.apiKey)
+        .update(rawBody)
+        .digest('hex');
 
-            if (!signature || (!timingSafeEqual(signature, expectedHex) && !timingSafeEqual(signature, expectedB64))) {
-                      this.logger.warn(
-                        `[outbound-voice] Signature mismatch! Received: ${signature}. ExpectedHex: ${expectedHex}. ExpectedB64: ${expectedB64}. Key length: ${this.apiKey?.length}. rawBody length: ${rawBody.length}`
-                      );
-                      throw new UnauthorizedException('invalid signature');
-            }
-          }
+      const expectedB64 = crypto
+        .createHmac('sha256', this.apiKey)
+        .update(rawBody)
+        .digest('base64');
 
-      const callId = body?.call?.call_id;
-          if (!callId) {
-                  this.logger.warn('[outbound-voice] Retell webhook missing call.call_id');
-                  return { matched: false };
-          }
-
-        const analysis = body.call.call_analysis || {};
-
-        const analysisData = {
-            call_summary: analysis.call_summary as string | null,
-            call_successful: analysis.call_successful as boolean | null,
-            user_sentiment: analysis.user_sentiment as string | null,
-            flip_eligible: analysis.flip_eligible as boolean | null,
-            flip_outcome: analysis.flip_outcome as string | null,
-            offer_1_result: analysis.offer_1_result as string | null,
-            offer_2_result: analysis.offer_2_result as string | null,
-            offer_3_result: analysis.offer_3_result as string | null,
-            convini_link_sent: analysis.convini_link_sent as boolean | null,
-            convini_sell_type: analysis.convini_sell_type as string | null,
-            corrections_made: analysis.corrections_made as string | null,
-            nearest_our_shop: analysis.nearest_our_shop as string | null,
-            destination_type: analysis.destination_type as string | null,
-        };
-
-      const result = await this.outboundVoice.handleProviderWebhookEvent({
-              provider: 'retell',
-              callId,
-              status: mapRetellStatus(body),
-              durationSeconds: body.call.duration_ms != null
-                ? Math.round(body.call.duration_ms / 1000)
-                        : null,
-              transcript: body.call.transcript ?? null,
-              recordingUrl: body.call.recording_url ?? null,
-              analysisData,
-              error: body.call.disconnection_reason ?? null,
-              timestampIso: body.call.end_timestamp
-                ? new Date(body.call.end_timestamp).toISOString()
-                        : body.call.start_timestamp
-                ? new Date(body.call.start_timestamp).toISOString()
-                        : null,
-      });
-          return { matched: result.matched };
+      if (!signature || (!timingSafeEqual(signature, expectedHex) && !timingSafeEqual(signature, expectedB64))) {
+        this.logger.warn(
+          `[outbound-voice] Signature mismatch! Received: ${signature}. ExpectedHex: ${expectedHex}. ExpectedB64: ${expectedB64}. Key length: ${this.apiKey?.length}. rawBody length: ${rawBody.length}`
+        );
+        throw new UnauthorizedException('invalid signature');
+      }
     }
+
+    const callId = body?.call?.call_id;
+    if (!callId) {
+      this.logger.warn('[outbound-voice] Retell webhook missing call.call_id');
+      return { matched: false };
+    }
+
+    const analysis = body.call.call_analysis || {};
+
+    const analysisData = {
+      call_summary: analysis.call_summary as string | null,
+      call_successful: analysis.call_successful as boolean | null,
+      user_sentiment: analysis.user_sentiment as string | null,
+      flip_eligible: analysis.flip_eligible as boolean | null,
+      flip_outcome: analysis.flip_outcome as string | null,
+      offer_1_result: analysis.offer_1_result as string | null,
+      offer_2_result: analysis.offer_2_result as string | null,
+      offer_3_result: analysis.offer_3_result as string | null,
+      convini_link_sent: analysis.convini_link_sent as boolean | null,
+      convini_sell_type: analysis.convini_sell_type as string | null,
+      corrections_made: analysis.corrections_made as string | null,
+      nearest_our_shop: analysis.nearest_our_shop as string | null,
+      destination_type: analysis.destination_type as string | null,
+    };
+
+    const result = await this.outboundVoice.handleProviderWebhookEvent({
+      provider: 'retell',
+      callId,
+      status: mapRetellStatus(body),
+      durationSeconds: body.call.duration_ms != null
+        ? Math.round(body.call.duration_ms / 1000)
+        : null,
+      transcript: body.call.transcript ?? null,
+      recordingUrl: body.call.recording_url ?? null,
+      analysisData,
+      error: body.call.disconnection_reason ?? null,
+      timestampIso: body.call.end_timestamp
+        ? new Date(body.call.end_timestamp).toISOString()
+        : body.call.start_timestamp
+          ? new Date(body.call.start_timestamp).toISOString()
+          : null,
+    });
+    return { matched: result.matched };
+  }
 }
 
 /** Retell event → ThinkrrStatus-equivalent string (mapThinkrrStatus handles it). */
 function mapRetellStatus(body: RetellWebhookBody): string {
-    const event = body.event;
-    const callStatus = body.call?.call_status;
-    // Retell `call_started` => in_progress in our schema
+  const event = body.event;
+  const callStatus = body.call?.call_status;
+  // Retell `call_started` => in_progress in our schema
   if (event === 'call_started') return 'in_progress';
-    // call_ended / call_analyzed — read disconnection_reason for the terminal mapping
+  // call_ended / call_analyzed — read disconnection_reason for the terminal mapping
   if (event === 'call_ended' || event === 'call_analyzed') {
-        const reason = body.call?.disconnection_reason?.toLowerCase();
-        if (reason === 'user_hangup' || reason === 'agent_hangup' || reason === 'call_transfer') {
-                return 'completed';
-        }
-        if (reason === 'voicemail') return 'no_answer';
-        if (reason === 'dial_busy') return 'busy';
-        if (reason === 'dial_no_answer') return 'no_answer';
-        if (reason === 'dial_failed' || reason === 'error') return 'failed';
-        if (callStatus === 'ended') return 'completed';
-        if (callStatus === 'error') return 'failed';
+    const reason = body.call?.disconnection_reason?.toLowerCase();
+    if (reason === 'user_hangup' || reason === 'agent_hangup' || reason === 'call_transfer') {
+      return 'completed';
+    }
+    if (reason === 'voicemail') return 'no_answer';
+    if (reason === 'dial_busy') return 'busy';
+    if (reason === 'dial_no_answer') return 'no_answer';
+    if (reason === 'dial_failed' || reason === 'error') return 'failed';
+    if (callStatus === 'ended') return 'completed';
+    if (callStatus === 'error') return 'failed';
   }
-    if (callStatus === 'ongoing') return 'in_progress';
-    if (callStatus === 'registered') return 'dialing';
-    return 'failed';
+  if (callStatus === 'ongoing') return 'in_progress';
+  if (callStatus === 'registered') return 'dialing';
+  return 'failed';
 }
 
 /**
@@ -172,39 +172,39 @@ function mapRetellStatus(body: RetellWebhookBody): string {
  * Returns true only when a === b (same length + same bytes).
  */
 function timingSafeEqual(a: string, b: string): boolean {
-    const ab = Buffer.from(a);
-    const bb = Buffer.from(b);
-    if (ab.length !== bb.length) return false;
-    return crypto.timingSafeEqual(ab, bb);
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
 }
 
 interface RetellWebhookBody {
-    event: 'call_started' | 'call_ended' | 'call_analyzed';
-    call: {
-      call_id: string;
-      call_status?: 'ongoing' | 'ended' | 'error' | 'registered';
-      disconnection_reason?: string;
-      duration_ms?: number;
-      transcript?: string;
-      recording_url?: string;
-      start_timestamp?: number;
-      end_timestamp?: number;
-      call_analysis?: {
-        call_summary?: string;
-        call_successful?: boolean;
-        user_sentiment?: string;
-        flip_eligible?: boolean;
-        flip_outcome?: string;
-        offer_1_result?: string;
-        offer_2_result?: string;
-        offer_3_result?: string;
-        convini_link_sent?: boolean;
-        convini_sell_type?: string;
-        corrections_made?: string;
-        nearest_our_shop?: string;
-        destination_type?: string;
-        [key: string]: unknown;
-      };
-      metadata?: Record<string, unknown>;
+  event: 'call_started' | 'call_ended' | 'call_analyzed';
+  call: {
+    call_id: string;
+    call_status?: 'ongoing' | 'ended' | 'error' | 'registered';
+    disconnection_reason?: string;
+    duration_ms?: number;
+    transcript?: string;
+    recording_url?: string;
+    start_timestamp?: number;
+    end_timestamp?: number;
+    call_analysis?: {
+      call_summary?: string;
+      call_successful?: boolean;
+      user_sentiment?: string;
+      flip_eligible?: boolean;
+      flip_outcome?: string;
+      offer_1_result?: string;
+      offer_2_result?: string;
+      offer_3_result?: string;
+      convini_link_sent?: boolean;
+      convini_sell_type?: string;
+      corrections_made?: string;
+      nearest_our_shop?: string;
+      destination_type?: string;
+      [key: string]: unknown;
     };
+    metadata?: Record<string, unknown>;
+  };
 }

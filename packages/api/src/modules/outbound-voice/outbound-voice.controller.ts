@@ -212,6 +212,17 @@ export class OutboundVoiceController {
       motorClub?: string;
     },
   ) {
-    return this.service.testCall(req.tenantId, body);
+    try {
+      return await this.service.testCall(req.tenantId, body);
+    } catch (err) {
+      if (err instanceof Error && /disabled|not enabled/i.test(err.message)) {
+        throw new BadRequestException({
+          status: 'error',
+          code: 'OUTBOUND_VOICE_DISABLED',
+          message: err.message,
+        });
+      }
+      throw err;
+    }
   }
 }
