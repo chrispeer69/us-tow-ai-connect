@@ -1297,12 +1297,11 @@ export default function Home() {
                 { name: "US Tow Alliance", icon: Users, desc: "National membership network", href: "https://www.ustowalliance.com" },
                 { name: "US Tow Dispatch", icon: Building2, desc: "Dispatch management software", href: "https://www.ustowdispatch.com" },
                 { name: "US Tow AI-Connect", icon: Phone, desc: "Inbound / outbound AI phone attendant", href: "https://www.ustowaiconnect.com" },
-                { name: "US Tow Bid", icon: Gavel, desc: "Tow truck only online auction & sales", href: "https://www.ustowbid.com" },
-                { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers", href: "https://www.towtruckjobs.online" },
-                { name: "US Tow Marketing", icon: Megaphone, desc: "24/7 lead generation engine" },
-                { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs", href: "https://www.towgrade.com" },
                 { name: "US Tow Fleet", icon: ShieldCheck, desc: "Fleet management software", href: "https://www.ustowfleet.com" },
-                { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
+                { name: "US Tow Jobs", icon: Briefcase, desc: "Talent marketplace for towers", href: "https://www.towtruckjobs.online" },
+                { name: "US Tow Marketing", icon: Megaphone, desc: "24/7 lead generation engine", href: "https://www.ustowmarketing.com" },
+                { name: "US Tow Grade", icon: Star, desc: "Rate the motor clubs", href: "https://www.towgrade.com" },
+                { name: "US Tow Bid", icon: Gavel, desc: "Tow truck only online auction & sales", href: "https://www.ustowbid.com" },
                 { name: "US Tow Shield", icon: ShieldCheck, desc: "Win damage-claim disputes", href: "https://www.ustowshield.com" },
                 { name: "US Tow Credit", icon: DollarSign, desc: "Credit repair solutions", href: "https://www.ustowcredit.com" },
                 { name: "US Tow News", icon: Newspaper, desc: "Industry news and events", href: "https://www.ustownews.com" },
@@ -1318,6 +1317,7 @@ export default function Home() {
                 { name: "WrenchLink", icon: Wrench, desc: "Mechanic & shop network" },
                 { name: "Insurance Solutions", icon: ShieldCheck, desc: "Get the best insurance rates in the country" },
                 { name: "Shift Track", icon: Activity, desc: "Driver shift reporting app" },
+                { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
               ] as Array<{
                 name: string;
                 icon: typeof Users;
