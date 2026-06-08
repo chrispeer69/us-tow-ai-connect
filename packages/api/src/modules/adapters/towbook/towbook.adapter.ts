@@ -214,11 +214,39 @@ export function assembleActiveJob(
     vehicle: (cells[VEHICLE_COLUMN_ID] ?? '').trim(),
     status: (cells[STATUS_COLUMN_ID] ?? '').trim(),
     driverName: (cells[DRIVER_COLUMN_ID] ?? '').trim(),
-    eta: (cells[ETA_COLUMN_ID] ?? '').trim() || 'Unknown',
+    eta: extractFallbackEta(cells, ETA_COLUMN_ID),
     pickup,
     destination,
     lastUpdated: opts.nowIso ?? new Date().toISOString(),
   };
+}
+
+/**
+ * If ETA is hidden in the Towbook "Header" settings block, it loses its columnid.
+ * We fallback to scanning the raw row text for common ETA patterns (dates or durations).
+ */
+function extractFallbackEta(cells: Record<string, string>, etaColId: string): string {
+  const explicit = (cells[etaColId] ?? '').trim();
+  if (explicit) return explicit;
+
+  const raw = cells['_rawText'] ?? '';
+  if (!raw) return 'Unknown';
+
+  // 1. Look for a date with a modifier, e.g. "7/6/2026 4:03 PM (1 hr 9 mins late)"
+  const dateWithMod = raw.match(/\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}\s+[AP]M\s*\([^)]+(?:late|remaining)\)/i);
+  if (dateWithMod) return dateWithMod[0].trim();
+
+  // 2. Look for multiple dates. Usually Received is first, ETA is second.
+  const dates = raw.match(/\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}\s+[AP]M/g);
+  if (dates && dates.length >= 2) return dates[dates.length - 1].trim();
+
+  // 3. Look for a standalone relative duration like "45 min" or "1 hr 15 mins"
+  const duration = raw.match(/\b(\d+\s*(?:hr|hrs|h)\s*\d*\s*(?:min|mins|m)?|\d+\s*(?:min|mins|m))\b/i);
+  if (duration) return duration[0].trim();
+
+  if (dates && dates.length === 1) return dates[0].trim();
+  
+  return 'Unknown';
 }
 
 @Injectable()
@@ -485,6 +513,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
           // First non-empty wins; never clobber a populated cell with a blank.
           if (!(id in cells) || (!cells[id] && text)) cells[id] = text;
         }
+        cells['_rawText'] = row.innerText || row.textContent || '';
         return { dataId: row.getAttribute('data-id') || '', cells };
       });
       

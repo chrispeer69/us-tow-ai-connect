@@ -70,29 +70,24 @@ export class RetellWebhookController {
     @Body() body: RetellWebhookBody,
   ): Promise<{ matched: boolean }> {
     if (this.apiKey) {
-      // req.rawBody is a Buffer set by NestJS when rawBody: true is passed to
-      // NestFactory.create().  We MUST hash the exact bytes Retell signed —
-      // re-serialising the parsed object (JSON.stringify) reorders/reformats
-      // keys and the HMAC will never match.
-      const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-      if (!rawBody || rawBody.length === 0) {
-        this.logger.warn('[outbound-voice] rawBody unavailable — rejecting');
-        throw new BadRequestException('raw body unavailable');
-      }
+      // Retell computes the HMAC signature against the minified JSON string of the payload,
+      // NOT the raw HTTP bytes. This is unlike Stripe. We must JSON.stringify the body
+      // without spaces to match their `separators=(',', ':')` logic.
+      const payloadString = JSON.stringify(body);
 
       const expectedHex = crypto
         .createHmac('sha256', this.apiKey)
-        .update(rawBody)
+        .update(payloadString, 'utf8')
         .digest('hex');
 
       const expectedB64 = crypto
         .createHmac('sha256', this.apiKey)
-        .update(rawBody)
+        .update(payloadString, 'utf8')
         .digest('base64');
 
       if (!signature || (!timingSafeEqual(signature, expectedHex) && !timingSafeEqual(signature, expectedB64))) {
         this.logger.warn(
-          `[outbound-voice] Signature mismatch! Received: ${signature}. ExpectedHex: ${expectedHex}. ExpectedB64: ${expectedB64}. Key length: ${this.apiKey?.length}. rawBody length: ${rawBody.length}`
+          `[outbound-voice] Signature mismatch! Received: ${signature}. ExpectedHex: ${expectedHex}. ExpectedB64: ${expectedB64}. Key length: ${this.apiKey?.length}. Payload length: ${payloadString.length}`
         );
         throw new UnauthorizedException('invalid signature');
       }
