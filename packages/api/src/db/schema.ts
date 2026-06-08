@@ -1069,3 +1069,26 @@ export const aaaBrandedBlocklist = pgTable(
 );
 export type AaaBrandedBlocklistRow = typeof aaaBrandedBlocklist.$inferSelect;
 export type AaaBrandedBlocklistInsert = typeof aaaBrandedBlocklist.$inferInsert;
+
+// ============ SUPPORT TICKETS ============
+export const supportTickets = pgTable(
+  'support_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    subject: varchar('subject', { length: 255 }).notNull(),
+    description: text('description').notNull(),
+    status: varchar('status', { length: 50 }).notNull().default('open'), // open, in_progress, resolved, closed
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantIdx: index('support_tickets_tenant_idx').on(t.tenantId),
+    statusIdx: index('support_tickets_status_idx').on(t.status),
+  }),
+);
+export type SupportTicketRow = typeof supportTickets.$inferSelect;
+export type SupportTicketInsert = typeof supportTickets.$inferInsert;
+

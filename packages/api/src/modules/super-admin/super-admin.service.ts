@@ -10,6 +10,7 @@ import {
 } from '../../db/schema';
 import { ImpersonationTokenService } from './impersonation-token.service';
 import { recordAudit } from '../tenant-onboarding/audit-log.helper';
+import { supportTickets } from '../../db/schema';
 
 @Injectable()
 export class SuperAdminService {
@@ -121,44 +122,19 @@ export class SuperAdminService {
     };
   }
 
-  async startImpersonation(superAdminEmail: string, targetTenantId: string) {
-    const t = (
-      await this.db.select({ id: tenants.id, companyName: tenants.companyName }).from(tenants).where(eq(tenants.id, targetTenantId)).limit(1)
-    )[0];
-    if (!t) {
-      throw new NotFoundException({ status: 'error', code: 'TENANT_NOT_FOUND', message: 'Tenant not found' });
-    }
-    const token = this.tokens.issue(superAdminEmail, targetTenantId);
-    await recordAudit(this.db, {
-      tenantId: targetTenantId,
-      actorType: 'super_admin',
-      actorId: superAdminEmail,
-      action: 'impersonation.started',
-      resourceType: 'tenant',
-      resourceId: targetTenantId,
-      metadata: { tokenIssuedAt: new Date().toISOString(), tenantCompanyName: t.companyName },
-    });
-    return {
-      token,
-      targetTenantId,
-      targetCompanyName: t.companyName,
-      ttlSeconds: 15 * 60,
-      bannerLabel: `Impersonating: ${t.companyName}`,
-    };
-  }
-
-  async stopImpersonation(superAdminEmail: string, token: string) {
-    const payload = this.tokens.verify(token);
-    if (payload) {
-      await recordAudit(this.db, {
-        tenantId: payload.targetTenantId,
-        actorType: 'super_admin',
-        actorId: superAdminEmail,
-        action: 'impersonation.stopped',
-        resourceType: 'tenant',
-        resourceId: payload.targetTenantId,
-      });
-    }
-    return { status: 'success' };
+  async listSupportTickets() {
+    return this.db
+      .select({
+        id: supportTickets.id,
+        tenantId: supportTickets.tenantId,
+        companyName: tenants.companyName,
+        subject: supportTickets.subject,
+        description: supportTickets.description,
+        status: supportTickets.status,
+        createdAt: supportTickets.createdAt,
+      })
+      .from(supportTickets)
+      .leftJoin(tenants, eq(tenants.id, supportTickets.tenantId))
+      .orderBy(desc(supportTickets.createdAt));
   }
 }

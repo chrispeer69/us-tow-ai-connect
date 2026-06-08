@@ -8,8 +8,6 @@ import {
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
-import { ImpersonateSchema, type ImpersonateBody } from '@ustow/shared';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { SuperAdminAuthGuard, type SuperAdminRequest } from './super-admin-auth.guard';
 import { SuperAdminService } from './super-admin.service';
 
@@ -28,14 +26,8 @@ export class SuperAdminController {
     return this.service.getTenant(id);
   }
 
-  @Post('impersonate')
-  @UsePipes(new ZodValidationPipe(ImpersonateSchema))
-  impersonate(@Req() req: SuperAdminRequest, @Body() body: ImpersonateBody) {
-    return this.service.startImpersonation(req.superAdminEmail, body.targetTenantId);
-  }
-
-  @Post('impersonate/stop')
-  stopImpersonation(@Req() req: SuperAdminRequest, @Body() body: { token: string }) {
-    return this.service.stopImpersonation(req.superAdminEmail, body.token);
+  @Get('tickets')
+  listTickets() {
+    return this.service.listSupportTickets();
   }
 }

@@ -42,6 +42,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PushModule } from './modules/push/push.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { SupportModule } from './modules/support/support.module';
 import { HealthController } from './modules/health/health.controller';
 import { DomainStatusController } from './modules/health/domain-status.controller';
 
@@ -89,6 +90,7 @@ import { DomainStatusController } from './modules/health/domain-status.controlle
     ReportsModule,
     PushModule,
     AuthModule,
+    SupportModule,
   ],
   controllers: [HealthController, DomainStatusController],
   providers: [

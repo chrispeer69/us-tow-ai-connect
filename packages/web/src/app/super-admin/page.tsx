@@ -32,14 +32,18 @@ export default function SuperAdminPage() {
   const [tenants, setTenants] = useState<TenantStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [impersonating, setImpersonating] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<any[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api<TenantStats[]>('/v1/super-admin/tenants');
+      const [data, tix] = await Promise.all([
+        api<TenantStats[]>('/v1/super-admin/tenants'),
+        api<any[]>('/v1/super-admin/tickets'),
+      ]);
       setTenants(data);
+      setTickets(tix);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -50,25 +54,6 @@ export default function SuperAdminPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
-
-  const handleImpersonate = async (tenantId: string) => {
-    setImpersonating(tenantId);
-    setError(null);
-    try {
-      const res = await api<{ token: string }>('/v1/super-admin/impersonate', {
-        method: 'POST',
-        json: { targetTenantId: tenantId },
-      });
-      // Store the impersonation token and redirect to their dashboard
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('ustow_impersonation_token', res.token);
-        window.location.href = '/admin'; // Redirects to the tenant's view
-      }
-    } catch (err) {
-      setError((err as Error).message);
-      setImpersonating(null);
-    }
-  };
 
   const totalCalls = (tenants || []).reduce((acc, t) => acc + t.callsLast24h, 0);
   const totalActiveJobs = (tenants || []).reduce((acc, t) => acc + t.activeJobs, 0);
@@ -177,13 +162,59 @@ export default function SuperAdminPage() {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => void handleImpersonate(t.id)}
-                      disabled={impersonating !== null}
+                      disabled={true}
                     >
-                      {impersonating === t.id ? <Spinner className="w-4 h-4 mr-2" /> : null}
-                      Impersonate
-                      <ArrowRight className="w-4 h-4 ml-2" />
+                      Billing (Coming Soon)
                     </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <Card className="bg-zinc-900 border-zinc-800">
+        <div className="flex items-center justify-between p-6 border-b border-zinc-800">
+          <h2 className="text-lg font-semibold text-white">Support Tickets</h2>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="border-zinc-800 hover:bg-transparent">
+              <TableHead className="text-zinc-400">Tenant</TableHead>
+              <TableHead className="text-zinc-400">Subject</TableHead>
+              <TableHead className="text-zinc-400">Status</TableHead>
+              <TableHead className="text-zinc-400">Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading && tickets.length === 0 ? (
+              <TableRow className="border-zinc-800 hover:bg-transparent">
+                <TableCell colSpan={4} className="h-32 text-center text-zinc-500">
+                  <Spinner className="mx-auto" />
+                </TableCell>
+              </TableRow>
+            ) : tickets.length === 0 ? (
+              <TableRow className="border-zinc-800 hover:bg-transparent">
+                <TableCell colSpan={4} className="h-32 text-center text-zinc-500">
+                  No support tickets found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              tickets.map((t) => (
+                <TableRow key={t.id} className="border-zinc-800 hover:bg-zinc-800/50">
+                  <TableCell className="font-medium text-white">{t.companyName}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{t.subject}</div>
+                    <div className="text-sm text-zinc-400">{t.description}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={t.status === 'open' ? 'outline' : 'secondary'} className="capitalize">
+                      {t.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-zinc-400 text-sm">
+                    {new Date(t.createdAt).toLocaleDateString()}
                   </TableCell>
                 </TableRow>
               ))

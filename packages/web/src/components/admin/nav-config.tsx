@@ -57,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/api-keys', label: 'API Keys', icon: 'api-keys' },
       { href: '/admin/billing', label: 'Billing', icon: 'billing' },
       { href: '/admin/audit-log', label: 'Audit Log', icon: 'audit-log' },
+      { href: '/admin/support', label: 'Support', icon: 'support' as IconName },
     ],
   },
   {
