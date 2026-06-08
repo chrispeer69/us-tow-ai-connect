@@ -56,81 +56,82 @@ export class SessionManagerService {
     });
 
     for (const tenant of activeTenants) {
-      const cred = tenant.credentials;
-      if (!cred || cred.sessionStatus === 'PAUSED') continue;
+      for (const cred of tenant.credentials) {
+        if (cred.sessionStatus === 'PAUSED') continue;
 
-      const sessionKey = `session:${tenant.targetSoftwareType.toLowerCase()}:${tenant.id}`;
-      const ttl = await this.redis.ttl(sessionKey);
+        const sessionKey = `session:${cred.softwareType.toLowerCase()}:${tenant.id}`;
+        const ttl = await this.redis.ttl(sessionKey);
 
-      // Refresh when ttl < 10 minutes OR key missing (ttl === -2)
-      if (ttl > 600) continue;
+        // Refresh when ttl < 10 minutes OR key missing (ttl === -2)
+        if (ttl > 600) continue;
 
-      const timeoutMs = getSessionRefreshTimeoutMs();
-      const startedAt = Date.now();
-      this.logger.log(
-        `Session refresh START for tenant ${tenant.id} (timeout ${timeoutMs}ms)`,
-      );
-      try {
-        const decoded = this.encryptionUtil.decrypt(
-          cred.usernameEncrypted,
-          cred.passwordEncrypted,
-          cred.encryptionIv,
-          cred.authTag,
-        );
-        const adapter = this.adapterFactory.getAdapter(tenant.targetSoftwareType);
-        // Overall timeout guard. adapter.login() opens its own Playwright
-        // browser and closes it in a finally{} on every path, but an await
-        // inside it can stall forever; Promise.race lets us stop WAITING so
-        // this loop (and the poll cycle that may have triggered it) can never
-        // hang. On timeout we throw a TIMEOUT-classified error and fall into
-        // the failure path below, which marks the session invalid.
-        await this.withTimeout(
-          adapter.login(tenant.id, decoded),
-          timeoutMs,
-          `Session refresh for tenant ${tenant.id}`,
-        );
-        await this.db
-          .update(tenantCredentials)
-          .set({
-            sessionStatus: 'ACTIVE',
-            lastLoginSuccess: new Date(),
-            updatedAt: new Date(),
-            // Clear failure observability after a successful login so the
-            // admin UI doesn't keep showing a stale reason.
-            failureReason: null,
-            failureKind: null,
-            failedLoginCount: 0,
-            lastFailureAt: null,
-          })
-          .where(eq(tenantCredentials.tenantId, tenant.id));
+        const timeoutMs = getSessionRefreshTimeoutMs();
+        const startedAt = Date.now();
         this.logger.log(
-          `Session refresh SUCCESS for tenant ${tenant.id} in ${Date.now() - startedAt}ms`,
+          `Session refresh START for tenant ${tenant.id} (${cred.softwareType}) (timeout ${timeoutMs}ms)`,
         );
-      } catch (error) {
-        const message = (error as Error).message ?? 'unknown';
-        const kind = classifyFailure(message);
-        // Truncate at 2000 chars so an unbounded Playwright dump cannot
-        // blow up the row size.
-        const reason = message.slice(0, 2000);
-        this.logger.error(
-          `Session refresh FAILED for tenant ${tenant.id} (kind=${kind}) after ${Date.now() - startedAt}ms: ${message}`,
-        );
-        await this.db
-          .update(tenantCredentials)
-          .set({
-            sessionStatus: 'FAILED',
-            updatedAt: new Date(),
-            failureReason: reason,
-            failureKind: kind,
-            lastFailureAt: new Date(),
-            failedLoginCount: sql`${tenantCredentials.failedLoginCount} + 1`,
-          })
-          .where(eq(tenantCredentials.tenantId, tenant.id));
-        await this.notificationService.sendSessionAlert(
-          tenant.ownerEmail,
-          tenant.companyName,
-          tenant.targetSoftwareType,
-        );
+        try {
+          const decoded = this.encryptionUtil.decrypt(
+            cred.usernameEncrypted,
+            cred.passwordEncrypted,
+            cred.encryptionIv,
+            cred.authTag,
+          );
+          const adapter = this.adapterFactory.getAdapter(cred.softwareType);
+          // Overall timeout guard. adapter.login() opens its own Playwright
+          // browser and closes it in a finally{} on every path, but an await
+          // inside it can stall forever; Promise.race lets us stop WAITING so
+          // this loop (and the poll cycle that may have triggered it) can never
+          // hang. On timeout we throw a TIMEOUT-classified error and fall into
+          // the failure path below, which marks the session invalid.
+          await this.withTimeout(
+            adapter.login(tenant.id, decoded),
+            timeoutMs,
+            `Session refresh for tenant ${tenant.id} (${cred.softwareType})`,
+          );
+          await this.db
+            .update(tenantCredentials)
+            .set({
+              sessionStatus: 'ACTIVE',
+              lastLoginSuccess: new Date(),
+              updatedAt: new Date(),
+              // Clear failure observability after a successful login so the
+              // admin UI doesn't keep showing a stale reason.
+              failureReason: null,
+              failureKind: null,
+              failedLoginCount: 0,
+              lastFailureAt: null,
+            })
+            .where(eq(tenantCredentials.id, cred.id));
+          this.logger.log(
+            `Session refresh SUCCESS for tenant ${tenant.id} (${cred.softwareType}) in ${Date.now() - startedAt}ms`,
+          );
+        } catch (error) {
+          const message = (error as Error).message ?? 'unknown';
+          const kind = classifyFailure(message);
+          // Truncate at 2000 chars so an unbounded Playwright dump cannot
+          // blow up the row size.
+          const reason = message.slice(0, 2000);
+          this.logger.error(
+            `Session refresh FAILED for tenant ${tenant.id} (${cred.softwareType}) (kind=${kind}) after ${Date.now() - startedAt}ms: ${message}`,
+          );
+          await this.db
+            .update(tenantCredentials)
+            .set({
+              sessionStatus: 'FAILED',
+              updatedAt: new Date(),
+              failureReason: reason,
+              failureKind: kind,
+              lastFailureAt: new Date(),
+              failedLoginCount: sql`${tenantCredentials.failedLoginCount} + 1`,
+            })
+            .where(eq(tenantCredentials.id, cred.id));
+          await this.notificationService.sendSessionAlert(
+            tenant.ownerEmail,
+            tenant.companyName,
+            cred.softwareType,
+          );
+        }
       }
     }
 

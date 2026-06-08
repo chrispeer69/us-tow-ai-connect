@@ -26,7 +26,7 @@ export function TrackingMap({
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: apiKey ?? '',
-    id: 'tracking-map',
+    id: 'google-map-script',
   });
 
   const center = useMemo(() => {

@@ -244,11 +244,30 @@ export class FlipEngineService {
       .select({
         enabled: tenants.flipEngineEnabled,
         config: tenants.flipEngineConfig,
+        companyName: tenants.companyName,
+        managerPhones: tenants.managerPhones,
+        assignedPhoneNumber: tenants.assignedPhoneNumber,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
-    return rows[0] ?? { enabled: false, config: {} };
+    
+    const row = rows[0];
+    if (!row) return { enabled: false, config: {} };
+
+    const cfg = (row.config as Record<string, unknown>) || {};
+    if (!cfg.company_name) cfg.company_name = row.companyName;
+    if (!cfg.rep_name) cfg.rep_name = 'Emily';
+    
+    if (!cfg.callback_number) {
+      const phones = row.managerPhones as string[];
+      cfg.callback_number = (phones && phones.length > 0) ? phones[0] : (row.assignedPhoneNumber || '');
+    }
+
+    return {
+      enabled: row.enabled,
+      config: cfg,
+    };
   }
 
   async updateConfig(

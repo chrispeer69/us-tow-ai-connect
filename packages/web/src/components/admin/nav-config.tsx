@@ -61,7 +61,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Super Admin',
-    items: [{ href: '/admin/tenants', label: 'Tenants', icon: 'tenants' }],
+    items: [{ href: '/super-admin', label: 'Platform Monitor', icon: 'tenants' }],
   },
 ];
 

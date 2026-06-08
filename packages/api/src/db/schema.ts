@@ -86,6 +86,7 @@ export const tenantCredentials = pgTable('tenant_credentials', {
   tenantId: uuid('tenant_id')
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),
+  softwareType: varchar('software_type', { length: 50 }).notNull().default('TOWBOOK'),
   usernameEncrypted: text('username_encrypted').notNull(),
   usernameHash: varchar('username_hash', { length: 255 }).unique(),
   passwordEncrypted: text('password_encrypted').notNull(),
@@ -102,7 +103,9 @@ export const tenantCredentials = pgTable('tenant_credentials', {
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lastFailureAt: timestamp('last_failure_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  unqTenantSoftware: uniqueIndex('unq_tenant_software_idx').on(t.tenantId, t.softwareType),
+}));
 
 // ============ ROUTING RULES ============
 export const routingRules = pgTable('routing_rules', {
@@ -342,10 +345,7 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
 
 // ============ RELATIONS ============
 export const tenantsRelations = relations(tenants, ({ one, many }) => ({
-  credentials: one(tenantCredentials, {
-    fields: [tenants.id],
-    references: [tenantCredentials.tenantId],
-  }),
+  credentials: many(tenantCredentials),
   routingRules: many(routingRules),
   interactionLogs: many(interactionLogs),
   agentConfig: one(aiAgentConfigs, {

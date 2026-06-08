@@ -1,0 +1,2 @@
+ALTER TABLE "tenant_credentials" ADD COLUMN "software_type" varchar(50) DEFAULT 'TOWBOOK' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "unq_tenant_software_idx" ON "tenant_credentials" ("tenant_id","software_type");

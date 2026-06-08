@@ -69,7 +69,7 @@ export function MapPanel({
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: apiKey ?? '',
-    id: 'command-center-map',
+    id: 'google-map-script',
   });
 
   const center = useMemo(() => {

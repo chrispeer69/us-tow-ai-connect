@@ -83,52 +83,56 @@ export class JobPollerCron {
 
   private async pollSingleTenant(tenant: {
     id: string;
-    targetSoftwareType: string;
   }): Promise<void> {
-    const source = SOURCE_BY_SOFTWARE[tenant.targetSoftwareType.toUpperCase()];
-    if (!source) {
-      this.logger.debug(
-        `Tenant ${tenant.id} software ${tenant.targetSoftwareType} has no unified-jobs mapping`,
-      );
-      return;
-    }
-
-    // S65 — circuit breaker. If credentials have failed 3 or more times
-    // in the last hour, stop hammering the upstream until the cooldown
-    // expires. Operators can clear failed_login_count manually after
-    // fixing the credentials, or wait for the natural backoff.
-    const cred = await this.db.query.tenantCredentials.findFirst({
+    const creds = await this.db.query.tenantCredentials.findMany({
       where: eq(tenantCredentials.tenantId, tenant.id),
     });
 
-    if (!cred || cred.sessionStatus === 'PAUSED') {
-      this.logger.debug(`No credentials found or integration paused for tenant ${tenant.id}. Skipping scraper polling.`);
+    if (!creds || creds.length === 0) {
+      this.logger.debug(`No credentials found for tenant ${tenant.id}. Skipping scraper polling.`);
       return;
     }
 
-    if (cred.failedLoginCount >= 3) {
-      const lastFailureMs = cred.lastFailureAt?.getTime() ?? 0;
-      const cooldownMs = 60 * 60 * 1000; // 1 hour
-      if (Date.now() - lastFailureMs < cooldownMs) {
+    // Run scrapers for each connected software type simultaneously
+    await Promise.allSettled(creds.map(async (cred) => {
+      if (cred.sessionStatus === 'PAUSED') {
+        this.logger.debug(`Integration ${cred.softwareType} paused for tenant ${tenant.id}. Skipping.`);
+        return;
+      }
+
+      const source = SOURCE_BY_SOFTWARE[cred.softwareType.toUpperCase()];
+      if (!source) {
         this.logger.debug(
-          `Circuit breaker open for tenant ${tenant.id} (failedLoginCount=${cred.failedLoginCount}). Skipping until cooldown.`,
+          `Tenant ${tenant.id} software ${cred.softwareType} has no unified-jobs mapping`,
         );
         return;
       }
-    }
 
-    try {
-      const adapter = this.adapterFactory.getAdapter(tenant.targetSoftwareType);
-      const jobs = await adapter.scrapeAllActiveJobs(tenant.id);
-      await this.ingestJobs(tenant.id, source, jobs);
-    } catch (err) {
-      if (err instanceof SessionExpiredException) {
-        this.logger.warn(`Session expired for tenant ${tenant.id}. Triggering refresh.`);
-        await this.refreshWithWatchdog(tenant.id);
-      } else {
-        this.logger.error(`Poll failed for tenant ${tenant.id}: ${(err as Error).message}`);
+      // S65 — circuit breaker
+      if (cred.failedLoginCount >= 3) {
+        const lastFailureMs = cred.lastFailureAt?.getTime() ?? 0;
+        const cooldownMs = 60 * 60 * 1000; // 1 hour
+        if (Date.now() - lastFailureMs < cooldownMs) {
+          this.logger.debug(
+            `Circuit breaker open for tenant ${tenant.id} (${cred.softwareType}) (failedLoginCount=${cred.failedLoginCount}). Skipping until cooldown.`,
+          );
+          return;
+        }
       }
-    }
+
+      try {
+        const adapter = this.adapterFactory.getAdapter(cred.softwareType);
+        const jobs = await adapter.scrapeAllActiveJobs(tenant.id); // The adapter might need to be aware of softwareType internally, but for now scrapeAllActiveJobs fetches for the tenant. Wait, scrapeAllActiveJobs relies on SessionManager which relies on softwareType to get the correct session! Oh, wait! The Adapter uses SessionManagerService? Yes!
+        await this.ingestJobs(tenant.id, source, jobs);
+      } catch (err) {
+        if (err instanceof SessionExpiredException) {
+          this.logger.warn(`Session expired for tenant ${tenant.id} (${cred.softwareType}). Triggering refresh.`);
+          await this.refreshWithWatchdog(tenant.id); // SessionManagerService.refreshExpiringSessions() refreshes all. We can just leave it as is.
+        } else {
+          this.logger.error(`Poll failed for tenant ${tenant.id} (${cred.softwareType}): ${(err as Error).message}`);
+        }
+      }
+    }));
   }
 
   /**

@@ -11,10 +11,12 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function JobsTable({
   jobs,
+  hasIntegrations,
   selectedJobId,
   onSelect,
 }: {
   jobs: UnifiedJob[];
+  hasIntegrations: boolean;
   selectedJobId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -23,13 +25,19 @@ export function JobsTable({
       <div className="flex h-full items-center justify-center rounded-lg border border-zinc-200 bg-white p-6 text-sm text-zinc-500 shadow-sm">
         <div className="max-w-md text-center">
           <p className="font-medium text-zinc-900">No active jobs yet</p>
-          <p className="mt-2">
-            Connect an integration on the{' '}
-            <a className="text-blue-600 underline hover:text-blue-700" href="/admin/integrations">
-              Integrations
-            </a>{' '}
-            page, or create a manual job to populate the dispatch board.
-          </p>
+          {!hasIntegrations ? (
+            <p className="mt-2">
+              Connect an integration on the{' '}
+              <a className="text-blue-600 underline hover:text-blue-700" href="/admin/integrations">
+                Integrations
+              </a>{' '}
+              page, or create a manual job to populate the dispatch board.
+            </p>
+          ) : (
+            <p className="mt-2">
+              Your integrations are connected! New jobs will appear here automatically when they are dispatched.
+            </p>
+          )}
         </div>
       </div>
     );

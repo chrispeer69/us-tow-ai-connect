@@ -710,7 +710,7 @@ export class OutboundVoiceService {
     const bodyShops = activeShops.filter((s) => s.shopType === 'BODY');
 
     const ctx: any = {
-      repName: 'Ethan',
+      repName: (cfg.rep_name as string) || '',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
       motorClub: input.motorClub || 'Agero Motor Club',
       callbackNumber: (cfg.callback_number as string) || '+18447011345',
@@ -748,7 +748,7 @@ export class OutboundVoiceService {
       toPhone: formattedPhone,
       scenario: input.scenario,
       scriptPreview: fullBody.split('\n').slice(0, 10).join('\n') + '...',
-      message: `Test call placed to ${formattedPhone}. Ethan should call within 10 seconds.`,
+      message: `Test call placed to ${formattedPhone}. The AI agent should call within 10 seconds.`,
     };
   }
 }

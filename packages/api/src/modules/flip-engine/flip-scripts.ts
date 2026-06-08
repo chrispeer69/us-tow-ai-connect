@@ -61,6 +61,10 @@ export interface ScriptContext {
 
   // Toggles
   rentalsAvailable: boolean;
+
+  // Customization
+  customAgentRules?: string | null;
+  customScriptTemplate?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +147,16 @@ function warmCloseBlock(): string {
 
 /** Global rules prepended to every body. */
 function globalRules(ctx: ScriptContext): string {
+  if (ctx.customAgentRules) {
+    const lines = [ctx.customAgentRules];
+    if (ctx.motorClub.toUpperCase() === 'AAA') {
+      lines.push(
+        `- AAA HARD RULE: never flip a AAA call whose destination is a AAA-branded facility — confirm details and go straight to the CONVINI close.`,
+      );
+    }
+    return lines.join('\n');
+  }
+
   const lines = [
     `=== GLOBAL RULES (follow on every call; [AGENT:...] and [STEP...] lines are context, NEVER read aloud) ===`,
     `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.`,
@@ -364,8 +378,13 @@ const SCENARIO_RENDERERS: Record<ScenarioKey, (ctx: ScriptContext) => string> = 
  * the `body` dynamic variable; the agent prompt stays generic.
  */
 export function renderCallBody(scenario: ScenarioKey, ctx: ScriptContext): string {
-  const renderer = SCENARIO_RENDERERS[scenario] ?? scenarioC;
   const vars = baseVars(ctx);
+
+  if (ctx.customScriptTemplate) {
+    return interpolate(ctx.customScriptTemplate, vars);
+  }
+
+  const renderer = SCENARIO_RENDERERS[scenario] ?? scenarioC;
   const raw = [globalRules(ctx), ``, renderer(ctx)].join('\n');
   return interpolate(raw, vars);
 }

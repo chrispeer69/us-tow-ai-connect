@@ -44,23 +44,23 @@ export class AdminController {
   }
 
   @Delete('credentials')
-  deleteCredentials(@Req() req: AdminRequest) {
-    return this.service.deleteCredentials(req.tenantId);
+  deleteCredentials(@Req() req: AdminRequest, @Query('softwareType') softwareType: string) {
+    return this.service.deleteCredentials(req.tenantId, softwareType);
   }
 
   @Post('credentials/pause')
-  pauseIntegration(@Req() req: AdminRequest) {
-    return this.service.pauseIntegration(req.tenantId);
+  pauseIntegration(@Req() req: AdminRequest, @Body('softwareType') softwareType: string) {
+    return this.service.pauseIntegration(req.tenantId, softwareType);
   }
 
   @Post('credentials/resume')
-  resumeIntegration(@Req() req: AdminRequest) {
-    return this.service.resumeIntegration(req.tenantId);
+  resumeIntegration(@Req() req: AdminRequest, @Body('softwareType') softwareType: string) {
+    return this.service.resumeIntegration(req.tenantId, softwareType);
   }
 
   @Post('credentials/test')
-  testConnection(@Req() req: AdminRequest) {
-    return this.service.testConnection(req.tenantId);
+  testConnection(@Req() req: AdminRequest, @Body('softwareType') softwareType: string) {
+    return this.service.testConnection(req.tenantId, softwareType);
   }
 
   @Get('integrations/status')

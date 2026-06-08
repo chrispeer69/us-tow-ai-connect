@@ -664,6 +664,9 @@ function SettingsTab({
   setError: (s: string | null) => void;
 }) {
   const [enabled, setEnabled] = useState(config.enabled);
+  const [repName, setRepName] = useState<string>((config.config?.rep_name as string) || '');
+  const [companyName, setCompanyName] = useState<string>((config.config?.company_name as string) || '');
+  const [callbackNumber, setCallbackNumber] = useState<string>((config.config?.callback_number as string) || '');
   const [confidence, setConfidence] = useState<number>(
     Number(config.config?.no_flip_confidence_threshold ?? 0.85),
   );
@@ -676,8 +679,46 @@ function SettingsTab({
   const [reportHour, setReportHour] = useState<number>(
     Number(config.config?.daily_report_hour_local ?? 21),
   );
+  const DEFAULT_AGENT_RULES = `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.
+- Confirm details first. If the customer corrects something, acknowledge it and move on.
+- Make any flip offers strictly in order (1 -> 2 -> 3) and STOP the moment one is accepted. Never pressure.
+- ALWAYS end by offering the free CONVINIcar app, unless the customer hung up or asked you to stop.
+- Never invent prices, times, names, or addresses — use only what's provided here.
+- The ONLY phone number you may give the customer is {{callback_number}}.
+- When you offer the app, say "I'll text you the link" — do not read the link aloud.
+- If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`;
+
+  const DEFAULT_SCRIPT_TEMPLATE = `[STEP 1 — OPENING / IDENTIFICATION]
+AI: "Hi, this is {{rep_name}} calling from {{company_name}}. Am I speaking with {{customer_first_name}}?"
+[AGENT: Wait for confirmation.]
+
+[STEP 2 — PURPOSE OF CALL]
+AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"
+
+[STEP 3 — CONFIRM PICKUP LOCATION]
+AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
+
+[STEP 4 — CONFIRM VEHICLE DETAILS]
+AI: "And I have a {{vehicle}}. Is that right?"
+
+[STEP 5 — CLARIFY THE ISSUE]
+AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"
+
+[STEP 6 — CONFIRM DELIVERY DESTINATION]
+AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"
+
+=== WARM CLOSE (all scenarios) ===
+AI: "Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
+AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`;
+
   const [mentionRentals, setMentionRentals] = useState<boolean>(
     config.config?.mention_rentals !== false,
+  );
+  const [customAgentRules, setCustomAgentRules] = useState<string>(
+    (config.config?.custom_agent_rules as string) || DEFAULT_AGENT_RULES,
+  );
+  const [customScriptTemplate, setCustomScriptTemplate] = useState<string>(
+    (config.config?.custom_script_template as string) || DEFAULT_SCRIPT_TEMPLATE,
   );
   const [submitting, setSubmitting] = useState(false);
 
@@ -690,11 +731,16 @@ function SettingsTab({
         body: JSON.stringify({
           enabled,
           config: {
+            rep_name: repName || undefined,
+            company_name: companyName || undefined,
+            callback_number: callbackNumber || undefined,
             no_flip_confidence_threshold: confidence,
             poll_interval_seconds: pollInterval,
             batch_summary_size: batchSize,
             daily_report_hour_local: reportHour,
             mention_rentals: mentionRentals,
+            custom_agent_rules: customAgentRules || undefined,
+            custom_script_template: customScriptTemplate || undefined,
           },
         }),
         headers: { 'content-type': 'application/json' },
@@ -725,6 +771,42 @@ function SettingsTab({
             verifying your shop list and AAA blocklist.
           </p>
         </div>
+
+        <SettingsField
+          label="AI Rep Name"
+          help="The name the AI uses to introduce itself (e.g., Emily, Ethan)."
+        >
+          <Input
+            value={repName}
+            onChange={(e) => setRepName(e.target.value)}
+            placeholder="e.g. Emily"
+            className="max-w-[300px]"
+          />
+        </SettingsField>
+
+        <SettingsField
+          label="Company Name"
+          help="The name the AI uses to identify the company."
+        >
+          <Input
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            placeholder="e.g. Acme Towing"
+            className="max-w-[300px]"
+          />
+        </SettingsField>
+
+        <SettingsField
+          label="Callback number"
+          help="The number the AI provides to customers for reaching out directly."
+        >
+          <Input
+            value={callbackNumber}
+            onChange={(e) => setCallbackNumber(e.target.value)}
+            placeholder="e.g. +18005550199"
+            className="max-w-[300px]"
+          />
+        </SettingsField>
 
         <SettingsField
           label="No-flip confidence threshold"
@@ -794,6 +876,30 @@ function SettingsTab({
             <span className="text-sm">Mention CONVINI rental fleet (35 vehicles)</span>
           </label>
         </div>
+
+        <SettingsField
+          label="Custom Agent Rules"
+          help="Global instructions appended to the system prompt. Overrides the default AI agent instructions."
+        >
+          <textarea
+            className="h-32 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            placeholder="e.g. CRITICAL PARSING RULES: ..."
+            value={customAgentRules}
+            onChange={(e) => setCustomAgentRules(e.target.value)}
+          />
+        </SettingsField>
+
+        <SettingsField
+          label="Custom Script Template"
+          help="The exact script flow the agent will follow. If left blank, the default dynamic scenario rendering is used. Use {{variables}}."
+        >
+          <textarea
+            className="h-48 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            placeholder="e.g. [STEP 1] AI: Hi, this is {{rep_name}} from {{company_name}}..."
+            value={customScriptTemplate}
+            onChange={(e) => setCustomScriptTemplate(e.target.value)}
+          />
+        </SettingsField>
 
         <div className="flex justify-end pt-2">
           <Button onClick={() => void save()} disabled={submitting}>
@@ -947,7 +1053,7 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
                         <Badge variant="outline" className="w-fit text-[10px]">{r.destinationType}</Badge>
                       )}
                       {r.issueType && (
-                        <Badge variant="secondary" className="w-fit text-[10px]">{r.issueType}</Badge>
+                        <Badge variant="outline" className="w-fit text-[10px] bg-zinc-800 text-zinc-300">{r.issueType}</Badge>
                       )}
                       {!r.destinationType && !r.issueType && <span className="text-zinc-500 text-xs">—</span>}
                     </div>

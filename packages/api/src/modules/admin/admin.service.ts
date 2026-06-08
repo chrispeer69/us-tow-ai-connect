@@ -137,7 +137,7 @@ export class AdminService {
       let warning: string | undefined = undefined;
       if (existingHash[0] && existingHash[0].tenantId !== tenantId) {
         // Disconnect old tenant
-        await this.deleteCredentials(existingHash[0].tenantId);
+        await this.deleteCredentials(existingHash[0].tenantId, existingHash[0].softwareType);
         warning = 'Previously associated account was disconnected. To share this integration, use the Members tab to invite users to a single workspace.';
       }
 
@@ -145,7 +145,12 @@ export class AdminService {
       const existing = await this.db
         .select()
         .from(tenantCredentials)
-        .where(eq(tenantCredentials.tenantId, tenantId))
+        .where(
+          and(
+            eq(tenantCredentials.tenantId, tenantId),
+            eq(tenantCredentials.softwareType, body.softwareType)
+          )
+        )
         .limit(1);
       const now = new Date();
       if (existing[0]) {
@@ -160,10 +165,11 @@ export class AdminService {
             sessionStatus: 'PENDING',
             updatedAt: now,
           })
-          .where(eq(tenantCredentials.tenantId, tenantId));
+          .where(eq(tenantCredentials.id, existing[0].id));
       } else {
         await this.db.insert(tenantCredentials).values({
           tenantId,
+          softwareType: body.softwareType,
           usernameEncrypted: enc.usernameEncrypted,
           passwordEncrypted: enc.passwordEncrypted,
           usernameHash,
@@ -180,69 +186,87 @@ export class AdminService {
     }
   }
 
-  async deleteCredentials(tenantId: string) {
+  async deleteCredentials(tenantId: string, softwareType: string) {
     try {
       // 1. Delete credentials from Postgres database
       await this.db
         .delete(tenantCredentials)
-        .where(eq(tenantCredentials.tenantId, tenantId));
+        .where(
+          and(
+            eq(tenantCredentials.tenantId, tenantId),
+            eq(tenantCredentials.softwareType, softwareType)
+          )
+        );
 
       // 2. Clear Redis session and active jobs caches
-      const tenant = await this.getCompany(tenantId);
-      const software = tenant.targetSoftwareType.toLowerCase();
+      const software = softwareType.toLowerCase();
       
       await this.redis.del(`session:${software}:${tenantId}`);
       await this.redis.del(`jobs:${software}:${tenantId}`);
 
-      this.logger.log(`Successfully disconnected credentials for tenant ${tenantId}`);
+      this.logger.log(`Successfully disconnected ${softwareType} credentials for tenant ${tenantId}`);
       return { status: 'success' };
     } catch (err) {
-      this.logger.error(`deleteCredentials failed for tenant ${tenantId}: ${(err as Error).message}`);
+      this.logger.error(`deleteCredentials failed for tenant ${tenantId} (${softwareType}): ${(err as Error).message}`);
       throw err;
     }
   }
 
-  async pauseIntegration(tenantId: string) {
+  async pauseIntegration(tenantId: string, softwareType: string) {
     try {
       await this.db
         .update(tenantCredentials)
         .set({ sessionStatus: 'PAUSED', updatedAt: new Date() })
-        .where(eq(tenantCredentials.tenantId, tenantId));
+        .where(
+          and(
+            eq(tenantCredentials.tenantId, tenantId),
+            eq(tenantCredentials.softwareType, softwareType)
+          )
+        );
       
       // Clear current Redis active jobs cache to keep UI empty while paused
-      const tenant = await this.getCompany(tenantId);
-      const software = tenant.targetSoftwareType.toLowerCase();
+      const software = softwareType.toLowerCase();
       await this.redis.del(`jobs:${software}:${tenantId}`);
 
-      this.logger.log(`Tenant ${tenantId} integration paused.`);
+      this.logger.log(`Tenant ${tenantId} ${softwareType} integration paused.`);
       return { status: 'success' };
     } catch (err) {
-      this.logger.error(`pauseIntegration failed for tenant ${tenantId}: ${(err as Error).message}`);
+      this.logger.error(`pauseIntegration failed for tenant ${tenantId} (${softwareType}): ${(err as Error).message}`);
       throw err;
     }
   }
 
-  async resumeIntegration(tenantId: string) {
+  async resumeIntegration(tenantId: string, softwareType: string) {
     try {
       await this.db
         .update(tenantCredentials)
         .set({ sessionStatus: 'ACTIVE', updatedAt: new Date() })
-        .where(eq(tenantCredentials.tenantId, tenantId));
+        .where(
+          and(
+            eq(tenantCredentials.tenantId, tenantId),
+            eq(tenantCredentials.softwareType, softwareType)
+          )
+        );
       
-      this.logger.log(`Tenant ${tenantId} integration resumed.`);
+      this.logger.log(`Tenant ${tenantId} ${softwareType} integration resumed.`);
       return { status: 'success' };
     } catch (err) {
-      this.logger.error(`resumeIntegration failed for tenant ${tenantId}: ${(err as Error).message}`);
+      this.logger.error(`resumeIntegration failed for tenant ${tenantId} (${softwareType}): ${(err as Error).message}`);
       throw err;
     }
   }
 
-  async testConnection(tenantId: string) {
+  async testConnection(tenantId: string, softwareType: string) {
     const cred = (
       await this.db
         .select()
         .from(tenantCredentials)
-        .where(eq(tenantCredentials.tenantId, tenantId))
+        .where(
+          and(
+            eq(tenantCredentials.tenantId, tenantId),
+            eq(tenantCredentials.softwareType, softwareType)
+          )
+        )
         .limit(1)
     )[0];
     if (!cred) {
@@ -252,12 +276,7 @@ export class AdminService {
         message: 'No credentials saved for tenant',
       });
     }
-    const tenant = await this.db
-      .select({ softwareType: tenants.targetSoftwareType })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
-    const softwareType = tenant[0]?.softwareType ?? 'TOWBOOK';
+
     const decoded = this.encryption.decrypt(
       cred.usernameEncrypted,
       cred.passwordEncrypted,
@@ -282,26 +301,18 @@ export class AdminService {
           ? 0
           : sql`${tenantCredentials.failedLoginCount} + 1`,
       })
-      .where(eq(tenantCredentials.tenantId, tenantId));
+      .where(eq(tenantCredentials.id, cred.id));
     return result;
   }
 
   async getIntegrationStatus(tenantId: string) {
-    const cred = (
-      await this.db
+    const creds = await this.db
         .select()
         .from(tenantCredentials)
-        .where(eq(tenantCredentials.tenantId, tenantId))
-        .limit(1)
-    )[0];
-    const tenant = await this.db
-      .select({ softwareType: tenants.targetSoftwareType })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
+        .where(eq(tenantCredentials.tenantId, tenantId));
 
-    let username: string | null = null;
-    if (cred) {
+    return creds.map(cred => {
+      let username: string | null = null;
       try {
         const decoded = this.encryption.decrypt(
           cred.usernameEncrypted,
@@ -313,20 +324,19 @@ export class AdminService {
       } catch (err) {
         this.logger.warn(`Failed to decrypt username for tenant ${tenantId} status view`);
       }
-    }
 
-    return {
-      softwareType: tenant[0]?.softwareType ?? 'TOWBOOK',
-      hasCredentials: !!cred,
-      sessionStatus: cred?.sessionStatus ?? 'NEW',
-      lastLoginSuccess: cred?.lastLoginSuccess ?? null,
-      username,
-      // S65 — failure observability exposed to the admin UI.
-      failureReason: cred?.failureReason ?? null,
-      failureKind: cred?.failureKind ?? null,
-      failedLoginCount: cred?.failedLoginCount ?? 0,
-      lastFailureAt: cred?.lastFailureAt ?? null,
-    };
+      return {
+        softwareType: cred.softwareType,
+        hasCredentials: true,
+        sessionStatus: cred.sessionStatus,
+        lastLoginSuccess: cred.lastLoginSuccess ?? null,
+        username,
+        failureReason: cred.failureReason ?? null,
+        failureKind: cred.failureKind ?? null,
+        failedLoginCount: cred.failedLoginCount ?? 0,
+        lastFailureAt: cred.lastFailureAt ?? null,
+      };
+    });
   }
 
   // ─── routing rules ──────────────────────────────────────────────────

@@ -226,7 +226,7 @@ export class FlipOrchestratorService {
     const bodyShops = pickTwoBodyShops(ourShops);
     const scenario = scenarioForDestinationTag(destination.tag);
     const ctx: ScriptContext = {
-      repName: 'Ethan',
+      repName: (cfg.rep_name as string) || '',
       companyName: job.companyName ?? ((cfg.company_name as string) || 'Roadside Towing'),
       motorClub: job.motorClub ?? '',
       callbackNumber: (cfg.callback_number as string) || '',
@@ -389,8 +389,9 @@ export class FlipOrchestratorService {
       const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
       const scenario = scenarioForDestinationTag(destination.tag);
       const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
+      const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
       const ctx: ScriptContext = {
-        repName: 'Ethan',
+        repName: (cfg.rep_name as string) || '',
         companyName: (cfg.company_name as string) || 'Roadside Towing',
         motorClub: '',
         callbackNumber: (cfg.callback_number as string) || '',
@@ -410,9 +411,11 @@ export class FlipOrchestratorService {
         bodyShop1: null,
         bodyShop2: null,
         rentalsAvailable: mentionRentals,
+        customAgentRules: (cfg.custom_agent_rules as string) || null,
+        customScriptTemplate: (cfg.custom_script_template as string) || null,
       };
 
-      const fullBody = renderCallBody(scenario, ctx);
+      const fullBody = renderCallBody(actualScenario, ctx);
 
       await this.voice.enqueueCall({
         tenantId,
@@ -516,7 +519,7 @@ export class FlipOrchestratorService {
     const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
 
     const ctx: ScriptContext = {
-      repName: 'Ethan',
+      repName: (cfg.rep_name as string) || '',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
       motorClub: input.motorClub || '',
       callbackNumber: (cfg.callback_number as string) || '',
@@ -532,6 +535,8 @@ export class FlipOrchestratorService {
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
+      customAgentRules: (cfg.custom_agent_rules as string) || null,
+      customScriptTemplate: (cfg.custom_script_template as string) || null,
     };
 
     const fullBody = renderCallBody(actualScenario, ctx);

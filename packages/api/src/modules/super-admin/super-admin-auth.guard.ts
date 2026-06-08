@@ -33,7 +33,18 @@ export class SuperAdminAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<SuperAdminRequest>();
     const header = req.headers['x-super-admin-email'];
-    const candidate = (Array.isArray(header) ? header[0] : header) || DEV_FALLBACK_EMAIL || '';
+    let candidate = (Array.isArray(header) ? header[0] : header) || process.env.SUPER_ADMIN_DEV_EMAIL || '';
+    
+    const envEmails = (process.env.SUPER_ADMIN_EMAILS || process.env.SUPER_ADMIN_DEV_EMAIL || '')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    // If no candidate provided via header/fallback, just use the first allowed email automatically for local dev convenience
+    if (!candidate && envEmails.length > 0) {
+      candidate = envEmails[0];
+    }
+
     const email = candidate.trim().toLowerCase();
     if (!email) {
       throw new UnauthorizedException({
@@ -42,6 +53,14 @@ export class SuperAdminAuthGuard implements CanActivate {
         message: 'Missing x-super-admin-email header',
       });
     }
+
+    // 1. Check environment variable whitelist (comma-separated)
+    if (envEmails.includes(email)) {
+      req.superAdminEmail = email;
+      return true;
+    }
+
+    // 2. Fallback to Database Role Check
     const user = (
       await this.db
         .select({ email: users.email, role: users.platformRole })

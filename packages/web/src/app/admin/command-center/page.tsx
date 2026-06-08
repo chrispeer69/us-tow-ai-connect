@@ -42,6 +42,7 @@ export default function CommandCenterPage() {
   const [showAddDriver, setShowAddDriver] = useState(false);
   const [showDriversModal, setShowDriversModal] = useState(false);
   const [showTestAgent, setShowTestAgent] = useState(false);
+  const [hasIntegrations, setHasIntegrations] = useState(false);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
@@ -67,14 +68,21 @@ export default function CommandCenterPage() {
 
   const refreshAux = useCallback(async () => {
     try {
-      const [d, t, s] = await Promise.all([
+      const [d, t, s, creds] = await Promise.all([
         api<Driver[]>(`/v1/admin/command-center/drivers`),
         api<Truck[]>(`/v1/admin/command-center/trucks`),
         api<Stats>(`/v1/admin/command-center/stats`),
+        api<Array<{ sessionStatus: string }>>(`/v1/admin/integrations/status`).catch(() => null),
       ]);
       setDrivers(d);
       setTrucks(t);
       setStats(s);
+      setHasIntegrations(
+        !!creds &&
+          creds.some(c => c.sessionStatus === 'ACTIVE' ||
+            c.sessionStatus === 'PAUSED' ||
+            c.sessionStatus === 'FAILED')
+      );
     } catch (err) {
       setError((err as Error).message);
     }
@@ -216,6 +224,7 @@ export default function CommandCenterPage() {
           <div className="h-1/2 min-h-[300px] shrink-0">
             <JobsTable
               jobs={jobs}
+              hasIntegrations={hasIntegrations}
               selectedJobId={selectedJobId}
               onSelect={setSelectedJobId}
             />
@@ -511,7 +520,10 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
             </select>
           </label>
           <label className="block text-sm font-medium text-zinc-900">
-            To Phone (required)
+            To Phone (Test Number - required)
+            <span className="ml-2 text-xs font-normal text-rose-500">
+              ⚠️ Warning: This will actually ring the number you enter. Use your own phone number, NOT a real customer!
+            </span>
             <Input value={toPhone} onChange={(e) => setToPhone(e.target.value)} placeholder="+1234567890" className="mt-1" />
           </label>
           {mode === 'explicit' && (
