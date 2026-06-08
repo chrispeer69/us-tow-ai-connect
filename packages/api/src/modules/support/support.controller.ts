@@ -1,9 +1,8 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AdminRequest } from '../admin/admin.types';
+import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 import { SupportService } from './support.service';
 import { z } from 'zod';
-import { ZodValidationPipe } from '../../pipes/zod-validation.pipe';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
 const CreateTicketSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(255),
@@ -12,7 +11,7 @@ const CreateTicketSchema = z.object({
 type CreateTicketDto = z.infer<typeof CreateTicketSchema>;
 
 @Controller('v1/admin/support')
-@UseGuards(JwtAuthGuard)
+@UseGuards(AdminAuthGuard)
 export class SupportController {
   constructor(private readonly service: SupportService) {}
 

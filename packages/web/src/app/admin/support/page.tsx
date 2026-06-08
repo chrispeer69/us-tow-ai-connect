@@ -5,11 +5,10 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { api } from '@/lib/api';
+import { api } from '@/lib/utils';
 import { Spinner } from '@/components/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
 
 interface SupportTicket {
   id: string;
@@ -25,7 +24,7 @@ export default function SupportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
-  const { toast } = useToast();
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const loadTickets = async () => {
     try {
@@ -47,17 +46,18 @@ export default function SupportPage() {
     if (!subject.trim() || !description.trim()) return;
 
     setSubmitting(true);
+    setMessage(null);
     try {
       await api('/v1/admin/support', {
         method: 'POST',
         json: { subject, description },
       });
-      toast({ title: 'Success', description: 'Your ticket has been submitted.' });
+      setMessage({ type: 'success', text: 'Your ticket has been submitted.' });
       setSubject('');
       setDescription('');
       await loadTickets();
     } catch (err) {
-      toast({ title: 'Error', description: (err as Error).message, variant: 'destructive' });
+      setMessage({ type: 'error', text: (err as Error).message });
     } finally {
       setSubmitting(false);
     }
@@ -77,6 +77,11 @@ export default function SupportPage() {
           <CardTitle>Submit a New Ticket</CardTitle>
         </CardHeader>
         <CardContent>
+          {message && (
+            <div className={`mb-4 p-3 rounded text-sm ${message.type === 'success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800' : 'bg-rose-900/30 text-rose-400 border border-rose-800'}`}>
+              {message.text}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Subject</label>
