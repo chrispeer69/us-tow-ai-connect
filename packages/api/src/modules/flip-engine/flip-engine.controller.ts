@@ -65,6 +65,11 @@ const ConfigPatchSchema = z.object({
   enabled: z.boolean().optional(),
   config: z
     .object({
+      rep_name: z.string().optional(),
+      company_name: z.string().optional(),
+      callback_number: z.string().optional(),
+      custom_agent_rules: z.string().optional(),
+      custom_script_template: z.string().optional(),
       poll_interval_seconds: z.number().int().min(15).max(3600).optional(),
       no_flip_confidence_threshold: z.number().min(0).max(1).optional(),
       no_flip_categories: z.array(z.string()).optional(),
