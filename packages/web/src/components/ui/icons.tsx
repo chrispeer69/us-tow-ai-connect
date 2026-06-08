@@ -34,7 +34,8 @@ export type IconName =
   | 'bell'
   | 'chevron-right'
   | 'chevron-down'
-  | 'reports';
+  | 'reports'
+  | 'support';
 
 // Path data drawn in a 24×24 box. Each entry is one or more <path d> strings.
 const PATHS: Record<IconName, string[]> = {
@@ -79,6 +80,7 @@ const PATHS: Record<IconName, string[]> = {
   'chevron-right': ['M9 6l6 6-6 6'],
   'chevron-down': ['M6 9l6 6 6-6'],
   reports: ['M18 20V10', 'M12 20V4', 'M6 20v-6'],
+  support: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z', 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3', 'M12 17h.01'],
 };
 
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
