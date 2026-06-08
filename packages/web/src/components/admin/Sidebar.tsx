@@ -23,7 +23,7 @@ export function Sidebar() {
   return (
     <aside className="hidden w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--surface-card)] lg:flex lg:flex-col">
       <nav className="sticky top-[70px] flex max-h-[calc(100vh-70px)] flex-col gap-6 overflow-y-auto p-5">
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.filter(g => g.title !== 'Super Admin' || useAuth().isSuperAdmin).map((group) => (
           <div key={group.title} className="flex flex-col gap-1">
             <div className="px-3 pb-1 font-label text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
               {group.title}

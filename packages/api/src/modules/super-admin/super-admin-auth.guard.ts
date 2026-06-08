@@ -5,6 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { eq, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -12,6 +13,7 @@ import { users } from '../../db/schema';
 
 export interface SuperAdminRequest extends Request {
   superAdminEmail: string;
+  user?: any;
 }
 
 const DEV_FALLBACK_EMAIL = process.env.SUPER_ADMIN_DEV_EMAIL;
@@ -27,13 +29,27 @@ const DEV_FALLBACK_EMAIL = process.env.SUPER_ADMIN_DEV_EMAIL;
  * docs/ASSUMPTIONS.md.
  */
 @Injectable()
-export class SuperAdminAuthGuard implements CanActivate {
-  constructor(@Inject(DB_CLIENT) private readonly db: DbClient) {}
+export class SuperAdminAuthGuard extends AuthGuard('jwt') {
+  constructor(@Inject(DB_CLIENT) private readonly db: DbClient) {
+    super();
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<SuperAdminRequest>();
+    
+    let isJwtValid = false;
+    try {
+      isJwtValid = (await super.canActivate(context)) as boolean;
+    } catch (e) {
+      // Ignore
+    }
+
     const header = req.headers['x-super-admin-email'];
     let candidate = (Array.isArray(header) ? header[0] : header) || process.env.SUPER_ADMIN_DEV_EMAIL || '';
+
+    if (isJwtValid && req.user && (req.user as any).email) {
+      candidate = (req.user as any).email;
+    }
     
     const envEmails = (process.env.SUPER_ADMIN_EMAILS || process.env.SUPER_ADMIN_DEV_EMAIL || '')
       .split(',')

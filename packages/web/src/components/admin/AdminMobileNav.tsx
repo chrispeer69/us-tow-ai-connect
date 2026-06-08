@@ -19,7 +19,7 @@ export function AdminMobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { branding } = useBranding();
-  const { logout } = useAuth();
+  const { logout, isSuperAdmin } = useAuth();
 
   // Close on navigation.
   useEffect(() => {
@@ -76,7 +76,7 @@ export function AdminMobileNav() {
               </button>
             </div>
             <nav className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
-              {NAV_GROUPS.map((group) => (
+              {NAV_GROUPS.filter(g => g.title !== 'Super Admin' || isSuperAdmin).map((group) => (
                 <div key={group.title} className="flex flex-col gap-1">
                   <div className="px-3 pb-1 font-label text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                     {group.title}
