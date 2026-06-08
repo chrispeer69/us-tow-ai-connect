@@ -232,9 +232,13 @@ function extractFallbackEta(cells: Record<string, string>, etaColId: string): st
   const raw = cells['_rawText'] ?? '';
   if (!raw) return 'Unknown';
 
-  // 1. Look for a date with a modifier, e.g. "7/6/2026 4:03 PM (1 hr 9 mins late)"
+  // 1. Look for a date + time with a modifier, e.g. "7/6/2026 4:03 PM (1 hr 9 mins late)"
   const dateWithMod = raw.match(/\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}\s+[AP]M\s*\([^)]+(?:late|remaining)\)/i);
   if (dateWithMod) return dateWithMod[0].trim();
+
+  // 1b. Look for a time with a modifier but NO date, e.g. "5:58 AM (15 hrs 16 mins late)"
+  const timeWithMod = raw.match(/\d{1,2}:\d{2}\s+[AP]M\s*\([^)]+(?:late|remaining)\)/i);
+  if (timeWithMod) return timeWithMod[0].trim();
 
   // 2. Look for multiple dates. Usually Received is first, ETA is second.
   const dates = raw.match(/\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}\s+[AP]M/g);

@@ -688,26 +688,26 @@ function SettingsTab({
 - When you offer the app, say "I'll text you the link" — do not read the link aloud.
 - If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`;
 
-  const DEFAULT_SCRIPT_TEMPLATE = `[STEP 1 — OPENING / IDENTIFICATION]
+  const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
 AI: "Hi, this is {{rep_name}} calling from {{company_name}}. Am I speaking with {{customer_first_name}}?"
-[AGENT: Wait for confirmation.]
+[AGENT: Wait for confirmation.]`;
 
-[STEP 2 — PURPOSE OF CALL]
-AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"
+  const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
+AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"`;
 
-[STEP 3 — CONFIRM PICKUP LOCATION]
-AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
+  const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
+AI: "I have your pickup location as {{pickup_location}}. Is that correct?"`;
 
-[STEP 4 — CONFIRM VEHICLE DETAILS]
-AI: "And I have a {{vehicle}}. Is that right?"
+  const defaultVehicle = `[STEP 4 — CONFIRM VEHICLE DETAILS]
+AI: "And I have a {{vehicle}}. Is that right?"`;
 
-[STEP 5 — CLARIFY THE ISSUE]
-AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"
+  const defaultIssue = `[STEP 5 — CLARIFY THE ISSUE]
+AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
 
-[STEP 6 — CONFIRM DELIVERY DESTINATION]
-AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"
+  const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
+AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
 
-=== WARM CLOSE (all scenarios) ===
+  const defaultClose = `=== WARM CLOSE (all scenarios) ===
 AI: "Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
 AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`;
 
@@ -717,9 +717,6 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
   const [customAgentRules, setCustomAgentRules] = useState<string>(
     (config.config?.custom_agent_rules as string) || DEFAULT_AGENT_RULES,
   );
-  const [customScriptTemplate, setCustomScriptTemplate] = useState<string>(
-    (config.config?.custom_script_template as string) || DEFAULT_SCRIPT_TEMPLATE,
-  );
   
   const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility just {{nearest_shop_distance}} miles away called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
   const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
@@ -727,6 +724,15 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
   const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
 
   const scriptBlocksObj = (config.config?.script_blocks as Record<string, string>) || {};
+  
+  const [openingBlock, setOpeningBlock] = useState<string>(scriptBlocksObj.opening ?? defaultOpening);
+  const [purposeBlock, setPurposeBlock] = useState<string>(scriptBlocksObj.purpose ?? defaultPurpose);
+  const [pickupBlock, setPickupBlock] = useState<string>(scriptBlocksObj.confirm_pickup ?? defaultPickup);
+  const [vehicleBlock, setVehicleBlock] = useState<string>(scriptBlocksObj.confirm_vehicle ?? defaultVehicle);
+  const [issueBlock, setIssueBlock] = useState<string>(scriptBlocksObj.clarify_issue ?? defaultIssue);
+  const [destinationBlock, setDestinationBlock] = useState<string>(scriptBlocksObj.confirm_destination ?? defaultDestination);
+  const [closeBlock, setCloseBlock] = useState<string>(scriptBlocksObj.warm_close ?? defaultClose);
+
   const [offer1, setOffer1] = useState<string>(scriptBlocksObj.offer_1 ?? defaultOffer1);
   const [offer2, setOffer2] = useState<string>(scriptBlocksObj.offer_2 ?? defaultOffer2);
   const [offer3, setOffer3] = useState<string>(scriptBlocksObj.offer_3 ?? defaultOffer3);
@@ -752,8 +758,14 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
             daily_report_hour_local: reportHour,
             mention_rentals: mentionRentals,
             custom_agent_rules: customAgentRules || undefined,
-            custom_script_template: customScriptTemplate || undefined,
             script_blocks: {
+              opening: openingBlock || undefined,
+              purpose: purposeBlock || undefined,
+              confirm_pickup: pickupBlock || undefined,
+              confirm_vehicle: vehicleBlock || undefined,
+              clarify_issue: issueBlock || undefined,
+              confirm_destination: destinationBlock || undefined,
+              warm_close: closeBlock || undefined,
               offer_1: offer1 || undefined,
               offer_2: offer2 || undefined,
               offer_3: offer3 || undefined,
@@ -899,10 +911,75 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
           <h3 className="text-lg font-semibold text-zinc-800">Script Builder</h3>
           <p className="text-sm text-zinc-500 mb-4">
             Customize the exact spoken dialogue for each phase of the pitch. Leave a box empty to automatically skip that step.
-            Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>.
+            Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{vehicle}}'}</span>, <span className="font-mono text-xs">{'{{pickup_location}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>, <span className="font-mono text-xs">{'{{issue}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>.
           </p>
           
           <div className="space-y-6">
+            <SettingsField
+              label="1. Greeting & Identification"
+              help="How the AI answers and introduces itself."
+            >
+              <textarea
+                className="h-24 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={openingBlock}
+                onChange={(e) => setOpeningBlock(e.target.value)}
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="2. Purpose of Call"
+              help="Stating why the AI is calling."
+            >
+              <textarea
+                className="h-24 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={purposeBlock}
+                onChange={(e) => setPurposeBlock(e.target.value)}
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="3. Confirm Pickup Location"
+              help="Confirming where the customer's vehicle is located."
+            >
+              <textarea
+                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={pickupBlock}
+                onChange={(e) => setPickupBlock(e.target.value)}
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="4. Confirm Vehicle"
+              help="Confirming the make/model/year."
+            >
+              <textarea
+                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={vehicleBlock}
+                onChange={(e) => setVehicleBlock(e.target.value)}
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="5. Clarify Issue"
+              help="Asking what went wrong with the vehicle."
+            >
+              <textarea
+                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={issueBlock}
+                onChange={(e) => setIssueBlock(e.target.value)}
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="6. Confirm Destination"
+              help="Confirming where the vehicle is being towed to."
+            >
+              <textarea
+                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={destinationBlock}
+                onChange={(e) => setDestinationBlock(e.target.value)}
+              />
+            </SettingsField>
             <SettingsField
               label="Offer 1 (Convenience & Value)"
               help="The first pitch made when the destination is a competitor repair shop."
@@ -973,14 +1050,13 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
         </SettingsField>
 
         <SettingsField
-          label="Custom Script Template"
-          help="The exact script flow the agent will follow. If left blank, the default dynamic scenario rendering is used. Use {{variables}}."
+          label="Warm Close"
+          help="The final goodbye at the very end of the call, after Convini is pitched."
         >
           <textarea
-            className="h-48 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-            placeholder="e.g. [STEP 1] AI: Hi, this is {{rep_name}} from {{company_name}}..."
-            value={customScriptTemplate}
-            onChange={(e) => setCustomScriptTemplate(e.target.value)}
+            className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            value={closeBlock}
+            onChange={(e) => setCloseBlock(e.target.value)}
           />
         </SettingsField>
 

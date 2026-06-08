@@ -42,6 +42,7 @@ export async function api<T = unknown>(
     ...rest,
     headers: finalHeaders,
     body: json !== undefined ? JSON.stringify(json) : (init.body ?? undefined),
+    cache: 'no-store',
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');

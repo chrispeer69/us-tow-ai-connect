@@ -412,7 +412,6 @@ export class FlipOrchestratorService {
         bodyShop2: null,
         rentalsAvailable: mentionRentals,
         customAgentRules: (cfg.custom_agent_rules as string) || null,
-        customScriptTemplate: (cfg.custom_script_template as string) || null,
         scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
       };
 
@@ -537,7 +536,6 @@ export class FlipOrchestratorService {
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
       customAgentRules: (cfg.custom_agent_rules as string) || null,
-      customScriptTemplate: (cfg.custom_script_template as string) || null,
       scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
     };
 

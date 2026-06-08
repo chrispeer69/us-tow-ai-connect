@@ -80,7 +80,13 @@ export function JobsTable({
               <td className="px-3 py-2 max-w-[280px] truncate text-zinc-700">
                 {j.pickupAddress || '—'}
               </td>
-              <td className="px-3 py-2 text-zinc-700 font-medium">{j.etaMinutes ? `${j.etaMinutes} min` : '—'}</td>
+              <td className="px-3 py-2 text-zinc-700 font-medium">
+                {j.etaMinutes != null
+                  ? j.etaMinutes < 0
+                    ? `Late (${Math.abs(j.etaMinutes)}m)`
+                    : `${j.etaMinutes} min`
+                  : '—'}
+              </td>
               <td className="px-3 py-2 text-zinc-700">{j.driver?.name || '—'}</td>
               <td className="px-3 py-2 text-zinc-400 text-xs">{formatAge(j.createdAt)}</td>
             </tr>

@@ -275,7 +275,10 @@ export class FlipEngineService {
   ) {
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.enabled !== undefined) set.flipEngineEnabled = patch.enabled;
-    if (patch.config !== undefined) set.flipEngineConfig = patch.config as never;
+    if (patch.config !== undefined) {
+      const current = await this.getConfig(tenantId);
+      set.flipEngineConfig = { ...(current.config as Record<string, unknown>), ...patch.config } as never;
+    }
     await this.db
       .update(tenants)
       .set(set as never)

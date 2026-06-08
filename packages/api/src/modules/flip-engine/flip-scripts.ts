@@ -64,8 +64,14 @@ export interface ScriptContext {
 
   // Customization
   customAgentRules?: string | null;
-  customScriptTemplate?: string | null;
   scriptBlocks?: {
+    opening?: string | null;
+    purpose?: string | null;
+    confirm_pickup?: string | null;
+    confirm_vehicle?: string | null;
+    clarify_issue?: string | null;
+    confirm_destination?: string | null;
+    warm_close?: string | null;
     offer_1?: string | null;
     offer_2?: string | null;
     offer_3?: string | null;
@@ -106,49 +112,66 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
 
 /** Opening + purpose, shared verbatim by all scenarios.
  *  "on behalf of {{motor_club}}" is dropped when no motor club is present. */
-function openingBlock(ctx: ScriptContext): string {
+function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
   const onBehalf = ctx.motorClub ? ' on behalf of {{motor_club}}' : '';
-  return [
-    `[STEP 1 — OPENING / IDENTIFICATION]`,
-    `AI: "Hi, this is {{rep_name}} calling from {{company_name}}${onBehalf}. Am I speaking with {{customer_first_name}}?"`,
-    `[AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call.]`,
-    ``,
-    `[STEP 2 — PURPOSE OF CALL]`,
-    `AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"`,
-    `[AGENT: If they say it's a bad time, offer to be quick or to text the details; respect their answer.]`,
-  ].join('\n');
+  const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
+AI: "Hi, this is {{rep_name}} calling from {{company_name}}${onBehalf}. Am I speaking with {{customer_first_name}}?"
+[AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call.]`;
+
+  const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
+AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"
+[AGENT: If they say it's a bad time, offer to be quick or to text the details; respect their answer.]`;
+
+  const opening = ctx.scriptBlocks?.opening ?? defaultOpening;
+  const purpose = ctx.scriptBlocks?.purpose ?? defaultPurpose;
+
+  return [interpolate(opening, vars), ``, interpolate(purpose, vars)].join('\n');
 }
 
 /** Steps 3-6: confirm pickup, vehicle, issue, destination. Shared by A/B/C/D.
  *  `clarifyIssueLine` lets each scenario tailor the issue question. */
-function confirmBlock(clarifyIssueLine: string): string {
+function confirmBlock(ctx: ScriptContext, vars: Record<string, string>, clarifyIssueLine: string): string {
+  const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
+AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
+[AGENT: If the customer corrects the location, acknowledge the correction warmly and confirm the corrected version back to them. This correction will be saved to the job notes.]`;
+
+  const defaultVehicle = `[STEP 4 — CONFIRM VEHICLE DETAILS]
+AI: "And I have a {{vehicle}}. Is that right?"
+[AGENT: If they correct the vehicle, acknowledge and confirm the corrected details.]`;
+
+  const defaultIssue = `[STEP 5 — CLARIFY THE ISSUE]
+${clarifyIssueLine}
+[AGENT: Listen to their answer and acknowledge it in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`;
+
+  const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
+AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
+
+  const pickup = ctx.scriptBlocks?.confirm_pickup ?? defaultPickup;
+  const vehicle = ctx.scriptBlocks?.confirm_vehicle ?? defaultVehicle;
+  const issue = ctx.scriptBlocks?.clarify_issue ?? defaultIssue;
+  const destination = ctx.scriptBlocks?.confirm_destination ?? defaultDestination;
+
   return [
-    `[STEP 3 — CONFIRM PICKUP LOCATION]`,
-    `AI: "I have your pickup location as {{pickup_location}}. Is that correct?"`,
-    `[AGENT: If the customer corrects the location, acknowledge the correction warmly and confirm the corrected version back to them. This correction will be saved to the job notes.]`,
+    interpolate(pickup, vars),
     ``,
-    `[STEP 4 — CONFIRM VEHICLE DETAILS]`,
-    `AI: "And I have a {{vehicle}}. Is that right?"`,
-    `[AGENT: If they correct the vehicle, acknowledge and confirm the corrected details.]`,
+    interpolate(vehicle, vars),
     ``,
-    `[STEP 5 — CLARIFY THE ISSUE]`,
-    clarifyIssueLine,
-    `[AGENT: Listen to their answer and acknowledge it in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`,
+    interpolate(issue, vars),
     ``,
-    `[STEP 6 — CONFIRM DELIVERY DESTINATION]`,
-    `AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`,
+    interpolate(destination, vars),
   ].join('\n');
 }
 
 /** Warm close, shared by all scenarios. */
-function warmCloseBlock(): string {
-  return [
-    `=== WARM CLOSE (all scenarios) ===`,
-    `[AGENT: If you offered to text the link and they accepted, the system sends the CONVINI link to their phone after the call — tell them it's on the way.]`,
-    `AI: "Done — you'll get that text in just a moment. Your driver is on the way and should be there shortly. Is there anything else I can help you with?"`,
-    `AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`,
-    `[AGENT: End the call.]`,
-  ].join('\n');
+function warmCloseBlock(ctx: ScriptContext, vars: Record<string, string>): string {
+  const defaultClose = `=== WARM CLOSE (all scenarios) ===
+[AGENT: If you offered to text the link and they accepted, the system sends the CONVINI link to their phone after the call — tell them it's on the way.]
+AI: "Done — you'll get that text in just a moment. Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
+AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."
+[AGENT: End the call.]`;
+
+  const close = ctx.scriptBlocks?.warm_close ?? defaultClose;
+  return interpolate(close, vars);
 }
 
 /** Global rules prepended to every body. */
@@ -188,83 +211,60 @@ function globalRules(ctx: ScriptContext): string {
 
 function scenarioA(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened? For example, is the engine light on, is it overheating, or did it just not start?"`;
-
-  const hasFlip = !!ctx.nearestShop;
-  const distancePhrase =
-    ctx.nearestShopDistanceMiles != null
-      ? `just {{nearest_shop_distance}} miles away `
-      : ``;
-
   const vars = baseVars(ctx);
+  const distancePhrase = ctx.nearestShopDistanceMiles != null ? `just {{nearest_shop_distance}} miles away ` : ``;
   const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility ${distancePhrase}called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
   const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
   const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
-
-  const offer1 = interpolate(ctx.scriptBlocks?.offer_1 || defaultOffer1, vars);
-  const offer2 = interpolate(ctx.scriptBlocks?.offer_2 || defaultOffer2, vars);
-  const offer3 = interpolate(ctx.scriptBlocks?.offer_3 || defaultOffer3, vars);
-
-  const flipBlockSteps = [];
-  flipBlockSteps.push(``);
-  flipBlockSteps.push(`=== PHASE 2: THE FLIP ATTEMPT (make offers IN ORDER; stop the instant one is accepted; never pressure) ===`);
-  flipBlockSteps.push(``);
-
-  if (offer1.trim()) {
-    flipBlockSteps.push(`[STEP 7 — OFFER 1: Convenience + Value]`);
-    flipBlockSteps.push(`AI: "${offer1}"`);
-    flipBlockSteps.push(`[AGENT: If YES -> go to FLIP SUCCESS. If NO -> continue to Offer 2.]`);
-    flipBlockSteps.push(``);
-  }
-
-  if (offer2.trim()) {
-    flipBlockSteps.push(`[STEP 8 — OFFER 2: Urgency + Priority Service]`);
-    flipBlockSteps.push(`AI: "${offer2}"`);
-    flipBlockSteps.push(`[AGENT: If YES -> go to FLIP SUCCESS. If NO -> continue to Offer 3.]`);
-    flipBlockSteps.push(``);
-  }
-
-  if (offer3.trim()) {
-    flipBlockSteps.push(`[STEP 9 — OFFER 3: Financial Incentive + Social Proof]`);
-    flipBlockSteps.push(`AI: "${offer3}"`);
-    flipBlockSteps.push(`[AGENT: If YES -> go to FLIP SUCCESS. If NO -> go to CONVINI SOFT CLOSE.]`);
-    flipBlockSteps.push(``);
-  }
-
-  flipBlockSteps.push(`--- FLIP SUCCESS (any offer accepted) ---`);
-  flipBlockSteps.push(`AI: "Wonderful! I'm switching your destination to {{nearest_shop}} right now. Your driver has been notified. When you arrive, just let them know you're a tow customer and they'll get you the free diagnostic and your 10 percent discount. Before I let you go, our company also offers a free app called CONVINIcar that gives you direct access to roadside assistance, discounts, and more. Can I text you a link to download it for free?"`);
-  flipBlockSteps.push(`[AGENT: If YES -> system sends the link automatically. If NO -> acknowledge politely. Then close warmly and END.]`);
-
-  const flipBlock = hasFlip
-    ? flipBlockSteps.join('\n')
-    : [
-        ``,
-        `[AGENT: No alternate shop is available for this job — do NOT make flip offers. Proceed directly to the CONVINI SOFT CLOSE.]`,
-      ].join('\n');
-
   const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
-  const conviniPitch = interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars);
 
-  const conviniBlock = conviniPitch.trim()
-    ? [
-        `=== CONVINI SOFT CLOSE (driver still going to original destination) ===`,
-        `AI: "${conviniPitch}"`,
-        `[AGENT: If YES -> confirm you'll text the link to their number, then warm close. If NO -> accept gracefully, no pressure.]`,
+  const flipBlock = !!ctx.nearestShop ? [
         ``,
-      ].join('\n')
-    : ``;
+        interpolate(ctx.scriptBlocks?.offer_1 || defaultOffer1, vars),
+        ``,
+        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI soft close.]`,
+        `[AGENT: If they say NO -> make the next offer.]`,
+      ] : [];
+
+  const offer2Block = !!ctx.nearestShop ? [
+        ``,
+        interpolate(ctx.scriptBlocks?.offer_2 || defaultOffer2, vars),
+        ``,
+        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI soft close.]`,
+        `[AGENT: If they say NO -> make the next offer.]`,
+      ] : [];
+
+  const offer3Block = !!ctx.nearestShop ? [
+        ``,
+        interpolate(ctx.scriptBlocks?.offer_3 || defaultOffer3, vars),
+        ``,
+        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Then jump to the CONVINI soft close.]`,
+        `[AGENT: If they say NO -> acknowledge gracefully and jump to the CONVINI soft close.]`,
+      ] : [];
+
+  const conviniBlock = [
+    `=== CONVINI SOFT CLOSE ===`,
+    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
+  ];
 
   return [
-    `# SCENARIO A — DESTINATION IS A COMPETITOR AUTO REPAIR SHOP`,
-    `[AGENT: Goal — confirm the tow details, then attempt to flip the destination to our own shop using up to three offers, then close with the CONVINI app. Be a warm dispatcher, never a telemarketer. One question at a time.]`,
+    `# SCENARIO A — COMPETITOR REPAIR (3-TIER FLIP)`,
+    `[AGENT: The destination is a competitor repair shop. You will confirm details and then attempt to flip the tow to our shop.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
-    openingBlock(ctx),
+    openingBlock(ctx, vars),
     ``,
-    confirmBlock(clarify),
-    flipBlock,
+    confirmBlock(ctx, vars, clarify),
     ``,
-    conviniBlock,
-    warmCloseBlock(),
+    `=== PHASE 2: THE 3-TIER FLIP ===`,
+    ...flipBlock,
+    ...offer2Block,
+    ...offer3Block,
+    ``,
+    ...conviniBlock,
+    ``,
+    warmCloseBlock(ctx, vars),
   ].join('\n');
 }
 
@@ -273,31 +273,36 @@ function scenarioA(ctx: ScriptContext): string {
 // ---------------------------------------------------------------------------
 
 function scenarioB(ctx: ScriptContext): string {
-  const clarify = `AI: "I see this is related to an accident. Can you tell me where the damage is — front, rear, driver side, or passenger side? This helps the driver know if a flatbed is needed."`;
-
-  const bodyShopMention = ctx.bodyShop1
-    ? `AI: "Understood. Just so you know, {{customer_first_name}} — we also own two independent body shops here in the area: {{body_shop_1}} and {{body_shop_2}}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`
+  const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
+  const vars = baseVars(ctx);
+  const bodyShops = [ctx.bodyShop1, ctx.bodyShop2].filter(Boolean);
+  const bodyShopMention = bodyShops.length
+    ? `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area, like ${bodyShops.join(' and ')}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`
     : `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`;
 
+  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const conviniBlock = [
+    `=== CONVINI SOFT CLOSE ===`,
+    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
+  ];
+
   return [
-    `# SCENARIO B — DESTINATION IS AN AUTO BODY / COLLISION SHOP`,
-    `[AGENT: Goal — confirm details (collision vehicles are insurance-directed, so do NOT attempt a flip), give a soft mention of our own body shops, then a medium CONVINI close. Warm, no pressure.]`,
+    `# SCENARIO B — AUTO BODY SHOP (SOFT MENTION)`,
+    `[AGENT: The destination is an auto body shop. Confirm details, then gently mention our body shops before moving to the Convini pitch.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
-    openingBlock(ctx),
+    openingBlock(ctx, vars),
     ``,
-    confirmBlock(clarify),
-    `[AGENT: If the vehicle is non-drivable, note that a flatbed is required.]`,
+    confirmBlock(ctx, vars, clarify),
     ``,
-    `=== PHASE 2: SOFT MENTION OF OUR BODY SHOPS (no flip) ===`,
+    `=== PHASE 2: BODY SHOP SOFT MENTION ===`,
     `[STEP 7 — BRAND AWARENESS]`,
     bodyShopMention,
     ``,
-    `=== PHASE 3: CONVINI OFFER (medium sell) ===`,
-    `AI: "One last thing — we have a free app called CONVINIcar. It puts roadside assistance, repair scheduling, car rentals, and member deals all in one place on your phone. If you ever need a tow again or want to schedule body work, it's all right there. Can I text you the download link? Completely free."`,
-    `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
+    ...conviniBlock,
     ``,
-    warmCloseBlock(),
+    warmCloseBlock(ctx, vars),
   ].join('\n');
 }
 
@@ -314,33 +319,27 @@ function scenarioC(ctx: ScriptContext): string {
   const clarify = isFlat
     ? `AI: "I see you have a flat tire. Which tire is it — front left, front right, rear left, or rear right? And do you have a spare?"`
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
+  
+  const vars = baseVars(ctx);
+  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const conviniBlock = [
+    `=== CONVINI SOFT CLOSE ===`,
+    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
+  ];
 
   return [
-    `# SCENARIO C — DESTINATION IS RESIDENTIAL / UNKNOWN`,
-    `[AGENT: Goal — confirm details (no flip), then go HARD on the free CONVINI app: transition, full pitch, the ask, and reinforce if they hesitate. Stay warm and genuine, never pushy.]`,
+    `# SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI)`,
+    `[AGENT: The destination is a residence or unknown. Confirm details and push the CONVINI app hard.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
-    openingBlock(ctx),
+    openingBlock(ctx, vars),
     ``,
-    confirmBlock(clarify),
-    `[AGENT: For the destination confirmation, if it appears to be their home, you may ask "Is that your home?" naturally.]`,
+    confirmBlock(ctx, vars, clarify),
     ``,
-    `=== PHASE 2: CONVINI HARD SELL ===`,
-    `[STEP 7 — TRANSITION]`,
-    `AI: "Perfect, {{customer_first_name}}. Your driver is on the way. Before I let you go, I want to tell you about something we offer all of our customers that I think would really help you — especially in situations like this."`,
+    ...conviniBlock,
     ``,
-    `[STEP 8 — THE PITCH]`,
-    `AI: "It's called CONVINIcar. It's a free app that puts everything you need for your vehicle in one place. Roadside assistance anytime, anywhere. You can schedule tire repairs, oil changes, brake work — all from your phone. If your car is ever in the shop, you can book a rental car right through the app. We even have travel deals and event tickets for members. It's like having a VIP concierge for your car. And it's completely free to download."`,
-    ``,
-    `[STEP 9 — THE ASK]`,
-    `AI: "Can I text you the download link right now? It takes about 30 seconds to set up, and the next time you have car trouble or need any kind of service, everything is right there on your phone."`,
-    `[AGENT: If YES -> confirm you'll text the link, then warm close. If HESITANT -> give the REINFORCE line below. If NO -> accept gracefully and warm close.]`,
-    ``,
-    `[STEP 10 — REINFORCE (only if hesitant)]`,
-    `AI: "One hundred percent free. No credit card, no subscription, no catch. A lot of our customers tell us they wish they had it before they needed a tow. Next time you need any kind of service, you can open the app, find a shop near you, schedule the appointment, and even get a price estimate — all without making a single phone call. It just saves you time."`,
-    `[AGENT: After reinforcing, ask once more if you can text the link. Respect their final answer either way.]`,
-    ``,
-    warmCloseBlock(),
+    warmCloseBlock(ctx, vars),
   ].join('\n');
 }
 
@@ -350,24 +349,29 @@ function scenarioC(ctx: ScriptContext): string {
 
 function scenarioD(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
+  const vars = baseVars(ctx);
+  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const conviniBlock = [
+    `=== CONVINI SOFT CLOSE ===`,
+    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
+  ];
 
   return [
-    `# SCENARIO D — DESTINATION IS ALREADY ONE OF OUR SHOPS`,
-    `[AGENT: Goal — the customer is already coming to us, so NO flip. Confirm details, give a VIP welcome, then offer the CONVINI app to lock them into our ecosystem. Warm and appreciative.]`,
+    `# SCENARIO D — OUR SHOP (VIP TREATMENT)`,
+    `[AGENT: The destination is OUR OWN shop. Roll out the red carpet, confirm details, and offer Convini.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
-    openingBlock(ctx),
+    openingBlock(ctx, vars),
     ``,
-    confirmBlock(clarify),
+    confirmBlock(ctx, vars, clarify),
     ``,
     `=== PHASE 2: VIP WELCOME ===`,
     `AI: "Great news — your vehicle is coming to our shop at {{destination}}. When you arrive, let the front desk know you're a tow customer and they'll take priority care of you. You'll have a written estimate within one hour."`,
     ``,
-    `=== PHASE 3: CONVINI OFFER ===`,
-    `AI: "Also — do you have our CONVINIcar app? It lets you track your repair status, schedule future services, and access member-only deals. Can I text you the link?"`,
-    `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
+    ...conviniBlock,
     ``,
-    warmCloseBlock(),
+    warmCloseBlock(ctx, vars),
   ].join('\n');
 }
 
@@ -377,20 +381,23 @@ function scenarioD(ctx: ScriptContext): string {
 
 function scenarioAaaBranded(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
+  const vars = baseVars(ctx);
+  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free.`;
+
   return [
     `# SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE)`,
     `[AGENT: This tow is going to a AAA-branded facility. Per policy you must NOT attempt to flip it. Confirm the details and close with a soft CONVINI offer only.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
-    openingBlock(ctx),
+    openingBlock(ctx, vars),
     ``,
-    confirmBlock(clarify),
+    confirmBlock(ctx, vars, clarify),
     ``,
     `=== CONVINI SOFT CLOSE ===`,
-    `AI: "Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free."`,
+    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
     ``,
-    warmCloseBlock(),
+    warmCloseBlock(ctx, vars),
   ].join('\n');
 }
 
@@ -414,14 +421,8 @@ const SCENARIO_RENDERERS: Record<ScenarioKey, (ctx: ScriptContext) => string> = 
  */
 export function renderCallBody(scenario: ScenarioKey, ctx: ScriptContext): string {
   const vars = baseVars(ctx);
-
-  if (ctx.customScriptTemplate) {
-    return interpolate(ctx.customScriptTemplate, vars);
-  }
-
   const renderer = SCENARIO_RENDERERS[scenario] ?? scenarioC;
-  const raw = [globalRules(ctx), ``, renderer(ctx)].join('\n');
-  return interpolate(raw, vars);
+  return [globalRules(ctx), ``, renderer(ctx)].join('\n');
 }
 
 /** Map a destination tag to the scenario key. Centralized so routing is
