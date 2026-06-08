@@ -257,7 +257,6 @@ export class FlipEngineService {
 
     const cfg = (row.config as Record<string, unknown>) || {};
     if (!cfg.company_name) cfg.company_name = row.companyName;
-    if (!cfg.rep_name) cfg.rep_name = 'Emily';
     
     if (!cfg.callback_number) {
       const phones = row.managerPhones as string[];

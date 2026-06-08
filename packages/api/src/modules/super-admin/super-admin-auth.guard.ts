@@ -41,7 +41,7 @@ export class SuperAdminAuthGuard implements CanActivate {
       .filter(Boolean);
 
     // If no candidate provided via header/fallback, just use the first allowed email automatically for local dev convenience
-    if (!candidate && envEmails.length > 0) {
+    if (!candidate && envEmails.length > 0 && process.env.NODE_ENV !== 'production') {
       candidate = envEmails[0];
     }
 
