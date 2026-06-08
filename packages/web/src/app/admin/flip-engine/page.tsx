@@ -720,6 +720,18 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
   const [customScriptTemplate, setCustomScriptTemplate] = useState<string>(
     (config.config?.custom_script_template as string) || DEFAULT_SCRIPT_TEMPLATE,
   );
+  
+  const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility just {{nearest_shop_distance}} miles away called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
+  const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
+  const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
+  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+
+  const scriptBlocksObj = (config.config?.script_blocks as Record<string, string>) || {};
+  const [offer1, setOffer1] = useState<string>(scriptBlocksObj.offer_1 ?? defaultOffer1);
+  const [offer2, setOffer2] = useState<string>(scriptBlocksObj.offer_2 ?? defaultOffer2);
+  const [offer3, setOffer3] = useState<string>(scriptBlocksObj.offer_3 ?? defaultOffer3);
+  const [conviniPitch, setConviniPitch] = useState<string>(scriptBlocksObj.convini_pitch ?? defaultConvini);
+
   const [submitting, setSubmitting] = useState(false);
 
   const save = async () => {
@@ -741,6 +753,12 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
             mention_rentals: mentionRentals,
             custom_agent_rules: customAgentRules || undefined,
             custom_script_template: customScriptTemplate || undefined,
+            script_blocks: {
+              offer_1: offer1 || undefined,
+              offer_2: offer2 || undefined,
+              offer_3: offer3 || undefined,
+              convini_pitch: conviniPitch || undefined,
+            },
           },
         }),
         headers: { 'content-type': 'application/json' },
@@ -875,6 +893,71 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
             />
             <span className="text-sm">Mention CONVINI rental fleet (35 vehicles)</span>
           </label>
+        </div>
+
+        <div className="pt-6">
+          <h3 className="text-lg font-semibold text-zinc-800">Script Builder</h3>
+          <p className="text-sm text-zinc-500 mb-4">
+            Customize the exact spoken dialogue for each phase of the pitch. Leave a box empty to automatically skip that step.
+            Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>.
+          </p>
+          
+          <div className="space-y-6">
+            <SettingsField
+              label="Offer 1 (Convenience & Value)"
+              help="The first pitch made when the destination is a competitor repair shop."
+            >
+              <textarea
+                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={offer1}
+                onChange={(e) => setOffer1(e.target.value)}
+                placeholder="Leave empty to skip this offer"
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="Offer 2 (Urgency & Priority)"
+              help="The second pitch made if the customer declines Offer 1."
+            >
+              <textarea
+                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={offer2}
+                onChange={(e) => setOffer2(e.target.value)}
+                placeholder="Leave empty to skip this offer"
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="Offer 3 (Financial Incentive)"
+              help="The final pitch made if the customer declines Offer 2."
+            >
+              <textarea
+                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={offer3}
+                onChange={(e) => setOffer3(e.target.value)}
+                placeholder="Leave empty to skip this offer"
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="CONVINI App Pitch (Soft Close)"
+              help="The final pivot if all offers are declined or if the destination is an auto body shop."
+            >
+              <textarea
+                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                value={conviniPitch}
+                onChange={(e) => setConviniPitch(e.target.value)}
+                placeholder="Leave empty to skip this pitch"
+              />
+            </SettingsField>
+          </div>
+        </div>
+
+        <div className="pt-6">
+          <h3 className="text-lg font-semibold text-zinc-800">Advanced Prompt Overrides</h3>
+          <p className="text-sm text-zinc-500 mb-4">
+            Only modify these if you want to completely replace the underlying AI system prompt logic.
+          </p>
         </div>
 
         <SettingsField

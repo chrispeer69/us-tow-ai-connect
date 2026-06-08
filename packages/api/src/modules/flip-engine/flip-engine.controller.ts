@@ -73,6 +73,12 @@ const ConfigPatchSchema = z.object({
       send_batch_summaries: z.boolean().optional(),
       send_daily_report: z.boolean().optional(),
       mention_rentals: z.boolean().optional(),
+      script_blocks: z.object({
+        offer_1: z.string().optional(),
+        offer_2: z.string().optional(),
+        offer_3: z.string().optional(),
+        convini_pitch: z.string().optional(),
+      }).optional(),
     })
     .partial()
     .optional(),

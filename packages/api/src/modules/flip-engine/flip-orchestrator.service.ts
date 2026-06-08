@@ -413,6 +413,7 @@ export class FlipOrchestratorService {
         rentalsAvailable: mentionRentals,
         customAgentRules: (cfg.custom_agent_rules as string) || null,
         customScriptTemplate: (cfg.custom_script_template as string) || null,
+        scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
       };
 
       const fullBody = renderCallBody(actualScenario, ctx);
@@ -537,6 +538,7 @@ export class FlipOrchestratorService {
       rentalsAvailable: mentionRentals,
       customAgentRules: (cfg.custom_agent_rules as string) || null,
       customScriptTemplate: (cfg.custom_script_template as string) || null,
+      scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
     };
 
     const fullBody = renderCallBody(actualScenario, ctx);

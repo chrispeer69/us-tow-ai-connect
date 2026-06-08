@@ -65,6 +65,12 @@ export interface ScriptContext {
   // Customization
   customAgentRules?: string | null;
   customScriptTemplate?: string | null;
+  scriptBlocks?: {
+    offer_1?: string | null;
+    offer_2?: string | null;
+    offer_3?: string | null;
+    convini_pitch?: string | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -189,31 +195,63 @@ function scenarioA(ctx: ScriptContext): string {
       ? `just {{nearest_shop_distance}} miles away `
       : ``;
 
+  const vars = baseVars(ctx);
+  const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility ${distancePhrase}called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
+  const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
+  const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
+
+  const offer1 = interpolate(ctx.scriptBlocks?.offer_1 || defaultOffer1, vars);
+  const offer2 = interpolate(ctx.scriptBlocks?.offer_2 || defaultOffer2, vars);
+  const offer3 = interpolate(ctx.scriptBlocks?.offer_3 || defaultOffer3, vars);
+
+  const flipBlockSteps = [];
+  flipBlockSteps.push(``);
+  flipBlockSteps.push(`=== PHASE 2: THE FLIP ATTEMPT (make offers IN ORDER; stop the instant one is accepted; never pressure) ===`);
+  flipBlockSteps.push(``);
+
+  if (offer1.trim()) {
+    flipBlockSteps.push(`[STEP 7 — OFFER 1: Convenience + Value]`);
+    flipBlockSteps.push(`AI: "${offer1}"`);
+    flipBlockSteps.push(`[AGENT: If YES -> go to FLIP SUCCESS. If NO -> continue to Offer 2.]`);
+    flipBlockSteps.push(``);
+  }
+
+  if (offer2.trim()) {
+    flipBlockSteps.push(`[STEP 8 — OFFER 2: Urgency + Priority Service]`);
+    flipBlockSteps.push(`AI: "${offer2}"`);
+    flipBlockSteps.push(`[AGENT: If YES -> go to FLIP SUCCESS. If NO -> continue to Offer 3.]`);
+    flipBlockSteps.push(``);
+  }
+
+  if (offer3.trim()) {
+    flipBlockSteps.push(`[STEP 9 — OFFER 3: Financial Incentive + Social Proof]`);
+    flipBlockSteps.push(`AI: "${offer3}"`);
+    flipBlockSteps.push(`[AGENT: If YES -> go to FLIP SUCCESS. If NO -> go to CONVINI SOFT CLOSE.]`);
+    flipBlockSteps.push(``);
+  }
+
+  flipBlockSteps.push(`--- FLIP SUCCESS (any offer accepted) ---`);
+  flipBlockSteps.push(`AI: "Wonderful! I'm switching your destination to {{nearest_shop}} right now. Your driver has been notified. When you arrive, just let them know you're a tow customer and they'll get you the free diagnostic and your 10 percent discount. Before I let you go, our company also offers a free app called CONVINIcar that gives you direct access to roadside assistance, discounts, and more. Can I text you a link to download it for free?"`);
+  flipBlockSteps.push(`[AGENT: If YES -> system sends the link automatically. If NO -> acknowledge politely. Then close warmly and END.]`);
+
   const flipBlock = hasFlip
-    ? [
-        ``,
-        `=== PHASE 2: THE FLIP ATTEMPT (make offers IN ORDER; stop the instant one is accepted; never pressure) ===`,
-        ``,
-        `[STEP 7 — OFFER 1: Convenience + Value]`,
-        `AI: "I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility ${distancePhrase}called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?"`,
-        `[AGENT: If YES -> go to FLIP SUCCESS. If NO -> continue to Offer 2.]`,
-        ``,
-        `[STEP 8 — OFFER 2: Urgency + Priority Service]`,
-        `AI: "I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?"`,
-        `[AGENT: If YES -> go to FLIP SUCCESS. If NO -> continue to Offer 3.]`,
-        ``,
-        `[STEP 9 — OFFER 3: Financial Incentive + Social Proof]`,
-        `AI: "No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?"`,
-        `[AGENT: If YES -> go to FLIP SUCCESS. If NO -> go to CONVINI SOFT CLOSE.]`,
-        ``,
-        `--- FLIP SUCCESS (any offer accepted) ---`,
-        `AI: "Wonderful! I'm switching your destination to {{nearest_shop}} right now. Your driver has been notified. When you arrive, just let them know you're a tow customer and they'll get you the free diagnostic and your 10 percent discount. Before I let you go, our company also offers a free app called CONVINIcar that gives you direct access to roadside assistance, discounts, and more. Can I text you a link to download it for free?"`,
-        `[AGENT: If YES -> system sends the link automatically. If NO -> acknowledge politely. Then close warmly and END.]`,
-      ].join('\n')
+    ? flipBlockSteps.join('\n')
     : [
         ``,
         `[AGENT: No alternate shop is available for this job — do NOT make flip offers. Proceed directly to the CONVINI SOFT CLOSE.]`,
       ].join('\n');
+
+  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const conviniPitch = interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars);
+
+  const conviniBlock = conviniPitch.trim()
+    ? [
+        `=== CONVINI SOFT CLOSE (driver still going to original destination) ===`,
+        `AI: "${conviniPitch}"`,
+        `[AGENT: If YES -> confirm you'll text the link to their number, then warm close. If NO -> accept gracefully, no pressure.]`,
+        ``,
+      ].join('\n')
+    : ``;
 
   return [
     `# SCENARIO A — DESTINATION IS A COMPETITOR AUTO REPAIR SHOP`,
@@ -225,10 +263,7 @@ function scenarioA(ctx: ScriptContext): string {
     confirmBlock(clarify),
     flipBlock,
     ``,
-    `=== CONVINI SOFT CLOSE (driver still going to original destination) ===`,
-    `AI: "Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up."`,
-    `[AGENT: If YES -> confirm you'll text the link to their number, then warm close. If NO -> accept gracefully, no pressure.]`,
-    ``,
+    conviniBlock,
     warmCloseBlock(),
   ].join('\n');
 }
