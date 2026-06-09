@@ -118,6 +118,7 @@ function makeFakeDb(initialCalls: any[] = [], tenantOverrides: Partial<any> = {}
         },
       };
     },
+    execute: vi.fn(async () => undefined),
   };
 
   return { db, calls, tenants };
@@ -130,7 +131,11 @@ function wrapCallRow(row: any) {
 function createSvc(db: any) {
   const thinkrr = new ThinkrrOutboundClient();
   const retell = new RetellOutboundClient();
-  const provider = { providerName: 'retell' } as any;
+  const provider = {
+    providerName: 'retell',
+    placeCall: vi.fn(async () => null),
+    cancelCall: vi.fn(async () => false),
+  } as any;
   return new OutboundVoiceService(db as never, thinkrr, retell, provider);
 }
 
@@ -266,5 +271,27 @@ describe('OutboundVoiceService', () => {
     const r = await svc.handleWebhookEvent({ callId: 'nope', status: 'completed' });
     expect(r.matched).toBe(false);
     expect(r.newStatus).toBeNull();
+  });
+
+  it('testCall creates an outbound log row even when the provider is unconfigured', async () => {
+    const { db, calls } = makeFakeDb();
+    const svc = createSvc(db);
+
+    const result = await svc.testCall(TENANT_ID, {
+      scenario: 'unknown',
+      toPhone: '(555) 123-4567',
+      customerName: 'Emily',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.outboundCallId).toBe('voice-1');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      id: 'voice-1',
+      purpose: 'custom',
+      toPhone: '+15551234567',
+      status: 'failed',
+      attempts: 1,
+    });
   });
 });

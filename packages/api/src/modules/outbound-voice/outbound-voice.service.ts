@@ -729,6 +729,18 @@ export class OutboundVoiceService {
     };
 
     const fullBody = input.scriptBody || (input.scenario ? renderCallBody(input.scenario, ctx) : '');
+    const [call] = await this.db
+      .insert(outboundCalls)
+      .values({
+        tenantId,
+        purpose: 'custom',
+        toPhone: formattedPhone,
+        toName: input.customerName || 'Test Customer',
+        scriptTemplate: 'custom',
+        scriptVariables: { body: fullBody } as never,
+        maxAttempts: 1,
+      })
+      .returning();
 
     const result = await this.provider.placeCall({
       toPhone: formattedPhone,
@@ -736,14 +748,42 @@ export class OutboundVoiceService {
       scriptBody: fullBody,
       scriptTemplate: 'custom',
       scriptVariables: { body: fullBody },
-      callId: 'test-' + Date.now(),
+      callId: call.id,
       tenantId,
       agentId: undefined,
       callbackUrl: buildCallbackUrl(this.provider.providerName),
     });
 
+    if (!result?.providerCallId) {
+      await this.db
+        .update(outboundCalls)
+        .set({
+          status: 'failed',
+          attempts: 1,
+          error: `${this.provider.providerName}_unavailable_or_unconfigured`,
+          endedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(outboundCalls.id, call.id));
+    } else {
+      const providerIdColumn = this.provider.providerName === 'retell'
+        ? 'retell_call_id'
+        : 'thinkrr_call_id';
+      await this.db.execute(
+        sql`update outbound_calls
+            set status = 'dialing',
+                ${sql.raw(providerIdColumn)} = ${result.providerCallId},
+                provider = ${this.provider.providerName},
+                attempts = 1,
+                started_at = now(),
+                updated_at = now()
+            where id = ${call.id}`,
+      );
+    }
+
     return {
       success: !!result?.providerCallId,
+      outboundCallId: call.id,
       callId: result?.providerCallId ?? null,
       toPhone: formattedPhone,
       scenario: input.scenario,

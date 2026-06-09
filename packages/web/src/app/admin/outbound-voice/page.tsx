@@ -180,8 +180,8 @@ export default function OutboundVoicePage() {
         method: 'POST',
         body: JSON.stringify({
           purpose: form.purpose,
-          to_phone: form.to_phone,
-          to_name: form.to_name || undefined,
+          toPhone: form.to_phone,
+          toName: form.to_name || undefined,
           scriptTemplate: form.script_template,
           scriptVariables: parsedVariables,
           relatedJobId: form.related_job_id || undefined,
