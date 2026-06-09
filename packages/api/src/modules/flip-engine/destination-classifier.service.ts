@@ -26,6 +26,8 @@ export interface ClassifyDestinationResult {
   placeId?: string | null;
   resolvedName?: string | null;
   resolvedAddress?: string | null;
+  resolvedLat?: number | null;
+  resolvedLng?: number | null;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface ClassifyDestinationResult {
  *      Short-circuits to `aaa_branded` regardless of any other signal.
  *   2. Self-detect: destination name matches one of OUR partner shops.
  *   3. Google Places lookup → maps `place.types` to a tag.
- *   4. Fallback: regex hints in the address (avenue/blvd/pky → residence-ish).
+ *   4. Fallback: street-address regex without a business name → unknown.
  *   5. Unknown.
  *
  * Google Places is called via `fetch` against the Text Search endpoint
@@ -94,9 +96,11 @@ export class DestinationClassifierService {
       addr.match(/\b(\d+\s+[a-z]+\s+(st|ave|avenue|street|rd|road|ln|lane|dr|drive|ct|court|way|circle|cir|pl|place))\b/) &&
       !lowerName
     ) {
+      // Used to return 'residence', but Chris wants to maximize flip opportunities.
+      // If we don't have a business name, assume 'unknown' instead of giving up.
       return {
-        tag: 'residence',
-        reason: 'regex_residential_address_no_business_name',
+        tag: 'unknown',
+        reason: 'regex_address_no_business_name',
         resolvedName: null,
         resolvedAddress: input.destinationAddress ?? null,
       };
@@ -152,6 +156,8 @@ export class DestinationClassifierService {
         placeId: top.place_id ?? null,
         resolvedName: top.name ?? input.destinationName ?? null,
         resolvedAddress: top.formatted_address ?? input.destinationAddress ?? null,
+        resolvedLat: top.geometry?.location?.lat ?? null,
+        resolvedLng: top.geometry?.location?.lng ?? null,
       };
     } catch (err) {
       this.logger.warn(`[flip-engine] places lookup threw: ${(err as Error).message}`);
@@ -169,25 +175,40 @@ export class DestinationClassifierService {
  */
 export function mapPlaceTypesToTag(types: string[]): DestinationTag {
   const set = new Set(types);
-  if (set.has('car_repair')) return 'competitor_repair';
-  // Body shops sometimes self-list as `car_repair`; the textual `body` is
-  // not a Google type. The classifier conservatively treats `car_dealer +
-  // body_shop` as auto_body when present in the resolved name (handled at
-  // the call site).
-  if (set.has('home_goods_store') || set.has('lodging') || set.has('locality')) {
+
+  // High-confidence automotive businesses
+  if (set.has('car_repair') || set.has('car_dealer') || set.has('auto_parts')) {
+    return 'competitor_repair';
+  }
+
+  // High-confidence non-repair customer destinations. These are not flip
+  // candidates, but they should not catch generic street addresses or cities.
+  if (set.has('lodging') || set.has('campground') || set.has('rv_park')) {
     return 'residence';
   }
+
+  // Business-like places that are not known repair shops stay unknown. This
+  // avoids treating stores, points of interest, cities, or generic map hits as
+  // residential and prematurely suppressing the flip path.
+  if (set.has('point_of_interest') || set.has('store') || set.has('establishment')) {
+    return 'unknown';
+  }
+
   if (
     set.has('street_address') ||
     set.has('premise') ||
     set.has('subpremise') ||
     set.has('neighborhood')
   ) {
-    return 'residence';
-  }
-  if (set.has('point_of_interest') || set.has('store') || set.has('establishment')) {
+    // We used to return 'residence' here, but that captured too many commercial
+    // addresses where Towbook didn't provide a business name.
     return 'unknown';
   }
+
+  if (set.has('locality') || set.has('home_goods_store')) {
+    return 'unknown';
+  }
+
   // Default to unknown when no type matches our taxonomy.
   return 'unknown';
 }
@@ -198,5 +219,11 @@ interface PlacesResponse {
     place_id?: string;
     formatted_address?: string;
     types?: string[];
+    geometry?: {
+      location?: {
+        lat: number;
+        lng: number;
+      };
+    };
   }>;
 }

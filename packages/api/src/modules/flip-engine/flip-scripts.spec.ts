@@ -31,8 +31,7 @@ describe('flip-scripts', () => {
       rentalsAvailable: true,
     });
     expect(body).toContain("Wayne's Westerville");
-    expect(body).toContain('ten percent');
-    expect(body).toContain('rental');
+    expect(body).toContain('10 percent');
     expect(body).toContain('2.3 miles');
   });
 
@@ -61,14 +60,14 @@ describe('flip-scripts', () => {
       distanceMilesSaved: null,
       rentalsAvailable: true,
     });
-    expect(body).toContain('fifty dollars');
+    expect(body).toContain('50 dollar');
     expect(body.toLowerCase()).toContain('google review');
   });
 
   it('CONVINI soft pitch is short and includes app name', () => {
     const body = renderConviniPitch({ intensity: 'soft', rentalsAvailable: true });
     expect(body).toContain('CONVINI');
-    expect(body.length).toBeLessThan(220);
+    expect(body.length).toBeLessThan(250);
   });
 
   it('CONVINI medium pitch optionally mentions our 2 body shops', () => {

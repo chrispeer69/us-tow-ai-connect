@@ -23,6 +23,16 @@ function parseJwt(token: string) {
   }
 }
 
+function isTokenForSuperAdmin(token: string): boolean {
+  const payload = parseJwt(token);
+  if (!payload?.email) return false;
+  const allowedEmails = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS || process.env.NEXT_PUBLIC_SUPER_ADMIN_DEV_EMAIL || '')
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return allowedEmails.includes(payload.email.toLowerCase());
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -35,14 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem('access_token');
     if (stored) {
       setTokenState(stored);
-      const payload = parseJwt(stored);
-      if (payload && payload.email) {
-        const allowedEmails = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS || process.env.NEXT_PUBLIC_SUPER_ADMIN_DEV_EMAIL || '')
-          .split(',')
-          .map((e: string) => e.trim().toLowerCase())
-          .filter(Boolean);
-        setIsSuperAdmin(allowedEmails.includes(payload.email.toLowerCase()));
-      }
+      setIsSuperAdmin(isTokenForSuperAdmin(stored));
     }
     setLoading(false);
   }, []);
@@ -51,8 +54,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTokenState(newToken);
     if (newToken) {
       localStorage.setItem('access_token', newToken);
+      setIsSuperAdmin(isTokenForSuperAdmin(newToken));
     } else {
       localStorage.removeItem('access_token');
+      setIsSuperAdmin(false);
     }
   };
 

@@ -246,11 +246,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
-        active
+      className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${active
           ? 'border-emerald-500 text-zinc-100'
           : 'border-transparent text-zinc-400 hover:text-zinc-200'
-      }`}
+        }`}
     >
       {label}
     </button>
@@ -679,6 +678,9 @@ function SettingsTab({
   const [reportHour, setReportHour] = useState<number>(
     Number(config.config?.daily_report_hour_local ?? 21),
   );
+  const [maxDistanceMiles, setMaxDistanceMiles] = useState<number>(
+    Number(config.config?.max_shop_distance_miles ?? 100),
+  );
   const DEFAULT_AGENT_RULES = `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.
 - Confirm details first. If the customer corrects something, acknowledge it and move on.
 - Make any flip offers strictly in order (1 -> 2 -> 3) and STOP the moment one is accepted. Never pressure.
@@ -717,14 +719,14 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
   const [customAgentRules, setCustomAgentRules] = useState<string>(
     (config.config?.custom_agent_rules as string) || DEFAULT_AGENT_RULES,
   );
-  
+
   const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility just {{nearest_shop_distance}} miles away called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
   const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
   const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
   const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
 
   const scriptBlocksObj = (config.config?.script_blocks as Record<string, string>) || {};
-  
+
   const [openingBlock, setOpeningBlock] = useState<string>(scriptBlocksObj.opening ?? defaultOpening);
   const [purposeBlock, setPurposeBlock] = useState<string>(scriptBlocksObj.purpose ?? defaultPurpose);
   const [pickupBlock, setPickupBlock] = useState<string>(scriptBlocksObj.confirm_pickup ?? defaultPickup);
@@ -749,27 +751,28 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
         body: JSON.stringify({
           enabled,
           config: {
-            rep_name: repName || undefined,
-            company_name: companyName || undefined,
-            callback_number: callbackNumber || undefined,
+            rep_name: repName,
+            company_name: companyName,
+            callback_number: callbackNumber,
             no_flip_confidence_threshold: confidence,
             poll_interval_seconds: pollInterval,
             batch_summary_size: batchSize,
             daily_report_hour_local: reportHour,
             mention_rentals: mentionRentals,
-            custom_agent_rules: customAgentRules || undefined,
+            custom_agent_rules: customAgentRules,
+            max_shop_distance_miles: maxDistanceMiles,
             script_blocks: {
-              opening: openingBlock || undefined,
-              purpose: purposeBlock || undefined,
-              confirm_pickup: pickupBlock || undefined,
-              confirm_vehicle: vehicleBlock || undefined,
-              clarify_issue: issueBlock || undefined,
-              confirm_destination: destinationBlock || undefined,
-              warm_close: closeBlock || undefined,
-              offer_1: offer1 || undefined,
-              offer_2: offer2 || undefined,
-              offer_3: offer3 || undefined,
-              convini_pitch: conviniPitch || undefined,
+              opening: openingBlock,
+              purpose: purposeBlock,
+              confirm_pickup: pickupBlock,
+              confirm_vehicle: vehicleBlock,
+              clarify_issue: issueBlock,
+              confirm_destination: destinationBlock,
+              warm_close: closeBlock,
+              offer_1: offer1,
+              offer_2: offer2,
+              offer_3: offer3,
+              convini_pitch: conviniPitch,
             },
           },
         }),
@@ -854,6 +857,19 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
         </SettingsField>
 
         <SettingsField
+          label="Max miles to recommend a shop"
+          help="The maximum distance in miles from the pickup location to recommend a partner shop. Defaults to 100."
+        >
+          <Input
+            type="number"
+            min="1"
+            value={maxDistanceMiles}
+            onChange={(e) => setMaxDistanceMiles(Number(e.target.value))}
+            className="max-w-[120px]"
+          />
+        </SettingsField>
+
+        <SettingsField
           label="Poll interval (seconds)"
           help="How often the engine scans Towbook + AAA for new motor club jobs. Default 60. Min 15."
         >
@@ -913,7 +929,7 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
             Customize the exact spoken dialogue for each phase of the pitch. Leave a box empty to automatically skip that step.
             Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{vehicle}}'}</span>, <span className="font-mono text-xs">{'{{pickup_location}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>, <span className="font-mono text-xs">{'{{issue}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>.
           </p>
-          
+
           <div className="space-y-6">
             <SettingsField
               label="1. Greeting & Identification"
@@ -1060,7 +1076,26 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
           />
         </SettingsField>
 
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-end pt-2 gap-4">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              if (confirm("Are you sure you want to reset all configurations to their defaults? This cannot be undone.")) {
+                setSubmitting(true);
+                try {
+                  await api('/v1/admin/flip-engine/config/reset', { method: 'POST' });
+                  await reload();
+                } catch (err) {
+                  setError((err as Error).message);
+                } finally {
+                  setSubmitting(false);
+                }
+              }
+            }}
+            disabled={submitting}
+          >
+            Reset to defaults
+          </Button>
           <Button onClick={() => void save()} disabled={submitting}>
             {submitting ? <Spinner className="mr-2" /> : null}
             Save settings

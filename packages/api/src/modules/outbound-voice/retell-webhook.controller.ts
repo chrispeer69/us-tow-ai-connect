@@ -35,27 +35,27 @@ import { OutboundVoiceService } from './outbound-voice.service';
  * }
  *
  * Signature verification (per https://docs.retellai.com/features/webhook):
- *   Retell signs with your account API key (RETELL_API_KEY) — NOT a separate
- *   webhook secret — using HMAC-SHA256 over the EXACT raw request bytes,
- *   delivering the hex digest in the x-retell-signature header.
- *
- *   We verify by computing HMAC-SHA256 over req.rawBody (the unmodified bytes
- *   NestJS captures because main.ts enables rawBody: true) using RETELL_API_KEY
- *   as the key, then doing a timing-safe comparison against the header value.
- *
- *   If RETELL_API_KEY is unset (dev / CI), signature verification is SKIPPED —
- *   production must set it.
+ *   Retell signs with HMAC-SHA256 over the exact raw request bytes and sends
+ *   the digest in the x-retell-signature header. Some accounts are configured
+ *   with a dedicated RETELL_WEBHOOK_SECRET while older setups use RETELL_API_KEY,
+ *   so verification accepts either configured value. Production must set at
+ *   least one of them; verification is skipped only when both are unset.
  */
 @Controller('webhooks/retell')
 export class RetellWebhookController {
   private readonly logger = new Logger(RetellWebhookController.name);
-  private readonly apiKey: string | null;
+  private readonly verificationSecrets: RetellVerificationSecret[];
 
   constructor(private readonly outboundVoice: OutboundVoiceService) {
-    // Retell now often uses a dedicated Webhook Secret instead of the API key
-    const key = (process.env.RETELL_WEBHOOK_SECRET?.trim() || process.env.RETELL_API_KEY?.trim()) ?? '';
-    this.apiKey = key || null;
-    if (!this.apiKey) {
+    const webhookSecret = process.env.RETELL_WEBHOOK_SECRET?.trim() ?? '';
+    const apiKey = process.env.RETELL_API_KEY?.trim() ?? '';
+
+    this.verificationSecrets = [
+      webhookSecret ? { label: 'RETELL_WEBHOOK_SECRET', value: webhookSecret } : null,
+      apiKey && apiKey !== webhookSecret ? { label: 'RETELL_API_KEY', value: apiKey } : null,
+    ].filter((secret): secret is RetellVerificationSecret => Boolean(secret));
+
+    if (this.verificationSecrets.length === 0) {
       this.logger.warn(
         'RETELL_WEBHOOK_SECRET and RETELL_API_KEY unset — Retell webhook signature verification is DISABLED',
       );
@@ -69,26 +69,20 @@ export class RetellWebhookController {
     @Headers('x-retell-signature') signature: string | undefined,
     @Body() body: RetellWebhookBody,
   ): Promise<{ matched: boolean }> {
-    if (this.apiKey) {
-      // Retell computes the HMAC signature against the minified JSON string of the payload,
-      // NOT the raw HTTP bytes. This is unlike Stripe. We must JSON.stringify the body
-      // without spaces to match their `separators=(',', ':')` logic.
-      const payloadString = JSON.stringify(body);
+    if (this.verificationSecrets.length > 0) {
+      const payloads = buildSignaturePayloads(req, body);
 
-      const expectedHex = crypto
-        .createHmac('sha256', this.apiKey)
-        .update(payloadString, 'utf8')
-        .digest('hex');
-
-      const expectedB64 = crypto
-        .createHmac('sha256', this.apiKey)
-        .update(payloadString, 'utf8')
-        .digest('base64');
-
-      if (!signature || (!timingSafeEqual(signature, expectedHex) && !timingSafeEqual(signature, expectedB64))) {
-        this.logger.warn(
-          `[outbound-voice] Signature mismatch! Received: ${signature}. ExpectedHex: ${expectedHex}. ExpectedB64: ${expectedB64}. Key length: ${this.apiKey?.length}. Payload length: ${payloadString.length}`
-        );
+      if (!verifyRetellSignature(signature, this.verificationSecrets, payloads)) {
+        this.logger.warn({
+          message: '[outbound-voice] Retell webhook signature mismatch',
+          signaturePresent: Boolean(signature),
+          signatureLength: signature?.length ?? 0,
+          configuredSecretLabels: this.verificationSecrets.map((secret) => secret.label),
+          payloadCandidates: payloads.map((payload) => ({
+            label: payload.label,
+            byteLength: payload.bytes.length,
+          })),
+        });
         throw new UnauthorizedException('invalid signature');
       }
     }
@@ -171,6 +165,75 @@ function timingSafeEqual(a: string, b: string): boolean {
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
   return crypto.timingSafeEqual(ab, bb);
+}
+
+function verifyRetellSignature(
+  signature: string | undefined,
+  secrets: RetellVerificationSecret[],
+  payloads: RetellSignaturePayload[],
+): boolean {
+  const candidates = normalizeSignatureHeader(signature);
+  if (candidates.length === 0) return false;
+
+  for (const secret of secrets) {
+    for (const payload of payloads) {
+      const expectedHex = crypto
+        .createHmac('sha256', secret.value)
+        .update(payload.bytes)
+        .digest('hex');
+      const expectedB64 = crypto
+        .createHmac('sha256', secret.value)
+        .update(payload.bytes)
+        .digest('base64');
+
+      if (
+        candidates.some(
+          (candidate) => timingSafeEqual(candidate, expectedHex) || timingSafeEqual(candidate, expectedB64),
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function buildSignaturePayloads(req: Request, body: RetellWebhookBody): RetellSignaturePayload[] {
+  const rawBody = (req as Request & { rawBody?: unknown }).rawBody;
+  const payloads: RetellSignaturePayload[] = [];
+
+  if (Buffer.isBuffer(rawBody)) {
+    payloads.push({ label: 'rawBody', bytes: rawBody });
+    return payloads;
+  }
+
+  // Backward compatibility for environments/tests that do not expose req.rawBody.
+  payloads.push({ label: 'jsonBody', bytes: Buffer.from(JSON.stringify(body), 'utf8') });
+  return payloads;
+}
+
+function normalizeSignatureHeader(signature: string | undefined): string[] {
+  if (!signature) return [];
+
+  return signature
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => {
+      const withoutPrefix = part.replace(/^sha256=/i, '').trim();
+      return withoutPrefix === part ? [part] : [withoutPrefix];
+    });
+}
+
+interface RetellVerificationSecret {
+  label: 'RETELL_WEBHOOK_SECRET' | 'RETELL_API_KEY';
+  value: string;
+}
+
+interface RetellSignaturePayload {
+  label: 'rawBody' | 'jsonBody';
+  bytes: Buffer;
 }
 
 interface RetellWebhookBody {

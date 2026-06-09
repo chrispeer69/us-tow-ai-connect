@@ -34,6 +34,11 @@ const nextConfig = {
   // Standalone mode resolves workspace deps from the repo root; tell Next
   // where that root lives so it traces files correctly.
   outputFileTracingRoot: require('path').join(__dirname, '../..'),
+  env: {
+    // Map backend env vars to Next.js public env vars at build time so the
+    // client-side AuthContext can check if the logged-in user is a super admin.
+    NEXT_PUBLIC_SUPER_ADMIN_EMAILS: process.env.SUPER_ADMIN_EMAILS || process.env.SUPER_ADMIN_DEV_EMAIL || process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS || '',
+  },
   transpilePackages: ['@ustow/shared'],
   eslint: {
     ignoreDuringBuilds: true,

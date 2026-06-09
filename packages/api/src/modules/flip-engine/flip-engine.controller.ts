@@ -17,6 +17,7 @@ import {
 import { z } from 'zod';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
+import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
 import { FlipEngineService } from './flip-engine.service';
 import { FlipOrchestratorService } from './flip-orchestrator.service';
 
@@ -77,6 +78,7 @@ const ConfigPatchSchema = z.object({
       send_batch_summaries: z.boolean().optional(),
       send_daily_report: z.boolean().optional(),
       mention_rentals: z.boolean().optional(),
+      max_shop_distance_miles: z.number().min(1).optional(),
       script_blocks: z.object({
         opening: z.string().optional(),
         purpose: z.string().optional(),
@@ -276,6 +278,29 @@ export class FlipEngineController {
   @UsePipes(new ZodValidationPipe(ConfigPatchSchema))
   async patchConfig(@Req() req: AdminRequest, @Body() body: ConfigPatchBody) {
     const result = await this.service.updateConfig(req.tenantId, body);
+    return { status: 'success', data: result };
+  }
+
+  @Post('config/reset')
+  async resetConfig(@Req() req: AdminRequest) {
+    const result = await this.service.resetConfig(req.tenantId);
+    return { status: 'success', data: result };
+  }
+
+  // ----- Global Config (Super Admin Only) -----
+
+  @Get('global-config')
+  @UseGuards(SuperAdminAuthGuard)
+  async getGlobalConfig() {
+    const config = await this.service.getGlobalConfig();
+    return { status: 'success', data: config };
+  }
+
+  @Patch('global-config')
+  @UseGuards(SuperAdminAuthGuard)
+  @UsePipes(new ZodValidationPipe(ConfigPatchSchema))
+  async patchGlobalConfig(@Body() body: ConfigPatchBody) {
+    const result = await this.service.updateGlobalConfig(body.config);
     return { status: 'success', data: result };
   }
 

@@ -89,6 +89,18 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
       finalToNumber = testNumber;
     }
 
+    // Ensure the phone number is strictly E.164 formatted for Retell, otherwise it rejects with 400
+    if (finalToNumber) {
+      const digits = finalToNumber.replace(/\D/g, '');
+      if (digits.length === 10) {
+        finalToNumber = `+1${digits}`;
+      } else if (digits.length === 11 && digits.startsWith('1')) {
+        finalToNumber = `+${digits}`;
+      } else if (!finalToNumber.startsWith('+')) {
+        finalToNumber = `+${digits}`;
+      }
+    }
+
     const body = {
       from_number: this.fromNumber!,
       to_number: finalToNumber,

@@ -19,11 +19,11 @@ const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'v0.1.0';
 export function Sidebar() {
   const pathname = usePathname();
   const { branding } = useBranding();
-  const { logout } = useAuth();
+  const { logout, isSuperAdmin } = useAuth();
   return (
     <aside className="hidden w-64 shrink-0 border-r border-[var(--border-color)] bg-[var(--surface-card)] lg:flex lg:flex-col">
       <nav className="sticky top-[70px] flex max-h-[calc(100vh-70px)] flex-col gap-6 overflow-y-auto p-5">
-        {NAV_GROUPS.filter(g => g.title !== 'Super Admin' || useAuth().isSuperAdmin).map((group) => (
+        {NAV_GROUPS.filter((g) => g.title !== 'Super Admin' || isSuperAdmin).map((group) => (
           <div key={group.title} className="flex flex-col gap-1">
             <div className="px-3 pb-1 font-label text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
               {group.title}

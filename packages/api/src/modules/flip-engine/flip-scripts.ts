@@ -77,6 +77,19 @@ export interface ScriptContext {
     offer_3?: string | null;
     convini_pitch?: string | null;
   };
+  globalScriptBlocks?: {
+    opening?: string | null;
+    purpose?: string | null;
+    confirm_pickup?: string | null;
+    confirm_vehicle?: string | null;
+    clarify_issue?: string | null;
+    confirm_destination?: string | null;
+    warm_close?: string | null;
+    offer_1?: string | null;
+    offer_2?: string | null;
+    offer_3?: string | null;
+    convini_pitch?: string | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +135,8 @@ AI: "Hi, this is {{rep_name}} calling from {{company_name}}${onBehalf}. Am I spe
 AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"
 [AGENT: If they say it's a bad time, offer to be quick or to text the details; respect their answer.]`;
 
-  const opening = ctx.scriptBlocks?.opening ?? defaultOpening;
-  const purpose = ctx.scriptBlocks?.purpose ?? defaultPurpose;
+  const opening = ctx.scriptBlocks?.opening ?? ctx.globalScriptBlocks?.opening ?? defaultOpening;
+  const purpose = ctx.scriptBlocks?.purpose ?? ctx.globalScriptBlocks?.purpose ?? defaultPurpose;
 
   return [interpolate(opening, vars), ``, interpolate(purpose, vars)].join('\n');
 }
@@ -146,10 +159,10 @@ ${clarifyIssueLine}
   const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
 AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
 
-  const pickup = ctx.scriptBlocks?.confirm_pickup ?? defaultPickup;
-  const vehicle = ctx.scriptBlocks?.confirm_vehicle ?? defaultVehicle;
-  const issue = ctx.scriptBlocks?.clarify_issue ?? defaultIssue;
-  const destination = ctx.scriptBlocks?.confirm_destination ?? defaultDestination;
+  const pickup = ctx.scriptBlocks?.confirm_pickup ?? ctx.globalScriptBlocks?.confirm_pickup ?? defaultPickup;
+  const vehicle = ctx.scriptBlocks?.confirm_vehicle ?? ctx.globalScriptBlocks?.confirm_vehicle ?? defaultVehicle;
+  const issue = ctx.scriptBlocks?.clarify_issue ?? ctx.globalScriptBlocks?.clarify_issue ?? defaultIssue;
+  const destination = ctx.scriptBlocks?.confirm_destination ?? ctx.globalScriptBlocks?.confirm_destination ?? defaultDestination;
 
   return [
     interpolate(pickup, vars),
@@ -170,7 +183,7 @@ AI: "Done — you'll get that text in just a moment. Your driver is on the way a
 AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."
 [AGENT: End the call.]`;
 
-  const close = ctx.scriptBlocks?.warm_close ?? defaultClose;
+  const close = ctx.scriptBlocks?.warm_close ?? ctx.globalScriptBlocks?.warm_close ?? defaultClose;
   return interpolate(close, vars);
 }
 
@@ -220,7 +233,7 @@ function scenarioA(ctx: ScriptContext): string {
 
   const flipBlock = !!ctx.nearestShop ? [
         ``,
-        interpolate(ctx.scriptBlocks?.offer_1 || defaultOffer1, vars),
+        interpolate(ctx.scriptBlocks?.offer_1 ?? ctx.globalScriptBlocks?.offer_1 ?? defaultOffer1, vars),
         ``,
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI soft close.]`,
         `[AGENT: If they say NO -> make the next offer.]`,
@@ -228,7 +241,7 @@ function scenarioA(ctx: ScriptContext): string {
 
   const offer2Block = !!ctx.nearestShop ? [
         ``,
-        interpolate(ctx.scriptBlocks?.offer_2 || defaultOffer2, vars),
+        interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI soft close.]`,
         `[AGENT: If they say NO -> make the next offer.]`,
@@ -236,7 +249,7 @@ function scenarioA(ctx: ScriptContext): string {
 
   const offer3Block = !!ctx.nearestShop ? [
         ``,
-        interpolate(ctx.scriptBlocks?.offer_3 || defaultOffer3, vars),
+        interpolate(ctx.scriptBlocks?.offer_3 ?? ctx.globalScriptBlocks?.offer_3 ?? defaultOffer3, vars),
         ``,
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Then jump to the CONVINI soft close.]`,
         `[AGENT: If they say NO -> acknowledge gracefully and jump to the CONVINI soft close.]`,
@@ -244,7 +257,7 @@ function scenarioA(ctx: ScriptContext): string {
 
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
-    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
   ];
 
@@ -283,7 +296,7 @@ function scenarioB(ctx: ScriptContext): string {
   const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
-    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
   ];
 
@@ -324,7 +337,7 @@ function scenarioC(ctx: ScriptContext): string {
   const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
-    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
   ];
 
@@ -353,7 +366,7 @@ function scenarioD(ctx: ScriptContext): string {
   const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
-    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
   ];
 
@@ -394,7 +407,7 @@ function scenarioAaaBranded(ctx: ScriptContext): string {
     confirmBlock(ctx, vars, clarify),
     ``,
     `=== CONVINI SOFT CLOSE ===`,
-    interpolate(ctx.scriptBlocks?.convini_pitch || defaultConvini, vars),
+    interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
     ``,
     warmCloseBlock(ctx, vars),

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { haversineMiles } from './nearest-shop.selector';
 import { Cron } from '@nestjs/schedule';
 import { eq, and } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -166,10 +167,11 @@ export class FlipOrchestratorService {
     job: PendingFlipJob,
   ): Promise<boolean> {
     // Pull tenant config + blocklist + our shops in parallel.
-    const [config, blocklistRows, ourShops] = await Promise.all([
+    const [config, blocklistRows, ourShops, globalConfig] = await Promise.all([
       this.flipEngine.getConfig(tenantId),
       this.flipEngine.listBlocklist(tenantId),
       this.flipEngine.listActiveShops(tenantId),
+      this.flipEngine.getGlobalConfig() as Promise<Record<string, unknown>>,
     ]);
     const blocklist = blocklistRows
       .filter((b) => b.active)
@@ -190,6 +192,20 @@ export class FlipOrchestratorService {
       ourShopNames,
     });
 
+    // 1b. Proximity Override: If Google found lat/lng, check if it's practically at one of our shops (within ~0.2 miles / ~300 meters)
+    if (destination.tag !== 'our_shop' && destination.tag !== 'aaa_branded' && destination.resolvedLat != null && destination.resolvedLng != null) {
+      for (const shop of ourShops) {
+        if (shop.lat != null && shop.lng != null && shop.active) {
+          const dist = haversineMiles(destination.resolvedLat, destination.resolvedLng, Number(shop.lat), Number(shop.lng));
+          if (dist <= 0.2) {
+            destination.tag = 'our_shop';
+            destination.reason = `proximity_to_partner_shop_${shop.name}`;
+            break;
+          }
+        }
+      }
+    }
+
     // 2. Classify issue.
     const issue: ClassifyIssueResult = this.issueClassifier.classify({
       reasonText: job.reasonText ?? null,
@@ -209,6 +225,8 @@ export class FlipOrchestratorService {
     // 4. Pick nearest shop (only when we'll actually pitch a flip).
     let nearestShopName: string | null = null;
     let distanceMilesSaved: number | null = null;
+    const cfg = (config.config as Record<string, unknown>) ?? {};
+    const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
     if (decision.flipEligible && job.pickupLat != null && job.pickupLng != null) {
       const pick = await this.flipEngine.pickNearestShop({
         tenantId,
@@ -216,35 +234,52 @@ export class FlipOrchestratorService {
         pickupLng: job.pickupLng,
         shopType: 'REPAIR',
       });
-      nearestShopName = pick.shop?.name ?? null;
-      distanceMilesSaved = pick.distanceMiles;
+      const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+      if (pick.shop && pick.distanceMiles != null && pick.distanceMiles <= maxDistance) {
+        nearestShopName = pick.shop.name;
+        distanceMilesSaved = pick.distanceMiles;
+      } else if (pick.shop) {
+        this.logger.debug(
+          `[flip-orchestrator] nearest shop ${pick.shop.name} is ${pick.distanceMiles} miles away, which exceeds max distance of ${maxDistance} miles. Suppressing flip.`,
+        );
+      }
     }
 
     // 5. Build the full scripted call body via the scenario engine.
-    const cfg = (config.config as Record<string, unknown>) ?? {};
-    const mentionRentals = (cfg as { mention_rentals?: boolean })?.mention_rentals !== false;
+    const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
     const bodyShops = pickTwoBodyShops(ourShops);
     const scenario = scenarioForDestinationTag(destination.tag);
+
+    // If we have a competitor_repair tag but couldn't find a nearest shop within max distance, fallback to Convini
+    const flipEligible = decision.flipEligible && !!nearestShopName;
+    const actualScenario = flipEligible ? scenario : (destination.tag === 'competitor_repair' ? scenarioForDestinationTag('unknown') : scenario);
+
     const ctx: ScriptContext = {
-      repName: (cfg.rep_name as string) || '',
-      companyName: job.companyName ?? ((cfg.company_name as string) || 'Roadside Towing'),
+      repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
+      companyName:
+        job.companyName ??
+        ((cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing'),
       motorClub: job.motorClub ?? '',
-      callbackNumber: (cfg.callback_number as string) || '',
-      conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+      callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
+      conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       customerFirstName: firstNameOf(job.customerName),
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
       destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
       issue: issuePhrase(issue.subcategory),
       issueSubcategory: issue.subcategory,
-      nearestShop: decision.flipEligible ? nearestShopName : null,
+      nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles:
-        decision.flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+        flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
+      customAgentRules:
+        (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
+      scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
+      globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
     };
-    const fullBody = renderCallBody(scenario, ctx);
+    const fullBody = renderCallBody(actualScenario, ctx);
 
     // 6. Persist log row before enqueue (so we have the trail even if
     //    the orchestrator crashes mid-call).
@@ -260,7 +295,7 @@ export class FlipOrchestratorService {
         originalDestination: job.destinationAddress ?? null,
         destinationBusinessName: destination.resolvedName ?? job.destinationName ?? null,
         destinationType: destination.tag,
-        flipEligible: decision.flipEligible,
+        flipEligible: flipEligible,
         nearestOurShop: nearestShopName,
       })
       .returning({ id: outboundCallLogs.id });
@@ -347,9 +382,10 @@ export class FlipOrchestratorService {
       if (!tenant?.outboundVoiceEnabled) return;
 
       // Classify destination to decide whether to layer in flip offers.
-      const [blocklistRows, ourShops] = await Promise.all([
+      const [blocklistRows, ourShops, globalConfig] = await Promise.all([
         this.flipEngine.listBlocklist(tenantId),
         this.flipEngine.listActiveShops(tenantId),
+        this.flipEngine.getGlobalConfig(),
       ]);
       const blocklist = blocklistRows
         .filter((b) => b.active)
@@ -369,8 +405,8 @@ export class FlipOrchestratorService {
         ourShopNames,
       });
 
-      const mentionRentals =
-        (tenant.flipEngineConfig as { mention_rentals?: boolean })?.mention_rentals !== false;
+      const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
+      const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
 
       // Flip pick only when destination is a competing repair shop.
       let nearestShopName: string | null = null;
@@ -382,20 +418,28 @@ export class FlipOrchestratorService {
           pickupLng: Number(job.pickupLng),
           shopType: 'REPAIR',
         });
-        nearestShopName = pick.shop?.name ?? null;
-        distanceMilesSaved = pick.distanceMiles;
+        const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+        if (pick.shop && pick.distanceMiles != null && pick.distanceMiles <= maxDistance) {
+          nearestShopName = pick.shop.name;
+          distanceMilesSaved = pick.distanceMiles;
+        } else if (pick.shop) {
+          this.logger.debug(
+            `[flip-orchestrator] newly created job nearest shop ${pick.shop.name} is ${pick.distanceMiles} miles away, exceeding max distance of ${maxDistance} miles. Suppressing flip.`,
+          );
+        }
       }
 
-      const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
       const scenario = scenarioForDestinationTag(destination.tag);
       const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
       const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
+      const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
+
       const ctx: ScriptContext = {
-        repName: (cfg.rep_name as string) || '',
-        companyName: (cfg.company_name as string) || 'Roadside Towing',
+        repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
+        companyName: (cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing',
         motorClub: '',
-        callbackNumber: (cfg.callback_number as string) || '',
-        conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+        callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
+        conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
         customerFirstName: firstNameOf(job.callerName),
         vehicle:
           [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
@@ -411,8 +455,9 @@ export class FlipOrchestratorService {
         bodyShop1: null,
         bodyShop2: null,
         rentalsAvailable: mentionRentals,
-        customAgentRules: (cfg.custom_agent_rules as string) || null,
+        customAgentRules: (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
         scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
+        globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
       };
 
       const fullBody = renderCallBody(actualScenario, ctx);
@@ -456,10 +501,11 @@ export class FlipOrchestratorService {
       motorClub?: string;
     },
   ): Promise<any> {
-    const [config, blocklistRows, ourShops] = await Promise.all([
+    const [config, blocklistRows, ourShops, globalConfig] = await Promise.all([
       this.flipEngine.getConfig(tenantId),
       this.flipEngine.listBlocklist(tenantId),
       this.flipEngine.listActiveShops(tenantId),
+      this.flipEngine.getGlobalConfig() as Promise<Record<string, unknown>>,
     ]);
 
     const blocklist = blocklistRows
@@ -489,6 +535,7 @@ export class FlipOrchestratorService {
     });
 
     const cfg = (config.config as Record<string, unknown>) ?? {};
+    const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
     const decision = decideFlip({
       source: 'SIMULATION',
       destinationTag: destination.tag,
@@ -506,11 +553,18 @@ export class FlipOrchestratorService {
         pickupLng: geocoded.lng,
         shopType: 'REPAIR',
       });
-      nearestShopName = pick.shop?.name ?? null;
-      distanceMilesSaved = pick.distanceMiles;
+      const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+      if (pick.shop && pick.distanceMiles != null && pick.distanceMiles <= maxDistance) {
+        nearestShopName = pick.shop.name;
+        distanceMilesSaved = pick.distanceMiles;
+      } else if (pick.shop) {
+        this.logger.debug(
+          `[flip-orchestrator] simulateLiveCall nearest shop ${pick.shop.name} is ${pick.distanceMiles} miles away, exceeding max distance of ${maxDistance} miles. Suppressing flip.`,
+        );
+      }
     }
 
-    const mentionRentals = (cfg as { mention_rentals?: boolean })?.mention_rentals !== false;
+    const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
     const bodyShops = pickTwoBodyShops(ourShops);
     const scenario = scenarioForDestinationTag(destination.tag);
     
@@ -519,11 +573,11 @@ export class FlipOrchestratorService {
     const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
 
     const ctx: ScriptContext = {
-      repName: (cfg.rep_name as string) || '',
-      companyName: (cfg.company_name as string) || 'Roadside Towing',
+      repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
+      companyName: (cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing',
       motorClub: input.motorClub || '',
-      callbackNumber: (cfg.callback_number as string) || '',
-      conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+      callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
+      conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       customerFirstName: firstNameOf(input.customerName),
       vehicle: input.vehicle || 'your vehicle',
       pickupLocation: input.pickupLocation || 'your location',
@@ -535,8 +589,10 @@ export class FlipOrchestratorService {
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
-      customAgentRules: (cfg.custom_agent_rules as string) || null,
+      customAgentRules:
+        (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
       scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
+      globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
     };
 
     const fullBody = renderCallBody(actualScenario, ctx);

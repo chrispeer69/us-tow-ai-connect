@@ -10,6 +10,7 @@ import { FlipOrchestratorService } from './flip-orchestrator.service';
 import { FlipNotifierService } from './flip-notifier.service';
 import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
 import { CommandCenterModule } from '../command-center/command-center.module';
+import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -31,6 +32,7 @@ import { CommandCenterModule } from '../command-center/command-center.module';
     IssueClassifierService,
     FlipOrchestratorService,
     FlipNotifierService,
+    SuperAdminAuthGuard,
   ],
   exports: [
     FlipEngineService,

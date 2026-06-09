@@ -62,7 +62,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Super Admin',
-    items: [{ href: '/super-admin', label: 'Platform Monitor', icon: 'tenants' }],
+    items: [
+      { href: '/super-admin', label: 'Platform Monitor', icon: 'tenants' },
+      { href: '/super-admin/flip-defaults', label: 'Global Flip Defaults', icon: 'flip-engine' },
+    ],
   },
 ];
 

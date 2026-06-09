@@ -5,6 +5,7 @@ import {
   aaaBrandedBlocklist,
   alphaShops,
   tenants,
+  platformSettings,
   type AlphaShopInsert,
   type AlphaShopRow,
 } from '../../db/schema';
@@ -251,13 +252,13 @@ export class FlipEngineService {
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
-    
+
     const row = rows[0];
     if (!row) return { enabled: false, config: {} };
 
     const cfg = (row.config as Record<string, unknown>) || {};
     if (!cfg.company_name) cfg.company_name = row.companyName;
-    
+
     if (!cfg.callback_number) {
       const phones = row.managerPhones as string[];
       cfg.callback_number = (phones && phones.length > 0) ? phones[0] : (row.assignedPhoneNumber || '');
@@ -284,6 +285,61 @@ export class FlipEngineService {
       .set(set as never)
       .where(eq(tenants.id, tenantId));
     return this.getConfig(tenantId);
+  }
+
+  async resetConfig(tenantId: string) {
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const current = await this.getConfig(tenantId);
+
+    // We want to keep hidden fields like _batch_summary_last_sent_at, but wipe out user settings
+    const currentConfig = current.config as Record<string, unknown>;
+    const newConfig: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(currentConfig)) {
+      if (k.startsWith('_')) {
+        newConfig[k] = v;
+      }
+    }
+
+    set.flipEngineConfig = newConfig as never;
+    await this.db
+      .update(tenants)
+      .set(set as never)
+      .where(eq(tenants.id, tenantId));
+    return this.getConfig(tenantId);
+  }
+
+  // ----- Global Defaults -----
+
+  async getGlobalConfig() {
+    const row = await this.db.query.platformSettings.findFirst({
+      where: eq(platformSettings.key, 'flip_engine_defaults'),
+    });
+    return row?.value || {};
+  }
+
+  async updateGlobalConfig(patch: any) {
+    const current = await this.getGlobalConfig();
+    const newConfig = { ...(current as Record<string, unknown>), ...(patch as Record<string, unknown>) };
+
+    // Upsert logic
+    const existing = await this.db.query.platformSettings.findFirst({
+      where: eq(platformSettings.key, 'flip_engine_defaults'),
+    });
+
+    if (existing) {
+      await this.db
+        .update(platformSettings)
+        .set({ value: newConfig, updatedAt: new Date() })
+        .where(eq(platformSettings.key, 'flip_engine_defaults'));
+    } else {
+      await this.db
+        .insert(platformSettings)
+        .values({
+          key: 'flip_engine_defaults',
+          value: newConfig,
+        });
+    }
+    return newConfig;
   }
 
   /**

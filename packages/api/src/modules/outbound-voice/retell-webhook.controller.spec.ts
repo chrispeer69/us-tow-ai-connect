@@ -1,161 +1,141 @@
-/**
- * retell-webhook.controller.spec.ts
-  *
-   * Unit tests for Retell webhook signature verification.
-    *
-     * Tests verify:
-      *  1. A correctly-signed raw payload passes verification.
-       *  2. A tampered payload (body modified after signing) is rejected with 401.
-        *  3. A missing x-retell-signature header is rejected with 401.
-         *
-          * The spec exercises the pure verification logic in isolation — no NestJS
-           * bootstrap, no DB, no OutboundVoiceService.  We re-implement the same
-            * HMAC-SHA256-over-rawBody scheme that the controller uses so the test is a
-             * genuine integration check of the algorithm, not a tautology.
-              */
-              import * as crypto from 'crypto';
-              import { describe, it, expect, beforeEach } from 'vitest';
+import { UnauthorizedException } from '@nestjs/common';
+import * as crypto from 'crypto';
+import type { Request } from 'express';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RetellWebhookController } from './retell-webhook.controller';
+import type { OutboundVoiceService } from './outbound-voice.service';
 
-              // ---------------------------------------------------------------------------
-              // Minimal re-implementation of the controller's verification logic so we can
-              // test it as a pure function without bootstrapping the full NestJS app.
-              // ---------------------------------------------------------------------------
+const WEBHOOK_SECRET = 'whsec_test_123';
+const API_KEY = 'key_test_abc123XYZ';
 
-              interface VerifyOptions {
-                /** The RETELL_API_KEY used as the HMAC key. */
-                  apiKey: string;
-                    /** The raw request body as a Buffer (mirrors req.rawBody). */
-                      rawBody: Buffer;
-                        /** The value of the x-retell-signature header. */
-                          signature: string | undefined;
-                          }
+describe('RetellWebhookController', () => {
+  const previousEnv = {
+    RETELL_WEBHOOK_SECRET: process.env.RETELL_WEBHOOK_SECRET,
+    RETELL_API_KEY: process.env.RETELL_API_KEY,
+  };
 
-                          /**
-                           * Returns true when the signature is valid, false otherwise.
-                            * Mirrors the logic in RetellWebhookController.handleEvent().
-                             */
-                             function verifyRetellSignature({ apiKey, rawBody, signature }: VerifyOptions): boolean {
-                               if (!signature) return false;
+  let outboundVoice: Pick<OutboundVoiceService, 'handleProviderWebhookEvent'>;
 
-                                 const expected = crypto
-                                     .createHmac('sha256', apiKey)
-                                         .update(rawBody)
-                                             .digest('hex');
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    process.env.RETELL_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    process.env.RETELL_API_KEY = API_KEY;
+    outboundVoice = {
+      handleProviderWebhookEvent: vi.fn().mockResolvedValue({ matched: true }),
+    };
+  });
 
-                                               // Timing-safe comparison — pads both to the same Buffer length so
-                                                 // timingSafeEqual doesn't throw on length mismatch.
-                                                   const a = Buffer.from(signature);
-                                                     const b = Buffer.from(expected);
-                                                       if (a.length !== b.length) return false;
-                                                         return crypto.timingSafeEqual(a, b);
-                                                         }
+  afterEach(() => {
+    process.env.RETELL_WEBHOOK_SECRET = previousEnv.RETELL_WEBHOOK_SECRET;
+    process.env.RETELL_API_KEY = previousEnv.RETELL_API_KEY;
+  });
 
-                                                         // ---------------------------------------------------------------------------
-                                                         // Helpers
-                                                         // ---------------------------------------------------------------------------
+  it('accepts a correctly signed raw payload', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const rawBody = Buffer.from('{"call":{"call_id":"call_123","call_status":"ended"},"event":"call_ended"}');
+    const body = {
+      event: 'call_ended',
+      call: { call_id: 'call_123', call_status: 'ended' },
+    } as const;
 
-                                                         const TEST_API_KEY = 'key_test_abc123XYZ';
+    const result = await controller.handleEvent(
+      requestWithRawBody(rawBody),
+      hmacHex(WEBHOOK_SECRET, rawBody),
+      body,
+    );
 
-                                                         /** Build a valid raw body Buffer and its correct HMAC-SHA256 signature. */
-                                                         function buildRequest(payload: object): { rawBody: Buffer; signature: string } {
-                                                           // Use the EXACT bytes that will be in the Buffer — this is what Retell sends
-                                                             // and what NestJS stores in req.rawBody.
-                                                               const rawBody = Buffer.from(JSON.stringify(payload), 'utf-8');
-                                                                 const signature = crypto
-                                                                     .createHmac('sha256', TEST_API_KEY)
-                                                                         .update(rawBody)
-                                                                             .digest('hex');
-                                                                               return { rawBody, signature };
-                                                                               }
+    expect(result).toEqual({ matched: true });
+    expect(outboundVoice.handleProviderWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'retell',
+        callId: 'call_123',
+        status: 'completed',
+      }),
+    );
+  });
 
-                                                                               // ---------------------------------------------------------------------------
-                                                                               // Tests
-                                                                               // ---------------------------------------------------------------------------
+  it('accepts a base64 signature with a sha256 prefix', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const rawBody = Buffer.from(JSON.stringify(sampleBody));
+    const signature = `sha256=${hmacBase64(WEBHOOK_SECRET, rawBody)}`;
 
-                                                                               const samplePayload = {
-                                                                                 event: 'call_ended',
-                                                                                   call: {
-                                                                                       call_id: 'abc123',
-                                                                                           call_status: 'ended',
-                                                                                               disconnection_reason: 'user_hangup',
-                                                                                                 },
-                                                                                                 };
+    await expect(
+      controller.handleEvent(requestWithRawBody(rawBody), signature, sampleBody),
+    ).resolves.toEqual({ matched: true });
+  });
 
-                                                                                                 describe('Retell webhook HMAC-SHA256 signature verification', () => {
-                                                                                                   let rawBody: Buffer;
-                                                                                                     let validSignature: string;
-                                                                                                     
-                                                                                                       beforeEach(() => {
-                                                                                                           const req = buildRequest(samplePayload);
-                                                                                                               rawBody = req.rawBody;
-                                                                                                                   validSignature = req.signature;
-                                                                                                                     });
-                                                                                                                     
-                                                                                                                       it('accepts a correctly-signed raw payload', () => {
-                                                                                                                           const result = verifyRetellSignature({
-                                                                                                                                 apiKey: TEST_API_KEY,
-                                                                                                                                       rawBody,
-                                                                                                                                             signature: validSignature,
-                                                                                                                                                 });
-                                                                                                                                                     expect(result).toBe(true);
-                                                                                                                                                       });
-                                                                                                                                                       
-                                                                                                                                                         it('rejects a tampered payload (body modified after signing)', () => {
-                                                                                                                                                             // Tamper: flip one byte in the middle of the buffer.
-                                                                                                                                                                 const tampered = Buffer.from(rawBody);
-                                                                                                                                                                     tampered[Math.floor(tampered.length / 2)] ^= 0xff;
-                                                                                                                                                                     
-                                                                                                                                                                         const result = verifyRetellSignature({
-                                                                                                                                                                               apiKey: TEST_API_KEY,
-                                                                                                                                                                                     rawBody: tampered,
-                                                                                                                                                                                           // The signature was computed over the original rawBody — mismatch!
-                                                                                                                                                                                                 signature: validSignature,
-                                                                                                                                                                                                     });
-                                                                                                                                                                                                         expect(result).toBe(false);
-                                                                                                                                                                                                           });
-                                                                                                                                                                                                           
-                                                                                                                                                                                                             it('rejects when the x-retell-signature header is absent', () => {
-                                                                                                                                                                                                                 const result = verifyRetellSignature({
-                                                                                                                                                                                                                       apiKey: TEST_API_KEY,
-                                                                                                                                                                                                                             rawBody,
-                                                                                                                                                                                                                                   signature: undefined,
-                                                                                                                                                                                                                                       });
-                                                                                                                                                                                                                                           expect(result).toBe(false);
-                                                                                                                                                                                                                                             });
-                                                                                                                                                                                                                                             
-                                                                                                                                                                                                                                               it('rejects a signature computed over JSON.stringify(parsedBody) instead of rawBody', () => {
-                                                                                                                                                                                                                                                   // This is the OLD broken approach: re-serialise the parsed object.
-                                                                                                                                                                                                                                                       // Key-order may differ between implementations; even when it doesn't,
-                                                                                                                                                                                                                                                           // this test proves we rely on rawBody bytes, not re-serialised JSON.
-                                                                                                                                                                                                                                                               const parsedBody = JSON.parse(rawBody.toString('utf-8'));
-                                                                                                                                                                                                                                                                   const wrongSignature = crypto
-                                                                                                                                                                                                                                                                         .createHmac('sha256', TEST_API_KEY)
-                                                                                                                                                                                                                                                                               .update(JSON.stringify(parsedBody))
-                                                                                                                                                                                                                                                                                     .digest('hex');
-                                                                                                                                                                                                                                                                                     
-                                                                                                                                                                                                                                                                                         // Only passes if rawBody bytes and JSON.stringify(parsedBody) produce the
-                                                                                                                                                                                                                                                                                             // same HMAC — which they happen to do for round-trippable JSON.
-                                                                                                                                                                                                                                                                                                 // The real failure mode is key reordering; we simulate it by deliberately
-                                                                                                                                                                                                                                                                                                     // re-ordering the keys to show the scheme breaks.
-                                                                                                                                                                                                                                                                                                         const reordered = {
-                                                                                                                                                                                                                                                                                                               call: parsedBody.call,  // 'call' first
-                                                                                                                                                                                                                                                                                                                     event: parsedBody.event, // 'event' second — opposite of original
-                                                                                                                                                                                                                                                                                                                         };
-                                                                                                                                                                                                                                                                                                                             const reorderedSig = crypto
-                                                                                                                                                                                                                                                                                                                                   .createHmac('sha256', TEST_API_KEY)
-                                                                                                                                                                                                                                                                                                                                         .update(JSON.stringify(reordered))
-                                                                                                                                                                                                                                                                                                                                               .digest('hex');
-                                                                                                                                                                                                                                                                                                                                               
-                                                                                                                                                                                                                                                                                                                                                   // The reordered signature must NOT equal the signature over the original rawBody.
-                                                                                                                                                                                                                                                                                                                                                       expect(reorderedSig).not.toBe(validSignature);
-                                                                                                                                                                                                                                                                                                                                                       
-                                                                                                                                                                                                                                                                                                                                                           // And using the reordered signature against the original rawBody must fail.
-                                                                                                                                                                                                                                                                                                                                                               const result = verifyRetellSignature({
-                                                                                                                                                                                                                                                                                                                                                                     apiKey: TEST_API_KEY,
-                                                                                                                                                                                                                                                                                                                                                                           rawBody,
-                                                                                                                                                                                                                                                                                                                                                                                 signature: reorderedSig,
-                                                                                                                                                                                                                                                                                                                                                                                     });
-                                                                                                                                                                                                                                                                                                                                                                                         expect(result).toBe(false);
-                                                                                                                                                                                                                                                                                                                                                                                           });
-                                                                                                                                                                                                                                                                                                                                                                                           });
-                                                                                                                                                                                                                                                                                                                                                                                           
+  it('falls back to JSON body verification when rawBody is unavailable', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const payload = Buffer.from(JSON.stringify(sampleBody));
+
+    await expect(
+      controller.handleEvent({} as Request, hmacHex(WEBHOOK_SECRET, payload), sampleBody),
+    ).resolves.toEqual({ matched: true });
+  });
+
+  it('accepts signatures generated with RETELL_API_KEY when both keys are configured', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const rawBody = Buffer.from(JSON.stringify(sampleBody));
+
+    await expect(
+      controller.handleEvent(requestWithRawBody(rawBody), hmacHex(API_KEY, rawBody), sampleBody),
+    ).resolves.toEqual({ matched: true });
+  });
+
+  it('rejects a tampered raw payload', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const originalRawBody = Buffer.from(JSON.stringify(sampleBody));
+    const tamperedRawBody = Buffer.from(JSON.stringify({ ...sampleBody, event: 'call_started' }));
+
+    await expect(
+      controller.handleEvent(
+        requestWithRawBody(tamperedRawBody),
+        hmacHex(WEBHOOK_SECRET, originalRawBody),
+        sampleBody,
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejects a missing signature when verification is configured', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+
+    await expect(
+      controller.handleEvent(requestWithRawBody(Buffer.from(JSON.stringify(sampleBody))), undefined, sampleBody),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('skips signature verification only when no Retell verification key is configured', async () => {
+    delete process.env.RETELL_WEBHOOK_SECRET;
+    delete process.env.RETELL_API_KEY;
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+
+    await expect(
+      controller.handleEvent({} as Request, undefined, sampleBody),
+    ).resolves.toEqual({ matched: true });
+  });
+});
+
+const sampleBody = {
+  event: 'call_ended',
+  call: {
+    call_id: 'call_123',
+    call_status: 'ended',
+    disconnection_reason: 'user_hangup',
+    duration_ms: 11_500,
+    transcript: 'hello',
+    recording_url: 'https://example.com/recording.mp3',
+    end_timestamp: Date.parse('2026-06-09T00:00:00.000Z'),
+  },
+} as const;
+
+function requestWithRawBody(rawBody: Buffer): Request {
+  return { rawBody } as unknown as Request;
+}
+
+function hmacHex(secret: string, payload: Buffer): string {
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+}
+
+function hmacBase64(secret: string, payload: Buffer): string {
+  return crypto.createHmac('sha256', secret).update(payload).digest('base64');
+}

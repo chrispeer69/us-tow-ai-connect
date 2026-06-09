@@ -24,12 +24,16 @@ function makeDb(opts?: { existingDraft?: Record<string, unknown> | null; inserte
   const draft = opts?.existingDraft;
   const tenantId = opts?.insertedTenantId ?? TENANT_ID;
   const inserted: Array<{ table: string; values: Record<string, unknown> }> = [];
+  let selectCalls = 0;
 
   const builder = {
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: () => Promise.resolve(draft ? [draft] : []),
+          limit: () => {
+            selectCalls += 1;
+            return Promise.resolve(selectCalls === 1 && draft ? [draft] : []);
+          },
         }),
       }),
     }),
@@ -57,6 +61,9 @@ function makeDb(opts?: { existingDraft?: Record<string, unknown> | null; inserte
         where: () => Promise.resolve(),
       }),
     }),
+    delete: (_t: unknown) => ({
+      where: () => Promise.resolve(),
+    }),
   };
 
   return { builder, inserted };
@@ -79,6 +86,10 @@ const makeAdapters = () => ({
 
 const makeNotifications = () => ({
   send: vi.fn(async () => {}),
+});
+
+const makeRedis = () => ({
+  del: vi.fn(async () => 0),
 });
 
 describe('TenantOnboardingService.complete (happy path)', () => {
@@ -107,6 +118,7 @@ describe('TenantOnboardingService.complete (happy path)', () => {
 
     const svc = new TenantOnboardingService(
       builder as never,
+      makeRedis() as never,
       makeEncryption() as never,
       makeAdapters() as never,
       makeNotifications() as never,
@@ -135,6 +147,7 @@ describe('TenantOnboardingService.complete (happy path)', () => {
     const { builder } = makeDb({ existingDraft: draft });
     const svc = new TenantOnboardingService(
       builder as never,
+      makeRedis() as never,
       makeEncryption() as never,
       makeAdapters() as never,
       makeNotifications() as never,

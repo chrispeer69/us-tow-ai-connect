@@ -67,7 +67,8 @@ export const tenants = pgTable('tenants', {
   //     batch_summary_size?: number,                     // default 10
   //     send_batch_summaries?: boolean,                  // default true
   //     send_daily_report?: boolean,                     // default true
-  //     mention_rentals?: boolean                        // default true
+  //     mention_rentals?: boolean,                        // default true
+  //     max_shop_distance_miles?: number                 // default 100
   //   }
   flipEngineEnabled: boolean('flip_engine_enabled').notNull().default(false),
   flipEngineConfig: jsonb('flip_engine_config').notNull().default({} as unknown as never),
@@ -1089,6 +1090,17 @@ export const supportTickets = pgTable(
     statusIdx: index('support_tickets_status_idx').on(t.status),
   }),
 );
+
 export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type SupportTicketInsert = typeof supportTickets.$inferInsert;
 
+// ============ SYSTEM CONFIGURATION ============
+
+export const platformSettings = pgTable(
+  'platform_settings',
+  {
+    key: varchar('key', { length: 100 }).primaryKey(),
+    value: jsonb('value').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  }
+);

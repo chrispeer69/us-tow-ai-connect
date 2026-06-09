@@ -80,7 +80,7 @@ Smoke-tested via PowerShell + dashboard "Make an outbound call" — phone rang, 
 
 Retell posts to `POST /webhooks/retell/outbound-result`.
 
-Signature: HMAC SHA-256 over JSON body, `X-Retell-Signature` header, key = `RETELL_WEBHOOK_SECRET`. Verification skipped if secret unset (dev/staging) with a warning.
+Signature: HMAC SHA-256 over the exact raw request body, `X-Retell-Signature` header, key = `RETELL_WEBHOOK_SECRET` or `RETELL_API_KEY` depending on the Retell account configuration. Verification is skipped only if both are unset (dev/staging) with a warning.
 
 Event mapping:
 - `call_started` → `in_progress`

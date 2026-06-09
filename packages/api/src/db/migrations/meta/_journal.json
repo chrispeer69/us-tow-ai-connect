@@ -232,6 +232,13 @@
       "when": 1780896605991,
       "tag": "0034_sudden_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1780956904279,
+      "tag": "0035_mushy_korvac",
+      "breakpoints": true
     }
   ]
 }

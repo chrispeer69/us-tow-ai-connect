@@ -1,0 +1,50 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "tsconfig.base.json",
+      "packages/api/package.json",
+      "packages/api/tsconfig.json",
+      "packages/api/src/**/*.ts",
+      "packages/shared/package.json",
+      "packages/shared/tsconfig.json",
+      "packages/shared/src/**/*.ts",
+      "packages/web/package.json",
+      "packages/web/next.config.js",
+      "packages/web/tsconfig.json",
+      "packages/web/src/**/*.ts",
+      "packages/web/src/**/*.tsx",
+      "scripts/**/*.ts",
+      "!**/*.orig",
+      "!**/*.local.json",
+      "!**/.next",
+      "!**/dist",
+      "!**/node_modules"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "javascript": {
+    "parser": {
+      "unsafeParameterDecoratorsEnabled": true
+    }
+  },
+  "assist": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false
+    }
+  }
+}
