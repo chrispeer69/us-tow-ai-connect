@@ -170,6 +170,39 @@ describe('OutboundVoiceService', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('enqueueCall reuses an existing custom call for the same related job', async () => {
+    const existing = {
+      id: 'voice-existing',
+      tenantId: TENANT_ID,
+      purpose: 'custom',
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      toPhone: '+15551234567',
+      toName: 'Pat',
+      scriptTemplate: 'custom',
+      scriptVariables: { body: 'already queued' },
+      status: 'no_answer',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const { db, calls } = makeFakeDb([existing]);
+    const svc = createSvc(db);
+
+    const row = await svc.enqueueCall({
+      tenantId: TENANT_ID,
+      purpose: 'custom',
+      toPhone: '+15551234567',
+      toName: 'Pat',
+      scriptTemplate: 'custom',
+      scriptVariables: { body: 'new duplicate' },
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+    });
+
+    expect(row.id).toBe('voice-existing');
+    expect(calls).toHaveLength(1);
+  });
+
   it('enqueueCall raises MissingVariableError when required variable is empty', async () => {
     const { db } = makeFakeDb();
     const svc = createSvc(db);

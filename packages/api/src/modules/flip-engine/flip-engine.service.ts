@@ -21,6 +21,7 @@ import {
 export interface PendingFlipJobLike {
   source: 'TOWBOOK' | 'AAA_PORTAL' | string;
   jobId: string;
+  relatedJobId?: string | null;
   customerName: string;
   customerPhone: string;
   vehicle?: string | null;
@@ -390,6 +391,7 @@ export class FlipEngineService {
       .map((r) => ({
         source: String(r.source),
         jobId: String(r.source_job_id ?? r.id),
+        relatedJobId: String(r.id),
         customerName: (r.caller_name as string) ?? '',
         customerPhone: String(r.caller_phone),
         vehicle:

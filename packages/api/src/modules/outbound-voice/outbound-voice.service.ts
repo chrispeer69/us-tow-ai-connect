@@ -85,6 +85,28 @@ export class OutboundVoiceService {
       );
     }
 
+    if (input.relatedJobId && input.purpose === 'custom') {
+      const existing = await this.db
+        .select()
+        .from(outboundCalls)
+        .where(
+          and(
+            eq(outboundCalls.tenantId, input.tenantId),
+            eq(outboundCalls.relatedJobId, input.relatedJobId),
+            eq(outboundCalls.purpose, input.purpose),
+            sql`${outboundCalls.status} <> 'cancelled'`,
+          ),
+        )
+        .orderBy(desc(outboundCalls.createdAt))
+        .limit(1);
+      if (existing[0]) {
+        this.logger.debug(
+          `[outbound-voice] duplicate custom call suppressed tenant=${input.tenantId} relatedJobId=${input.relatedJobId} existing=${existing[0].id}`,
+        );
+        return existing[0];
+      }
+    }
+
     const inserted = await this.db
       .insert(outboundCalls)
       .values({

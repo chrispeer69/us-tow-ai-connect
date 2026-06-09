@@ -141,13 +141,6 @@ export class FlipOrchestratorService {
       jobsClassified += 1;
 
       try {
-        // NOTE: cross-restart DB dedup intentionally not done here. job.jobId is a
-        // source-side string (e.g. Towbook ID), not a UUID, so querying or writing
-        // it into outboundCalls.relatedJobId (uuid column) throws. Within-process
-        // dedup is handled by the in-memory `seen` map above. Proper cross-restart
-        // dedup would require mapping source IDs to unified_jobs.id UUIDs, which is
-        // a future enhancement.
-
         const enqueued = await this.handleJob(tenantId, job);
         if (enqueued) callsEnqueued += 1;
       } catch (err) {
@@ -311,7 +304,7 @@ export class FlipOrchestratorService {
         toName: job.customerName,
         scriptTemplate: 'custom',
         scriptVariables: { body: fullBody },
-        relatedJobId: null, // job.jobId is the source-side id, not a UUID
+        relatedJobId: job.relatedJobId ?? null,
       });
       return true;
     } catch (err) {
@@ -776,6 +769,7 @@ function pickTwoBodyShops(
 export interface PendingFlipJob {
   source: 'TOWBOOK' | 'AAA_PORTAL' | string;
   jobId: string;
+  relatedJobId?: string | null;
   customerName: string;
   customerPhone: string;
   vehicle?: string | null;
@@ -836,6 +830,7 @@ function manualSandboxJob(input: FlipSandboxInput): PendingFlipJob {
   return {
     source: input.source ?? 'SANDBOX',
     jobId: 'manual-sandbox',
+    relatedJobId: null,
     customerName: input.customerName ?? 'Sandbox Customer',
     customerPhone: input.customerPhone ?? '',
     vehicle: input.vehicle ?? null,
@@ -857,6 +852,7 @@ function unifiedJobToPendingFlipJob(row: UnifiedJobRow): PendingFlipJob {
   return {
     source: row.source,
     jobId: row.sourceJobId ?? row.id,
+    relatedJobId: row.id,
     customerName: row.callerName ?? '',
     customerPhone: row.callerPhone ?? '',
     vehicle:
