@@ -11,6 +11,7 @@ export interface JwtPayload {
   email: string;
   tenantId?: string;
   role?: string;
+  platformRole?: string;
 }
 
 @Injectable()
@@ -38,11 +39,16 @@ export class AuthService {
       .where(eq(tenantMembers.userId, user.id))
       .limit(1);
 
+    const platformRole = isConfiguredSuperAdminEmail(user.email)
+      ? 'super_admin'
+      : user.platformRole;
+
     const payload: JwtPayload = {
       userId: user.id,
       email: user.email,
       tenantId: member?.tenantId,
       role: member?.role,
+      platformRole,
     };
 
     try { return { access_token: this.jwtService.sign(payload) }; } catch (e: any) { throw new Error("JWT Crash: " + e.message); }
@@ -157,4 +163,12 @@ export class AuthService {
 
     return user;
   }
+}
+
+function isConfiguredSuperAdminEmail(email: string): boolean {
+  return (process.env.SUPER_ADMIN_EMAILS || process.env.SUPER_ADMIN_DEV_EMAIL || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(email.trim().toLowerCase());
 }

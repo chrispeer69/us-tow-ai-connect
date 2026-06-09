@@ -26,6 +26,10 @@ function parseJwt(token: string) {
 function isTokenForSuperAdmin(token: string): boolean {
   const payload = parseJwt(token);
   if (!payload?.email) return false;
+  if (payload.platformRole === 'super_admin') return true;
+
+  // Backward-compatible fallback for older tokens/builds. New logins should
+  // rely on the signed platformRole claim from the API, not browser env.
   const allowedEmails = (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS || process.env.NEXT_PUBLIC_SUPER_ADMIN_DEV_EMAIL || '')
     .split(',')
     .map((e: string) => e.trim().toLowerCase())
