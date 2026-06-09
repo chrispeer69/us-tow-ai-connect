@@ -35,11 +35,11 @@ import { OutboundVoiceService } from './outbound-voice.service';
  * }
  *
  * Signature verification (per https://docs.retellai.com/features/webhook):
- *   Retell signs with HMAC-SHA256 over the exact raw request bytes and sends
- *   the digest in the x-retell-signature header. Some accounts are configured
- *   with a dedicated RETELL_WEBHOOK_SECRET while older setups use RETELL_API_KEY,
- *   so verification accepts either configured value. Production must set at
- *   least one of them; verification is skipped only when both are unset.
+ *   Retell signs with HMAC-SHA256 over the exact raw request bytes plus a
+ *   timestamp and sends it as x-retell-signature: v={timestamp},d={hex_digest}.
+ *   Some older/test paths used a bare digest, so verification keeps legacy
+ *   digest support. Production must set RETELL_API_KEY or RETELL_WEBHOOK_SECRET;
+ *   verification is skipped only when both are unset.
  */
 @Controller('webhooks/retell')
 export class RetellWebhookController {
@@ -172,11 +172,16 @@ function verifyRetellSignature(
   secrets: RetellVerificationSecret[],
   payloads: RetellSignaturePayload[],
 ): boolean {
+  const structuredSignature = parseRetellStructuredSignature(signature);
   const candidates = normalizeSignatureHeader(signature);
-  if (candidates.length === 0) return false;
+  if (!structuredSignature && candidates.length === 0) return false;
 
   for (const secret of secrets) {
     for (const payload of payloads) {
+      if (structuredSignature && verifyStructuredRetellSignature(structuredSignature, secret, payload)) {
+        return true;
+      }
+
       const expectedHex = crypto
         .createHmac('sha256', secret.value)
         .update(payload.bytes)
@@ -197,6 +202,24 @@ function verifyRetellSignature(
   }
 
   return false;
+}
+
+function verifyStructuredRetellSignature(
+  signature: RetellStructuredSignature,
+  secret: RetellVerificationSecret,
+  payload: RetellSignaturePayload,
+): boolean {
+  if (Math.abs(Date.now() - signature.timestampMs) > RETELL_SIGNATURE_TOLERANCE_MS) {
+    return false;
+  }
+
+  const expectedHex = crypto
+    .createHmac('sha256', secret.value)
+    .update(payload.bytes)
+    .update(signature.timestamp, 'utf8')
+    .digest('hex');
+
+  return timingSafeEqual(signature.digest, expectedHex);
 }
 
 function buildSignaturePayloads(req: Request, body: RetellWebhookBody): RetellSignaturePayload[] {
@@ -222,9 +245,38 @@ function normalizeSignatureHeader(signature: string | undefined): string[] {
     .filter(Boolean)
     .flatMap((part) => {
       const withoutPrefix = part.replace(/^sha256=/i, '').trim();
+      if (/^[vd]=/i.test(withoutPrefix)) return [];
       return withoutPrefix === part ? [part] : [withoutPrefix];
     });
 }
+
+function parseRetellStructuredSignature(signature: string | undefined): RetellStructuredSignature | null {
+  if (!signature) return null;
+
+  const parts = Object.fromEntries(
+    signature
+      .split(',')
+      .map((part) => part.trim().split('='))
+      .filter((entry): entry is [string, string] => entry.length === 2 && Boolean(entry[0]) && Boolean(entry[1]))
+      .map(([key, value]) => [key.toLowerCase(), value]),
+  );
+  const timestamp = parts.v;
+  const digest = parts.d;
+  if (!timestamp || !digest || !/^\d+$/.test(timestamp) || !/^[a-f0-9]{64}$/i.test(digest)) {
+    return null;
+  }
+
+  const timestampMs = Number(timestamp);
+  if (!Number.isSafeInteger(timestampMs)) return null;
+
+  return {
+    timestamp,
+    timestampMs,
+    digest: digest.toLowerCase(),
+  };
+}
+
+const RETELL_SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
 
 interface RetellVerificationSecret {
   label: 'RETELL_WEBHOOK_SECRET' | 'RETELL_API_KEY';
@@ -234,6 +286,12 @@ interface RetellVerificationSecret {
 interface RetellSignaturePayload {
   label: 'rawBody' | 'jsonBody';
   bytes: Buffer;
+}
+
+interface RetellStructuredSignature {
+  timestamp: string;
+  timestampMs: number;
+  digest: string;
 }
 
 interface RetellWebhookBody {

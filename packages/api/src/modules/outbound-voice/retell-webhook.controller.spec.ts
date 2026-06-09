@@ -26,6 +26,7 @@ describe('RetellWebhookController', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     process.env.RETELL_WEBHOOK_SECRET = previousEnv.RETELL_WEBHOOK_SECRET;
     process.env.RETELL_API_KEY = previousEnv.RETELL_API_KEY;
   });
@@ -62,6 +63,30 @@ describe('RetellWebhookController', () => {
     await expect(
       controller.handleEvent(requestWithRawBody(rawBody), signature, sampleBody),
     ).resolves.toEqual({ matched: true });
+  });
+
+  it('accepts Retell structured signatures generated from raw body plus timestamp', async () => {
+    vi.setSystemTime(new Date('2026-06-09T00:00:00.000Z'));
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const rawBody = Buffer.from(JSON.stringify(sampleBody));
+    const timestamp = String(Date.now());
+    const signature = `v=${timestamp},d=${hmacRetellStructured(API_KEY, rawBody, timestamp)}`;
+
+    await expect(
+      controller.handleEvent(requestWithRawBody(rawBody), signature, sampleBody),
+    ).resolves.toEqual({ matched: true });
+  });
+
+  it('rejects expired Retell structured signatures', async () => {
+    vi.setSystemTime(new Date('2026-06-09T00:10:01.000Z'));
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const rawBody = Buffer.from(JSON.stringify(sampleBody));
+    const timestamp = String(Date.parse('2026-06-09T00:00:00.000Z'));
+    const signature = `v=${timestamp},d=${hmacRetellStructured(API_KEY, rawBody, timestamp)}`;
+
+    await expect(
+      controller.handleEvent(requestWithRawBody(rawBody), signature, sampleBody),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('falls back to JSON body verification when rawBody is unavailable', async () => {
@@ -138,4 +163,8 @@ function hmacHex(secret: string, payload: Buffer): string {
 
 function hmacBase64(secret: string, payload: Buffer): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('base64');
+}
+
+function hmacRetellStructured(secret: string, payload: Buffer, timestamp: string): string {
+  return crypto.createHmac('sha256', secret).update(payload).update(timestamp, 'utf8').digest('hex');
 }
