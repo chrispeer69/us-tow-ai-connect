@@ -67,7 +67,7 @@ interface FlipEngineConfig {
   config: Record<string, unknown>;
 }
 
-type Tab = 'shops' | 'blocklist' | 'settings' | 'activity';
+type Tab = 'shops' | 'blocklist' | 'settings' | 'activity' | 'sandbox';
 
 interface FlipActivityRow {
   id: string;
@@ -99,6 +99,54 @@ interface FlipActivityResponse {
     skipped: number;
     winRate: number;
   };
+}
+
+interface JobsListItem {
+  id: string;
+  callerName: string | null;
+  source: string;
+  sourceJobId: string;
+  status: string;
+  pickupAddress?: string | null;
+  dropoffAddress?: string | null;
+}
+
+interface SandboxResult {
+  dryRun: true;
+  job: Record<string, unknown>;
+  destination: {
+    tag: string;
+    reason: string;
+    placeTypes?: string[];
+    placeId?: string | null;
+    resolvedName?: string | null;
+    resolvedAddress?: string | null;
+    resolvedLat?: number | null;
+    resolvedLng?: number | null;
+  };
+  issue: {
+    subcategory: string | null;
+    confidence: number;
+    signals: string[];
+  };
+  decision: {
+    flipEligible: boolean;
+    reasonCode: string;
+    bodyShopSoftMention?: boolean;
+  };
+  nearestShop: {
+    name: string;
+    distanceMiles: number | null;
+    withinMaxDistance: boolean;
+  } | null;
+  maxShopDistanceMiles: number;
+  final: {
+    wouldCall: boolean;
+    wouldPitchFlip: boolean;
+    scenario: string;
+    reason: string;
+  };
+  scriptPreview: string;
 }
 
 const MATCH_TYPE_COLOR: Record<string, string> = {
@@ -188,6 +236,7 @@ export default function FlipEnginePage() {
       <div className="flex gap-2 border-b border-zinc-800">
         <TabButton label="Activity" active={tab === 'activity'} onClick={() => setTab('activity')} />
         <TabButton label={`Shops (${shops.length})`} active={tab === 'shops'} onClick={() => setTab('shops')} />
+        <TabButton label="Sandbox" active={tab === 'sandbox'} onClick={() => setTab('sandbox')} />
         <TabButton
           label={`AAA Blocklist (${blocklist.length})`}
           active={tab === 'blocklist'}
@@ -204,6 +253,7 @@ export default function FlipEnginePage() {
 
       {tab === 'activity' && <ActivityTab setError={setError} />}
       {tab === 'shops' && <ShopsTab shops={shops} reload={loadShops} setError={setError} />}
+      {tab === 'sandbox' && <SandboxTab setError={setError} />}
       {tab === 'blocklist' && (
         <BlocklistTab blocklist={blocklist} reload={loadBlocklist} setError={setError} />
       )}
@@ -254,6 +304,242 @@ function TabButton({
       {label}
     </button>
   );
+}
+
+// ---------- sandbox tab ----------
+
+function SandboxTab({ setError }: { setError: (s: string | null) => void }) {
+  const [jobs, setJobs] = useState<JobsListItem[]>([]);
+  const [jobId, setJobId] = useState('');
+  const [form, setForm] = useState({
+    destinationName: '',
+    destinationAddress: '',
+    pickupAddress: '',
+    pickupLat: '',
+    pickupLng: '',
+    reasonText: '',
+    vehicleNotes: '',
+    motorClubServiceCode: '',
+  });
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<SandboxResult | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoadingJobs(true);
+      try {
+        const data = await api<{ items: JobsListItem[] }>(
+          '/v1/admin/command-center/jobs?limit=50',
+        );
+        setJobs(data.items);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setLoadingJobs(false);
+      }
+    })();
+  }, [setError]);
+
+  const run = async () => {
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const json = jobId
+        ? { jobId }
+        : {
+            destinationName: emptyToNull(form.destinationName),
+            destinationAddress: emptyToNull(form.destinationAddress),
+            pickupAddress: emptyToNull(form.pickupAddress),
+            pickupLat: numberOrNull(form.pickupLat),
+            pickupLng: numberOrNull(form.pickupLng),
+            reasonText: emptyToNull(form.reasonText),
+            vehicleNotes: emptyToNull(form.vehicleNotes),
+            motorClubServiceCode: emptyToNull(form.motorClubServiceCode),
+          };
+      const res = await api<{ data: SandboxResult }>('/v1/admin/flip-engine/sandbox/classify', {
+        method: 'POST',
+        json,
+      });
+      setResult(res.data);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,420px)_1fr]">
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <div>
+            <h2 className="text-sm font-semibold">Dry-run classifier</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Test an existing job or manual destination. This does not place calls or write logs.
+            </p>
+          </div>
+
+          <label className="block text-sm">
+            Previous job
+            <select
+              value={jobId}
+              onChange={(e) => setJobId(e.target.value)}
+              className="mt-1 block w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-2 text-zinc-100"
+              disabled={loadingJobs}
+            >
+              <option value="">Manual input</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.callerName || '(no name)'} - {j.source} {j.sourceJobId} ({j.status})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!jobId && (
+            <div className="space-y-3">
+              <Input
+                placeholder="Destination business name"
+                value={form.destinationName}
+                onChange={(e) => setForm({ ...form, destinationName: e.target.value })}
+              />
+              <Input
+                placeholder="Destination address"
+                value={form.destinationAddress}
+                onChange={(e) => setForm({ ...form, destinationAddress: e.target.value })}
+              />
+              <Input
+                placeholder="Pickup address"
+                value={form.pickupAddress}
+                onChange={(e) => setForm({ ...form, pickupAddress: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  placeholder="Pickup lat"
+                  value={form.pickupLat}
+                  onChange={(e) => setForm({ ...form, pickupLat: e.target.value })}
+                />
+                <Input
+                  placeholder="Pickup lng"
+                  value={form.pickupLng}
+                  onChange={(e) => setForm({ ...form, pickupLng: e.target.value })}
+                />
+              </div>
+              <Input
+                placeholder="Reason / service type"
+                value={form.reasonText}
+                onChange={(e) => setForm({ ...form, reasonText: e.target.value })}
+              />
+              <Input
+                placeholder="Vehicle notes"
+                value={form.vehicleNotes}
+                onChange={(e) => setForm({ ...form, vehicleNotes: e.target.value })}
+              />
+              <Input
+                placeholder="Motor club service code"
+                value={form.motorClubServiceCode}
+                onChange={(e) => setForm({ ...form, motorClubServiceCode: e.target.value })}
+              />
+            </div>
+          )}
+
+          <Button
+            onClick={() => void run()}
+            disabled={running || (!jobId && !form.destinationAddress && !form.destinationName)}
+          >
+            {running ? <Spinner className="mr-2" /> : null}
+            Run dry run
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          {!result ? (
+            <p className="text-sm text-zinc-500">Run a dry run to see the flip decision trace.</p>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <TraceCard
+                  label="Destination"
+                  value={result.destination.tag}
+                  detail={result.destination.reason}
+                />
+                <TraceCard
+                  label="Issue"
+                  value={result.issue.subcategory ?? 'unknown'}
+                  detail={`confidence ${result.issue.confidence}`}
+                />
+                <TraceCard
+                  label="Final"
+                  value={result.final.wouldPitchFlip ? 'Flip pitch' : 'No flip pitch'}
+                  detail={result.final.reason}
+                />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <JsonPanel title="Classification trace" value={{
+                  destination: result.destination,
+                  issue: result.issue,
+                  decision: result.decision,
+                  nearestShop: result.nearestShop,
+                  maxShopDistanceMiles: result.maxShopDistanceMiles,
+                  final: result.final,
+                }} />
+                <JsonPanel title="Job input" value={result.job} />
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Script preview</h3>
+                <textarea
+                  readOnly
+                  value={result.scriptPreview}
+                  className="min-h-[280px] w-full rounded border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-100"
+                />
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function TraceCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-zinc-100">{value}</div>
+      <div className="mt-1 text-xs text-zinc-400">{detail}</div>
+    </div>
+  );
+}
+
+function JsonPanel({ title, value }: { title: string; value: unknown }) {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      <textarea
+        readOnly
+        value={JSON.stringify(value, null, 2)}
+        className="min-h-[260px] w-full rounded border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-100"
+      />
+    </div>
+  );
+}
+
+function emptyToNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function numberOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 // ---------- shops tab ----------

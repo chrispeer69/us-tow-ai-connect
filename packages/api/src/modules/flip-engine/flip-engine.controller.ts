@@ -105,6 +105,31 @@ const NearestQuerySchema = z.object({
 });
 type NearestQueryBody = z.infer<typeof NearestQuerySchema>;
 
+const SandboxSchema = z
+  .object({
+    jobId: z.string().uuid().optional(),
+    source: z.string().max(32).optional(),
+    customerName: z.string().max(255).optional().nullable(),
+    customerPhone: z.string().max(20).optional().nullable(),
+    vehicle: z.string().max(255).optional().nullable(),
+    motorClub: z.string().max(120).optional().nullable(),
+    motorClubServiceCode: z.string().max(120).optional().nullable(),
+    reasonText: z.string().max(500).optional().nullable(),
+    vehicleNotes: z.string().max(500).optional().nullable(),
+    pickupAddress: z.string().max(500).optional().nullable(),
+    pickupLat: z.number().optional().nullable(),
+    pickupLng: z.number().optional().nullable(),
+    destinationName: z.string().max(255).optional().nullable(),
+    destinationAddress: z.string().max(500).optional().nullable(),
+    destinationPhone: z.string().max(20).optional().nullable(),
+    companyName: z.string().max(180).optional().nullable(),
+  })
+  .refine(
+    (body) => body.jobId || body.destinationAddress || body.destinationName,
+    'Provide jobId or destinationAddress/destinationName',
+  );
+type SandboxBody = z.infer<typeof SandboxSchema>;
+
 @Controller('v1/admin/flip-engine')
 @UseGuards(AdminAuthGuard)
 export class FlipEngineController {
@@ -187,6 +212,14 @@ export class FlipEngineController {
       pickupLng: body.lng,
       shopType: body.shopType,
     });
+    return { status: 'success', data: result };
+  }
+
+  @Post('sandbox/classify')
+  @HttpCode(200)
+  @UsePipes(new ZodValidationPipe(SandboxSchema))
+  async sandboxClassify(@Req() req: AdminRequest, @Body() body: SandboxBody) {
+    const result = await this.orchestrator.sandboxAnalyze(req.tenantId, body);
     return { status: 'success', data: result };
   }
 

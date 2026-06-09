@@ -38,6 +38,9 @@ export interface ClassifyDestinationResult {
  *      Short-circuits to `aaa_branded` regardless of any other signal.
  *   2. Self-detect: destination name matches one of OUR partner shops.
  *   3. Google Places lookup → maps `place.types` to a tag.
+ *      If Google only resolves a generic address/premise with lat/lng, run a
+ *      tight nearby repair-shop search to catch customer pins dropped close to
+ *      a real repair facility.
  *   4. Fallback: street-address regex without a business name → unknown.
  *   5. Unknown.
  *
@@ -149,6 +152,20 @@ export class DestinationClassifierService {
       const top = (json.results ?? [])[0];
       if (!top) return null;
       const tag = mapPlaceTypesToTag(top.types ?? []);
+      if (
+        tag === 'unknown' &&
+        isGenericAddressLikePlace(top.types ?? []) &&
+        top.geometry?.location?.lat != null &&
+        top.geometry?.location?.lng != null
+      ) {
+        const nearby = await this.tryNearbyRepairLookup({
+          apiKey,
+          lat: top.geometry.location.lat,
+          lng: top.geometry.location.lng,
+          input,
+        });
+        if (nearby) return nearby;
+      }
       return {
         tag,
         reason: `places:${(top.types ?? []).join(',')}`,
@@ -161,6 +178,77 @@ export class DestinationClassifierService {
       };
     } catch (err) {
       this.logger.warn(`[flip-engine] places lookup threw: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  private async tryNearbyRepairLookup(input: {
+    apiKey: string;
+    lat: number;
+    lng: number;
+    input: ClassifyDestinationInput;
+  }): Promise<ClassifyDestinationResult | null> {
+    try {
+      const url = new URL('https://maps.googleapis.com/maps/api/place/nearbysearch/json');
+      url.searchParams.set('location', `${input.lat},${input.lng}`);
+      url.searchParams.set('radius', String(NEARBY_REPAIR_RADIUS_METERS));
+      url.searchParams.set('type', 'car_repair');
+      url.searchParams.set('key', input.apiKey);
+
+      const res = await fetch(url, { method: 'GET' });
+      if (!res.ok) {
+        this.logger.warn(`[flip-engine] nearby repair lookup returned ${res.status}`);
+        return null;
+      }
+
+      const json = (await res.json()) as PlacesResponse;
+      const candidates = (json.results ?? [])
+        .filter((place) => isRepairLikePlace(place))
+        .filter((place) => {
+          const loc = place.geometry?.location;
+          if (!loc) return false;
+          return distanceMeters(input.lat, input.lng, loc.lat, loc.lng) <= NEARBY_REPAIR_RADIUS_METERS;
+        })
+        .sort((a, b) => {
+          const aLoc = a.geometry?.location;
+          const bLoc = b.geometry?.location;
+          if (!aLoc || !bLoc) return 0;
+          return distanceMeters(input.lat, input.lng, aLoc.lat, aLoc.lng) -
+            distanceMeters(input.lat, input.lng, bLoc.lat, bLoc.lng);
+        });
+      const top = candidates[0];
+      if (!top) return null;
+
+      const nearbyName = top.name ?? '';
+      const lowerNearbyName = nearbyName.toLowerCase().trim();
+      for (const ourName of input.input.ourShopNames ?? []) {
+        if (lowerNearbyName && (lowerNearbyName.includes(ourName) || ourName.includes(lowerNearbyName))) {
+          return {
+            tag: 'our_shop',
+            reason: `places_nearby_repair:self_shop:${top.place_id ?? 'unknown'}`,
+            placeTypes: top.types ?? [],
+            placeId: top.place_id ?? null,
+            resolvedName: top.name ?? null,
+            resolvedAddress: top.formatted_address ?? top.vicinity ?? input.input.destinationAddress ?? null,
+            resolvedLat: top.geometry?.location?.lat ?? input.lat,
+            resolvedLng: top.geometry?.location?.lng ?? input.lng,
+          };
+        }
+      }
+
+      const tag = isBodyShopName(nearbyName) ? 'auto_body' : 'competitor_repair';
+      return {
+        tag,
+        reason: `places_nearby_repair:${top.place_id ?? 'unknown'}`,
+        placeTypes: top.types ?? [],
+        placeId: top.place_id ?? null,
+        resolvedName: top.name ?? null,
+        resolvedAddress: top.formatted_address ?? top.vicinity ?? input.input.destinationAddress ?? null,
+        resolvedLat: top.geometry?.location?.lat ?? input.lat,
+        resolvedLng: top.geometry?.location?.lng ?? input.lng,
+      };
+    } catch (err) {
+      this.logger.warn(`[flip-engine] nearby repair lookup threw: ${(err as Error).message}`);
       return null;
     }
   }
@@ -213,17 +301,57 @@ export function mapPlaceTypesToTag(types: string[]): DestinationTag {
   return 'unknown';
 }
 
+function isGenericAddressLikePlace(types: string[]): boolean {
+  const set = new Set(types);
+  return (
+    set.has('street_address') ||
+    set.has('premise') ||
+    set.has('subpremise') ||
+    set.has('neighborhood') ||
+    set.has('locality')
+  );
+}
+
+function isRepairLikePlace(place: PlaceResult): boolean {
+  const types = new Set(place.types ?? []);
+  if (types.has('car_repair') || types.has('car_dealer') || types.has('auto_parts')) return true;
+  const name = (place.name ?? '').toLowerCase();
+  return /\b(auto|automotive|mechanic|repair|service center|garage|collision|body shop|tire|brake|transmission)\b/.test(name);
+}
+
+function isBodyShopName(name: string): boolean {
+  return /\b(body shop|collision|autobody|auto body|paint|caliber|crash|dent)\b/i.test(name);
+}
+
+function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const radiusMeters = 6_371_000;
+  const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return radiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const NEARBY_REPAIR_RADIUS_METERS = 300;
+
 interface PlacesResponse {
-  results?: Array<{
-    name?: string;
-    place_id?: string;
-    formatted_address?: string;
-    types?: string[];
-    geometry?: {
-      location?: {
-        lat: number;
-        lng: number;
-      };
+  results?: PlaceResult[];
+}
+
+interface PlaceResult {
+  name?: string;
+  place_id?: string;
+  formatted_address?: string;
+  vicinity?: string;
+  types?: string[];
+  geometry?: {
+    location?: {
+      lat: number;
+      lng: number;
     };
-  }>;
+  };
 }

@@ -1,9 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { haversineMiles } from './nearest-shop.selector';
 import { Cron } from '@nestjs/schedule';
 import { eq, and } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs, tenants, outboundCalls } from '../../db/schema';
+import { outboundCallLogs, tenants, outboundCalls, unifiedJobs } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
 import { OutboundVoiceService } from '../outbound-voice/outbound-voice.service';
 import {
@@ -327,6 +327,159 @@ export class FlipOrchestratorService {
     }
   }
 
+  async sandboxAnalyze(
+    tenantId: string,
+    input: FlipSandboxInput,
+  ): Promise<FlipSandboxResult> {
+    const job = input.jobId
+      ? await this.loadSandboxJob(tenantId, input.jobId)
+      : manualSandboxJob(input);
+
+    const [config, blocklistRows, ourShops, globalConfig] = await Promise.all([
+      this.flipEngine.getConfig(tenantId),
+      this.flipEngine.listBlocklist(tenantId),
+      this.flipEngine.listActiveShops(tenantId),
+      this.flipEngine.getGlobalConfig() as Promise<Record<string, unknown>>,
+    ]);
+    const blocklist = blocklistRows
+      .filter((b) => b.active)
+      .map((b) => ({
+        matchType: b.matchType as 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE',
+        matchValue: b.matchValue,
+        active: b.active,
+      }));
+    const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+
+    const destination = await this.destinationClassifier.classify({
+      destinationName: job.destinationName ?? null,
+      destinationAddress: job.destinationAddress ?? null,
+      destinationPhone: job.destinationPhone ?? null,
+      source: job.source,
+      blocklist,
+      ourShopNames,
+    });
+
+    if (destination.tag !== 'our_shop' && destination.tag !== 'aaa_branded' && destination.resolvedLat != null && destination.resolvedLng != null) {
+      for (const shop of ourShops) {
+        if (shop.lat != null && shop.lng != null && shop.active) {
+          const dist = haversineMiles(destination.resolvedLat, destination.resolvedLng, Number(shop.lat), Number(shop.lng));
+          if (dist <= 0.2) {
+            destination.tag = 'our_shop';
+            destination.reason = `proximity_to_partner_shop_${shop.name}`;
+            break;
+          }
+        }
+      }
+    }
+
+    const issue = this.issueClassifier.classify({
+      reasonText: job.reasonText ?? null,
+      vehicleNotes: job.vehicleNotes ?? null,
+      motorClubServiceCode: job.motorClubServiceCode ?? null,
+    });
+
+    const cfg = (config.config as Record<string, unknown>) ?? {};
+    const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
+    const decision = decideFlip({
+      source: job.source,
+      destinationTag: destination.tag,
+      issueSubcategory: issue.subcategory,
+      issueConfidence: issue.confidence,
+      config: cfg,
+    });
+
+    let nearestShop: {
+      name: string;
+      distanceMiles: number | null;
+      withinMaxDistance: boolean;
+    } | null = null;
+    let nearestShopName: string | null = null;
+    let distanceMilesSaved: number | null = null;
+    const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+    if (decision.flipEligible && job.pickupLat != null && job.pickupLng != null) {
+      const pick = await this.flipEngine.pickNearestShop({
+        tenantId,
+        pickupLat: job.pickupLat,
+        pickupLng: job.pickupLng,
+        shopType: 'REPAIR',
+      });
+      if (pick.shop) {
+        const withinMaxDistance = pick.distanceMiles != null && pick.distanceMiles <= maxDistance;
+        nearestShop = {
+          name: pick.shop.name,
+          distanceMiles: pick.distanceMiles,
+          withinMaxDistance,
+        };
+        if (withinMaxDistance) {
+          nearestShopName = pick.shop.name;
+          distanceMilesSaved = pick.distanceMiles;
+        }
+      }
+    }
+
+    const scenario = scenarioForDestinationTag(destination.tag);
+    const flipEligible = decision.flipEligible && !!nearestShopName;
+    const actualScenario = flipEligible ? scenario : (destination.tag === 'competitor_repair' ? scenarioForDestinationTag('unknown') : scenario);
+    const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
+    const bodyShops = pickTwoBodyShops(ourShops);
+    const ctx: ScriptContext = {
+      repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
+      companyName:
+        job.companyName ??
+        ((cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing'),
+      motorClub: job.motorClub ?? '',
+      callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
+      conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+      customerFirstName: firstNameOf(job.customerName),
+      vehicle: formatVehicleYear(job.vehicle),
+      pickupLocation: job.pickupAddress ?? 'your location',
+      destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
+      issue: issuePhrase(issue.subcategory),
+      issueSubcategory: issue.subcategory,
+      nearestShop: flipEligible ? nearestShopName : null,
+      nearestShopDistanceMiles:
+        flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
+      bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
+      rentalsAvailable: mentionRentals,
+      customAgentRules:
+        (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
+      scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
+      globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
+    };
+
+    return {
+      dryRun: true,
+      job,
+      destination,
+      issue,
+      decision,
+      nearestShop,
+      maxShopDistanceMiles: maxDistance,
+      final: {
+        wouldCall: !!job.customerPhone,
+        wouldPitchFlip: flipEligible,
+        scenario: actualScenario,
+        reason: flipEligible
+          ? 'flip_offer_ready'
+          : decision.flipEligible
+            ? 'flip_suppressed_no_nearby_shop_within_max_distance'
+            : decision.reasonCode,
+      },
+      scriptPreview: renderCallBody(actualScenario, ctx),
+    };
+  }
+
+  private async loadSandboxJob(tenantId: string, jobId: string): Promise<PendingFlipJob> {
+    const row = await this.db.query.unifiedJobs.findFirst({
+      where: and(eq(unifiedJobs.id, jobId), eq(unifiedJobs.tenantId, tenantId)),
+    });
+    if (!row) {
+      throw new NotFoundException({ status: 'error', code: 'JOB_NOT_FOUND' });
+    }
+    return unifiedJobToPendingFlipJob(row as UnifiedJobRow);
+  }
+
   /**
    * Enqueue ONE combined welcome call on a newly-created unified_jobs row.
    *
@@ -637,6 +790,91 @@ export interface PendingFlipJob {
   destinationAddress?: string | null;
   destinationPhone?: string | null;
   companyName?: string | null;
+}
+
+export interface FlipSandboxInput {
+  jobId?: string;
+  source?: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  vehicle?: string | null;
+  motorClub?: string | null;
+  motorClubServiceCode?: string | null;
+  reasonText?: string | null;
+  vehicleNotes?: string | null;
+  pickupAddress?: string | null;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  destinationName?: string | null;
+  destinationAddress?: string | null;
+  destinationPhone?: string | null;
+  companyName?: string | null;
+}
+
+export interface FlipSandboxResult {
+  dryRun: true;
+  job: PendingFlipJob;
+  destination: ClassifyDestinationResult;
+  issue: ClassifyIssueResult;
+  decision: FlipDecision;
+  nearestShop: {
+    name: string;
+    distanceMiles: number | null;
+    withinMaxDistance: boolean;
+  } | null;
+  maxShopDistanceMiles: number;
+  final: {
+    wouldCall: boolean;
+    wouldPitchFlip: boolean;
+    scenario: string;
+    reason: string;
+  };
+  scriptPreview: string;
+}
+
+function manualSandboxJob(input: FlipSandboxInput): PendingFlipJob {
+  return {
+    source: input.source ?? 'SANDBOX',
+    jobId: 'manual-sandbox',
+    customerName: input.customerName ?? 'Sandbox Customer',
+    customerPhone: input.customerPhone ?? '',
+    vehicle: input.vehicle ?? null,
+    motorClub: input.motorClub ?? null,
+    motorClubServiceCode: input.motorClubServiceCode ?? null,
+    reasonText: input.reasonText ?? null,
+    vehicleNotes: input.vehicleNotes ?? null,
+    pickupAddress: input.pickupAddress ?? null,
+    pickupLat: input.pickupLat ?? null,
+    pickupLng: input.pickupLng ?? null,
+    destinationName: input.destinationName ?? null,
+    destinationAddress: input.destinationAddress ?? null,
+    destinationPhone: input.destinationPhone ?? null,
+    companyName: input.companyName ?? null,
+  };
+}
+
+function unifiedJobToPendingFlipJob(row: UnifiedJobRow): PendingFlipJob {
+  return {
+    source: row.source,
+    jobId: row.sourceJobId ?? row.id,
+    customerName: row.callerName ?? '',
+    customerPhone: row.callerPhone ?? '',
+    vehicle:
+      [row.vehicleYear, row.vehicleColor, row.vehicleMake, row.vehicleModel]
+        .filter(Boolean)
+        .join(' ') || null,
+    motorClub: null,
+    motorClubServiceCode: row.serviceType ?? null,
+    reasonText: row.serviceType ?? null,
+    vehicleNotes: null,
+    pickupAddress: row.pickupAddress ?? null,
+    pickupLat: row.pickupLat != null ? Number(row.pickupLat) : null,
+    pickupLng: row.pickupLng != null ? Number(row.pickupLng) : null,
+    destinationName: null,
+    destinationAddress: row.dropoffAddress ?? null,
+    destinationPhone: null,
+    companyName: null,
+  };
 }
 
 /**
