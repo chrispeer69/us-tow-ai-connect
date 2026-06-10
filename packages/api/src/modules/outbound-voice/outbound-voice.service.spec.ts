@@ -3,15 +3,23 @@ import { OutboundVoiceService } from './outbound-voice.service';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
 import { RetellOutboundClient } from './retell-outbound.client';
 import { MissingVariableError } from './script-templates';
+import { outboundCallLogs, outboundCalls, tenants as tenantsTable } from '../../db/schema';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
-function makeFakeDb(initialCalls: any[] = [], tenantOverrides: Partial<any> = {}) {
+function makeFakeDb(
+  initialCalls: any[] = [],
+  tenantOverrides: Partial<any> = {},
+  initialLogs: any[] = [],
+) {
   const calls: any[] = [...initialCalls];
+  const logs: any[] = [...initialLogs];
   const tenants: any[] = [
     {
       id: TENANT_ID,
       companyName: 'Roadside Towing',
+      timezone: 'America/New_York',
+      managerPhones: [],
       outboundVoiceEnabled: true,
       outboundVoiceConfig: {},
       ...tenantOverrides,
@@ -24,14 +32,18 @@ function makeFakeDb(initialCalls: any[] = [], tenantOverrides: Partial<any> = {}
       return {
         from(table: any) {
           const isCalls = table?.[Symbol.for('drizzle:Name')] === 'outbound_calls'
-            || table === ('outbound_calls' as never);
+            || table === outboundCalls;
+          const isLogs = table?.[Symbol.for('drizzle:Name')] === 'outbound_call_logs'
+            || table === outboundCallLogs;
+          const isTenants = table?.[Symbol.for('drizzle:Name')] === 'tenants'
+            || table === tenantsTable;
           // We can't reliably detect the table object across drizzle internals,
           // so we expose a simple chain that supports both calls & tenants by
           // letting the test bag remember the most recent select.
           // In practice the service reads either tenants or outbound_calls; we
           // disambiguate by which "where" predicate fires.
-          let matched: any[] = isCalls ? calls : tenants;
-          let activeTable = isCalls ? 'calls' : 'tenants';
+          let matched: any[] = isLogs ? logs : isCalls ? calls : tenants;
+          let activeTable = isLogs ? 'logs' : isCalls ? 'calls' : isTenants ? 'tenants' : 'tenants';
 
           const builder: any = {
             innerJoin() { return builder; },
@@ -91,23 +103,25 @@ function makeFakeDb(initialCalls: any[] = [], tenantOverrides: Partial<any> = {}
         },
       };
     },
-    update(_table: any) {
+    update(table: any) {
+      const isLogs = table?.[Symbol.for('drizzle:Name')] === 'outbound_call_logs'
+        || table === outboundCallLogs;
       return {
         set(patch: any) {
           return {
             where(_w: any) {
-              const target = calls.find((c) => true && (true)); // last
+              const targetRows = isLogs ? logs : calls;
               const chain = {
                 returning: async () => {
                   // Apply patch to all currently tracked rows that haven't been
                   // assigned the patch — for the tests this is acceptable since
                   // tests only operate on a single row.
-                  const target = calls[calls.length - 1];
+                  const target = targetRows[targetRows.length - 1];
                   if (target) Object.assign(target, patch);
                   return target ? [target] : [];
                 },
                 then: (resolve: any) => {
-                  const target = calls[calls.length - 1];
+                  const target = targetRows[targetRows.length - 1];
                   if (target) Object.assign(target, patch);
                   return Promise.resolve(undefined).then(resolve);
                 },
@@ -121,7 +135,7 @@ function makeFakeDb(initialCalls: any[] = [], tenantOverrides: Partial<any> = {}
     execute: vi.fn(async () => undefined),
   };
 
-  return { db, calls, tenants };
+  return { db, calls, tenants, logs };
 }
 
 function wrapCallRow(row: any) {
@@ -136,7 +150,8 @@ function createSvc(db: any) {
     placeCall: vi.fn(async () => null),
     cancelCall: vi.fn(async () => false),
   } as any;
-  return new OutboundVoiceService(db as never, thinkrr, retell, provider);
+  const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
+  return new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
 }
 
 describe('OutboundVoiceService', () => {
@@ -304,6 +319,89 @@ describe('OutboundVoiceService', () => {
     const r = await svc.handleWebhookEvent({ callId: 'nope', status: 'completed' });
     expect(r.matched).toBe(false);
     expect(r.newStatus).toBeNull();
+  });
+
+  it('syncs accepted Retell analysis to flip activity and sends manager SMS once', async () => {
+    const seedRow = {
+      id: 'voice-1',
+      tenantId: TENANT_ID,
+      retellCallId: 'retell-abc',
+      toPhone: '+15551234567',
+      status: 'dialing',
+      attempts: 1,
+      maxAttempts: 3,
+      outcome: null,
+      startedAt: null,
+      endedAt: null,
+      durationSeconds: null,
+      transcript: null,
+      recordingUrl: null,
+    };
+    const seedLog = {
+      id: 'log-1',
+      tenantId: TENANT_ID,
+      customerName: 'Pat Customer',
+      customerPhone: '+15551234567',
+      vehicle: '2020 Ford F-150',
+      issueType: 'tow',
+      originalDestination: 'Competitor Auto',
+      nearestOurShop: 'Roadside Towing Shop',
+      offer1Result: 'NOT_ATTEMPTED',
+      offer2Result: 'NOT_ATTEMPTED',
+      offer3Result: 'NOT_ATTEMPTED',
+      flipOutcome: 'NOT_ATTEMPTED',
+      conviniLinkSent: false,
+      managementNotified: false,
+      callTime: new Date(),
+    };
+    const { db, logs } = makeFakeDb(
+      [seedRow],
+      { managerPhones: ['+15557654321'] },
+      [seedLog],
+    );
+    const thinkrr = new ThinkrrOutboundClient();
+    const retell = new RetellOutboundClient();
+    const provider = {
+      providerName: 'retell',
+      placeCall: vi.fn(async () => null),
+      cancelCall: vi.fn(async () => false),
+    } as any;
+    const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
+    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+
+    const result = await svc.handleProviderWebhookEvent({
+      provider: 'retell',
+      callId: 'retell-abc',
+      status: 'completed',
+      durationSeconds: 115,
+      transcript: 'customer accepted offer one',
+      recordingUrl: 'https://recording.example/call',
+      analysisData: {
+        flip_eligible: true,
+        flip_outcome: 'accepted',
+        offer_1_result: 'accepted',
+        convini_link_sent: true,
+        destination_type: 'competitor_repair',
+      },
+    });
+
+    expect(result.matched).toBe(true);
+    expect(logs[0]).toMatchObject({
+      flipEligible: true,
+      flipOutcome: 'ACCEPTED',
+      offer1Result: 'ACCEPTED',
+      conviniLinkSent: true,
+      managementNotified: true,
+      callDurationSeconds: 115,
+      transcript: 'customer accepted offer one',
+    });
+    expect(sms.sendSms).toHaveBeenCalledTimes(1);
+    expect(sms.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '+15557654321',
+        tenantId: TENANT_ID,
+      }),
+    );
   });
 
   it('testCall creates an outbound log row even when the provider is unconfigured', async () => {

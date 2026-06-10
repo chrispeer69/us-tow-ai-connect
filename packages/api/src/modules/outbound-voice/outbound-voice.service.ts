@@ -2,8 +2,16 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCalls, tenants, alphaShops, type OutboundCallRow } from '../../db/schema';
+import {
+  outboundCallLogs,
+  outboundCalls,
+  tenants,
+  alphaShops,
+  type OutboundCallRow,
+} from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
+import { TwilioSmsService } from '../outbound-sms/twilio-sms.service';
+import { renderFlipWinSms } from '../flip-engine/flip-sms-templates';
 import {
   MissingVariableError,
   type OutboundVoicePurpose,
@@ -48,6 +56,7 @@ export class OutboundVoiceService {
     private readonly thinkrr: ThinkrrOutboundClient,
     private readonly retell: RetellOutboundClient,
     @Inject(OUTBOUND_VOICE_PROVIDER) private readonly provider: OutboundVoiceProvider,
+    private readonly sms: TwilioSmsService,
   ) {
     this.logger.log(`[outbound-voice] active provider: ${this.provider.providerName}`);
   }
@@ -494,7 +503,137 @@ export class OutboundVoiceService {
     patch.analysisData = event.analysisData;
 
     await this.db.update(outboundCalls).set(patch).where(eq(outboundCalls.id, existing.id));
+    if (TERMINAL_STATUSES.has(newStatus) && Object.keys(event.analysisData).length > 0) {
+      await this.syncFlipActivityFromAnalysis(existing, patch, event.analysisData).catch((err) => {
+        this.logger.warn(
+          `[outbound-voice] flip activity sync failed for call ${existing.id}: ${(err as Error).message}`,
+        );
+      });
+    }
     return { matched: true, previousStatus: existing.status, newStatus };
+  }
+
+  private async syncFlipActivityFromAnalysis(
+    call: typeof outboundCalls.$inferSelect,
+    callPatch: Partial<typeof outboundCalls.$inferInsert>,
+    analysis: {
+      flip_eligible?: boolean | null;
+      flip_outcome?: string | null;
+      offer_1_result?: string | null;
+      offer_2_result?: string | null;
+      offer_3_result?: string | null;
+      convini_link_sent?: boolean | null;
+      convini_sell_type?: string | null;
+      corrections_made?: string | null;
+      nearest_our_shop?: string | null;
+      destination_type?: string | null;
+    },
+  ): Promise<void> {
+    const rows = await this.db
+      .select()
+      .from(outboundCallLogs)
+      .where(
+        and(
+          eq(outboundCallLogs.tenantId, call.tenantId),
+          eq(outboundCallLogs.customerPhone, call.toPhone),
+        ),
+      )
+      .orderBy(desc(outboundCallLogs.callTime))
+      .limit(1);
+    const log = rows[0];
+    if (!log) return;
+
+    const offer1 = normalizeOutcomeValue(analysis.offer_1_result);
+    const offer2 = normalizeOutcomeValue(analysis.offer_2_result);
+    const offer3 = normalizeOutcomeValue(analysis.offer_3_result);
+    const flipOutcome = normalizeOutcomeValue(analysis.flip_outcome);
+    const acceptedOffer = pickAcceptedOfferFromAnalysis(offer1, offer2, offer3, flipOutcome);
+    const accepted = acceptedOffer != null || outcomeMeansAccepted(flipOutcome);
+    const shouldNotifyManagers = accepted && !log.managementNotified;
+
+    const update: Partial<typeof outboundCallLogs.$inferInsert> = {
+      callDurationSeconds: callPatch.durationSeconds ?? call.durationSeconds ?? null,
+      callRecordingUrl: callPatch.recordingUrl ?? call.recordingUrl ?? null,
+      transcript: callPatch.transcript ?? call.transcript ?? null,
+    };
+    if (typeof analysis.flip_eligible === 'boolean') update.flipEligible = analysis.flip_eligible;
+    if (analysis.destination_type) update.destinationType = trimForColumn(analysis.destination_type, 50);
+    if (analysis.nearest_our_shop) update.nearestOurShop = trimForColumn(analysis.nearest_our_shop, 255);
+    if (offer1) update.offer1Result = offer1;
+    if (offer2) update.offer2Result = offer2;
+    if (offer3) update.offer3Result = offer3;
+    if (flipOutcome) update.flipOutcome = accepted ? 'ACCEPTED' : flipOutcome;
+    if (typeof analysis.convini_link_sent === 'boolean') {
+      update.conviniLinkSent = analysis.convini_link_sent;
+    }
+    if (analysis.convini_sell_type) {
+      update.conviniSellType = trimForColumn(analysis.convini_sell_type, 10);
+    }
+    if (analysis.corrections_made) update.correctionsMade = analysis.corrections_made;
+    if (accepted) update.managementNotified = true;
+
+    await this.db.update(outboundCallLogs).set(update).where(eq(outboundCallLogs.id, log.id));
+
+    if (shouldNotifyManagers) {
+      await this.notifyManagersOfFlipWin(log, {
+        ...update,
+        offer1Result: update.offer1Result ?? log.offer1Result,
+        offer2Result: update.offer2Result ?? log.offer2Result,
+        offer3Result: update.offer3Result ?? log.offer3Result,
+        conviniLinkSent: update.conviniLinkSent ?? log.conviniLinkSent,
+        callDurationSeconds: update.callDurationSeconds ?? log.callDurationSeconds,
+        callRecordingUrl: update.callRecordingUrl ?? log.callRecordingUrl,
+      });
+    }
+  }
+
+  private async notifyManagersOfFlipWin(
+    log: typeof outboundCallLogs.$inferSelect,
+    merged: Partial<typeof outboundCallLogs.$inferInsert>,
+  ): Promise<void> {
+    const tenantRows = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, log.tenantId))
+      .limit(1);
+    const tenant = tenantRows[0];
+    if (!tenant) return;
+    const recipients = readManagerPhones(tenant);
+    if (recipients.length === 0) return;
+
+    const body = renderFlipWinSms({
+      companyName: tenant.companyName,
+      customer: { name: log.customerName, phone: log.customerPhone },
+      vehicle: log.vehicle ?? 'unknown',
+      issue: log.issueType ?? 'unknown',
+      pickup: 'unknown',
+      originalDestination: log.originalDestination ?? 'unknown',
+      redirectedTo: merged.nearestOurShop ?? log.nearestOurShop ?? 'accepted shop',
+      distanceSavedMiles: null,
+      acceptedOffer: pickAcceptedOfferForSms(merged),
+      conviniLinkSent: Boolean(merged.conviniLinkSent),
+      rentalMentioned: false,
+      driverName: null,
+      jobNumber: log.id.slice(0, 8),
+      callTimeLocal: new Date().toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: tenant.timezone,
+        timeZoneName: 'short',
+      }),
+      callDuration: formatDuration(merged.callDurationSeconds ?? null),
+      transcriptUrl: merged.callRecordingUrl ?? null,
+    });
+
+    for (const phone of recipients) {
+      await this.sms
+        .sendSms({ to: phone, body, tenantId: log.tenantId })
+        .catch((err) =>
+          this.logger.warn(
+            `[outbound-voice] flip win SMS failed phone=${phone} log=${log.id}: ${(err as Error).message}`,
+          ),
+        );
+    }
   }
 
   // ---------- lifecycle hooks ----------
@@ -813,6 +952,56 @@ export class OutboundVoiceService {
       message: `Test call placed to ${formattedPhone}. The AI agent should call within 10 seconds.`,
     };
   }
+}
+
+function normalizeOutcomeValue(value: string | null | undefined): string | null {
+  if (!value || typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/[\s-]+/g, '_').toUpperCase();
+  if (!normalized) return null;
+  if (/ACCEPT|SUCCESS|YES|WIN/.test(normalized)) return 'ACCEPTED';
+  if (/DECLINE|REJECT|NO|LOST|LOSS/.test(normalized)) return 'DECLINED';
+  if (/NOT_ATTEMPT|SKIP|N\/A|NONE/.test(normalized)) return 'NOT_ATTEMPTED';
+  return trimForColumn(normalized, 20);
+}
+
+function outcomeMeansAccepted(value: string | null): boolean {
+  return value === 'ACCEPTED';
+}
+
+function pickAcceptedOfferFromAnalysis(
+  offer1: string | null,
+  offer2: string | null,
+  offer3: string | null,
+  flipOutcome: string | null,
+): 1 | 2 | 3 | null {
+  if (offer1 === 'ACCEPTED') return 1;
+  if (offer2 === 'ACCEPTED') return 2;
+  if (offer3 === 'ACCEPTED') return 3;
+  return outcomeMeansAccepted(flipOutcome) ? 1 : null;
+}
+
+function pickAcceptedOfferForSms(row: Partial<typeof outboundCallLogs.$inferInsert>): 1 | 2 | 3 {
+  if (row.offer1Result === 'ACCEPTED') return 1;
+  if (row.offer2Result === 'ACCEPTED') return 2;
+  if (row.offer3Result === 'ACCEPTED') return 3;
+  return 1;
+}
+
+function trimForColumn(value: string, max: number): string {
+  return value.trim().slice(0, max);
+}
+
+function readManagerPhones(tenant: typeof tenants.$inferSelect): string[] {
+  const raw = tenant.managerPhones as unknown;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((phone): phone is string => typeof phone === 'string' && phone.trim().length > 0);
+}
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds || seconds <= 0) return 'unknown';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
 const TERMINAL_STATUSES = new Set([

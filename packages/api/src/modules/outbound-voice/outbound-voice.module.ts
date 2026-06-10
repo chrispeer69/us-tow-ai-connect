@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DbModule } from '../../db/db.module';
+import { OutboundSmsModule } from '../outbound-sms/outbound-sms.module';
 import { OutboundVoiceController } from './outbound-voice.controller';
 import { OutboundVoiceWebhookController } from './outbound-voice-webhook.controller';
 import { OutboundVoiceService } from './outbound-voice.service';
@@ -22,7 +23,7 @@ import {
  *   - Rollback is a single env var flip with zero code change.
  */
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, OutboundSmsModule],
   controllers: [
     OutboundVoiceController,
     OutboundVoiceWebhookController,
