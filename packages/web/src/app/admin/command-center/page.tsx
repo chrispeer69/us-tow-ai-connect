@@ -175,6 +175,17 @@ export default function CommandCenterPage() {
     setSelectedJob(fresh);
   }
 
+  async function handleCallCustomer() {
+    if (!selectedJobId) return;
+    setError(null);
+    await api(`/v1/admin/command-center/jobs/${selectedJobId}/call-customer`, {
+      method: 'POST',
+    });
+    await refreshJobs();
+    const fresh = await api<UnifiedJob>(`/v1/admin/command-center/jobs/${selectedJobId}`);
+    setSelectedJob(fresh);
+  }
+
   return (
     <div className="-mx-5 -my-8 flex h-[calc(100vh-70px)] flex-col bg-zinc-50 sm:-mx-8">
       <div className="border-b border-zinc-200 bg-white p-4 shadow-sm z-10">
@@ -237,6 +248,7 @@ export default function CommandCenterPage() {
               drivers={drivers}
               onAssign={handleAssign}
               onStatusChange={handleStatus}
+              onCallCustomer={handleCallCustomer}
               onClose={() => setSelectedJobId(null)}
             />
           ) : (

@@ -1,9 +1,9 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { haversineMiles } from './nearest-shop.selector';
 import { Cron } from '@nestjs/schedule';
 import { eq, and } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs, tenants, outboundCalls, unifiedJobs } from '../../db/schema';
+import { aiAgentConfigs, outboundCallLogs, tenants, outboundCalls, unifiedJobs } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
 import { OutboundVoiceService } from '../outbound-voice/outbound-voice.service';
 import {
@@ -205,6 +205,14 @@ export class FlipOrchestratorService {
       vehicleNotes: job.vehicleNotes ?? null,
       motorClubServiceCode: job.motorClubServiceCode ?? null,
     });
+
+    const callPolicy = await this.getAgentCallPolicy(tenantId, issue.subcategory);
+    if (callPolicy.outboundCallMode !== 'AUTO' || !callPolicy.serviceEnabled) {
+      this.logger.debug(
+        `[flip-orchestrator] auto call skipped tenant=${tenantId} job=${job.jobId} mode=${callPolicy.outboundCallMode} service=${callPolicy.serviceName} enabled=${callPolicy.serviceEnabled}`,
+      );
+      return false;
+    }
 
     // 3. Decide.
     const decision: FlipDecision = decideFlip({
@@ -473,6 +481,24 @@ export class FlipOrchestratorService {
     return unifiedJobToPendingFlipJob(row as UnifiedJobRow);
   }
 
+  async callUnifiedJobManually(
+    tenantId: string,
+    jobId: string,
+  ): Promise<{ status: 'queued' | 'skipped'; message: string }> {
+    const row = await this.db.query.unifiedJobs.findFirst({
+      where: and(eq(unifiedJobs.id, jobId), eq(unifiedJobs.tenantId, tenantId)),
+    });
+    if (!row) {
+      throw new NotFoundException({ status: 'error', code: 'JOB_NOT_FOUND' });
+    }
+    if (!row.callerPhone) {
+      return { status: 'skipped', message: 'Job has no caller phone number.' };
+    }
+
+    await this.handleNewlyCreatedJob(tenantId, row as UnifiedJobRow, { automatic: false });
+    return { status: 'queued', message: 'Customer call queued if this job has not already been called.' };
+  }
+
   /**
    * Enqueue ONE combined welcome call on a newly-created unified_jobs row.
    *
@@ -489,13 +515,18 @@ export class FlipOrchestratorService {
    * `welcome:${tenantId}:${job.id}`, so a job that was already welcomed is
    * never called a second time even if the cron tick fires concurrently.
    */
-  async handleNewlyCreatedJob(tenantId: string, job: UnifiedJobRow): Promise<void> {
+  async handleNewlyCreatedJob(
+    tenantId: string,
+    job: UnifiedJobRow,
+    opts: { automatic?: boolean } = {},
+  ): Promise<void> {
+    const automatic = opts.automatic ?? true;
     // Skip if no phone number — nothing to call.
     if (!job.callerPhone) return;
 
     // Dedup: never enqueue the same job twice.
     const seenKey = `welcome:${tenantId}:${job.id}`;
-    if (this.seen.has(seenKey)) return;
+    if (automatic && this.seen.has(seenKey)) return;
 
     // DB-level deduplication to prevent looping across server restarts
     const existingCalls = await this.db
@@ -515,7 +546,7 @@ export class FlipOrchestratorService {
       return;
     }
 
-    this.seen.set(seenKey, Date.now());
+    if (automatic) this.seen.set(seenKey, Date.now());
 
     try {
       // Gate: only proceed if tenant has opted into outbound voice.
@@ -525,7 +556,26 @@ export class FlipOrchestratorService {
         .where(eq(tenants.id, tenantId))
         .limit(1);
       const tenant = tenantRows[0];
-      if (!tenant?.outboundVoiceEnabled) return;
+      if (!tenant?.outboundVoiceEnabled) {
+        if (!automatic) throw new BadRequestException('Outbound AI calls are off for this account.');
+        return;
+      }
+
+      const issue = this.issueClassifier.classify({
+        reasonText: job.serviceType ?? null,
+        vehicleNotes: null,
+        motorClubServiceCode: job.serviceType ?? null,
+      });
+      const callPolicy = await this.getAgentCallPolicy(tenantId, issue.subcategory);
+      if (callPolicy.outboundCallMode === 'OFF' || !callPolicy.serviceEnabled) {
+        if (!automatic) {
+          throw new BadRequestException(
+            `${callPolicy.serviceName} is not enabled for AI customer calls.`,
+          );
+        }
+        return;
+      }
+      if (automatic && callPolicy.outboundCallMode !== 'AUTO') return;
 
       // Classify destination to decide whether to layer in flip offers.
       const [blocklistRows, ourShops, globalConfig] = await Promise.all([
@@ -554,10 +604,18 @@ export class FlipOrchestratorService {
       const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
       const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
 
-      // Flip pick only when destination is a competing repair shop.
+      const decision = decideFlip({
+        source: job.source,
+        destinationTag: destination.tag,
+        issueSubcategory: issue.subcategory,
+        issueConfidence: issue.confidence,
+        config: cfg,
+      });
+
+      // Flip pick only when destination is a competing repair shop and issue is eligible.
       let nearestShopName: string | null = null;
       let distanceMilesSaved: number | null = null;
-      if (destination.tag === 'competitor_repair' && job.pickupLat != null && job.pickupLng != null) {
+      if (decision.flipEligible && job.pickupLat != null && job.pickupLng != null) {
         const pick = await this.flipEngine.pickNearestShop({
           tenantId,
           pickupLat: Number(job.pickupLat),
@@ -576,7 +634,7 @@ export class FlipOrchestratorService {
       }
 
       const scenario = scenarioForDestinationTag(destination.tag);
-      const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
+      const flipEligible = decision.flipEligible && !!nearestShopName;
       const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
       const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
 
@@ -593,8 +651,8 @@ export class FlipOrchestratorService {
             .join(' ') || 'your vehicle',
         pickupLocation: job.pickupAddress ?? 'your location',
         destination: destination.resolvedAddress ?? job.dropoffAddress ?? 'your destination',
-        issue: 'a service request',
-        issueSubcategory: null,
+        issue: issuePhrase(issue.subcategory),
+        issueSubcategory: issue.subcategory,
         nearestShop: flipEligible ? nearestShopName : null,
         nearestShopDistanceMiles:
           flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
@@ -622,7 +680,8 @@ export class FlipOrchestratorService {
         `[flip-orchestrator] handleNewlyCreatedJob ${job.id} threw: ${(err as Error).message}`,
       );
       // Remove from seen so a retry on the next tick is possible.
-      this.seen.delete(seenKey);
+      if (automatic) this.seen.delete(seenKey);
+      if (!automatic) throw err;
     }
   }
 
@@ -631,6 +690,33 @@ export class FlipOrchestratorService {
     for (const [k, t] of this.seen) {
       if (t < cutoff) this.seen.delete(k);
     }
+  }
+
+  private async getAgentCallPolicy(
+    tenantId: string,
+    issueSubcategory: string | null | undefined,
+  ): Promise<{
+    outboundCallMode: 'AUTO' | 'MANUAL_ONLY' | 'OFF';
+    serviceName: string;
+    serviceEnabled: boolean;
+  }> {
+    const row = await this.db.query.aiAgentConfigs.findFirst({
+      where: eq(aiAgentConfigs.tenantId, tenantId),
+    });
+    const toggles = (row?.serviceToggles as Record<string, unknown> | null) ?? {};
+    const settings = toggles.__settings as { outboundCallMode?: unknown } | undefined;
+    const outboundCallMode =
+      settings?.outboundCallMode === 'MANUAL_ONLY' || settings?.outboundCallMode === 'OFF'
+        ? settings.outboundCallMode
+        : 'AUTO';
+    const serviceName = serviceNameForIssue(issueSubcategory);
+    const service = toggles[serviceName] as { enabled?: unknown } | undefined;
+    return {
+      outboundCallMode,
+      serviceName,
+      // Backward-compatible: old tenants with no toggle row keep previous behavior.
+      serviceEnabled: service?.enabled !== false,
+    };
   }
 
   /**
@@ -871,6 +957,24 @@ function unifiedJobToPendingFlipJob(row: UnifiedJobRow): PendingFlipJob {
     destinationPhone: null,
     companyName: null,
   };
+}
+
+function serviceNameForIssue(issueSubcategory: string | null | undefined): string {
+  switch (issueSubcategory) {
+    case 'jump_start':
+      return 'Jump Start';
+    case 'single_tire_issue':
+    case 'full_tire_set':
+      return 'Tire Change';
+    case 'fuel_delivery':
+      return 'Fuel Delivery';
+    case 'lockout':
+      return 'Lockout Service';
+    case 'winch_out':
+      return 'Winch Out & Recovery';
+    default:
+      return 'Towing';
+  }
 }
 
 /**

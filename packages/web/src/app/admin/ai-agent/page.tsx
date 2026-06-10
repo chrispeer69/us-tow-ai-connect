@@ -16,6 +16,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { api } from '@/lib/utils';
 
 type Policy = 'AI_HANDLES' | 'TRANSFER' | 'NOT_OFFERED';
+type OutboundCallMode = 'AUTO' | 'MANUAL_ONLY' | 'OFF';
 type Service = {
   enabled: boolean;
   classes: Record<string, Policy>;
@@ -35,6 +36,7 @@ interface AgentConfig {
   greetingMessage: string;
   defaultEtaMins: number;
   impoundEnabled: boolean;
+  outboundCallMode?: OutboundCallMode;
   serviceToggles: Record<string, Service>;
   assignedPhoneNumber?: string;
 }
@@ -43,6 +45,7 @@ export default function AiAgentPage() {
   const [greeting, setGreeting] = useState('');
   const [defaultEta, setDefaultEta] = useState(45);
   const [impoundEnabled, setImpoundEnabled] = useState(false);
+  const [outboundCallMode, setOutboundCallMode] = useState<OutboundCallMode>('AUTO');
   const [serviceToggles, setServiceToggles] = useState<Record<string, Service>>({});
   const [agentPhone, setAgentPhone] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -62,6 +65,7 @@ export default function AiAgentPage() {
       setGreeting(data.greetingMessage ?? '');
       setDefaultEta(data.defaultEtaMins ?? 45);
       setImpoundEnabled(Boolean(data.impoundEnabled));
+      setOutboundCallMode(data.outboundCallMode ?? 'AUTO');
       setServiceToggles(normalizeToggles(data.serviceToggles ?? {}));
       setAgentPhone(data.assignedPhoneNumber ?? '');
       setHasChanges(false);
@@ -88,6 +92,7 @@ export default function AiAgentPage() {
           greetingMessage: greeting,
           defaultEtaMins: defaultEta,
           impoundEnabled,
+          outboundCallMode,
           serviceToggles,
         },
       });
@@ -175,6 +180,32 @@ export default function AiAgentPage() {
                 onChange={(e) => mutate(setDefaultEta, Number(e.target.value))}
                 className="max-w-xs"
               />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Outbound AI Calls</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Select
+                value={outboundCallMode}
+                onValueChange={(v) => mutate(setOutboundCallMode, v as OutboundCallMode)}
+              >
+                <SelectTrigger className="max-w-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AUTO">Auto</SelectItem>
+                  <SelectItem value="MANUAL_ONLY">Manual only</SelectItem>
+                  <SelectItem value="OFF">Off</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-zinc-400">
+                Auto allows eligible jobs to be called automatically. Manual only disables automatic
+                calls but keeps the Command Center call button available. Off disables outbound AI
+                calls for this account.
+              </p>
             </CardContent>
           </Card>
 
@@ -270,7 +301,7 @@ export default function AiAgentPage() {
 
 function defaultService(): Service {
   return {
-    enabled: false,
+    enabled: true,
     classes: {
       'Light Duty': 'AI_HANDLES',
       'Medium Duty': 'AI_HANDLES',

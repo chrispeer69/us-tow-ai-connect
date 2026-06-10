@@ -38,6 +38,8 @@ import type {
 } from '@ustow/shared';
 
 const DEFAULT_GREETING = 'Thank you for calling.';
+const AGENT_SETTINGS_KEY = '__settings';
+const DEFAULT_OUTBOUND_CALL_MODE = 'AUTO';
 const DEFAULT_TENANT_FALLBACK = {
   companyName: 'Default Tenant',
   ownerEmail: 'owner@example.com',
@@ -569,13 +571,20 @@ export class AdminService {
         .where(eq(aiAgentConfigs.tenantId, tenantId))
         .limit(1)
     )[0];
-    if (existing) return existing;
+    if (existing) {
+      return {
+        ...existing,
+        serviceToggles: stripAgentSettings(existing.serviceToggles),
+        outboundCallMode: readOutboundCallMode(existing.serviceToggles),
+      };
+    }
     return {
       tenantId,
       greetingMessage: DEFAULT_GREETING,
       serviceToggles: {},
       defaultEtaMins: 45,
       impoundEnabled: false,
+      outboundCallMode: DEFAULT_OUTBOUND_CALL_MODE,
     };
   }
 
@@ -589,12 +598,24 @@ export class AdminService {
         .limit(1)
     )[0];
     const now = new Date();
+    const serviceToggles = withAgentSettings(body.serviceToggles, {
+      outboundCallMode: body.outboundCallMode ?? readOutboundCallMode(existing?.serviceToggles),
+    });
+    if (body.outboundCallMode) {
+      await this.db
+        .update(tenants)
+        .set({
+          outboundVoiceEnabled: body.outboundCallMode !== 'OFF',
+          updatedAt: now,
+        })
+        .where(eq(tenants.id, tenantId));
+    }
     if (existing) {
       await this.db
         .update(aiAgentConfigs)
         .set({
           greetingMessage: body.greetingMessage,
-          serviceToggles: body.serviceToggles,
+          serviceToggles: serviceToggles as never,
           defaultEtaMins: body.defaultEtaMins,
           impoundEnabled: body.impoundEnabled ?? existing.impoundEnabled,
           updatedAt: now,
@@ -604,7 +625,7 @@ export class AdminService {
       await this.db.insert(aiAgentConfigs).values({
         tenantId,
         greetingMessage: body.greetingMessage,
-        serviceToggles: body.serviceToggles,
+        serviceToggles: serviceToggles as never,
         defaultEtaMins: body.defaultEtaMins,
         impoundEnabled: body.impoundEnabled ?? false,
         updatedAt: now,
@@ -864,4 +885,34 @@ export class AdminService {
       apiKeyPrefix: 'usk_boot',
     });
   }
+}
+
+function readOutboundCallMode(serviceToggles: unknown): 'AUTO' | 'MANUAL_ONLY' | 'OFF' {
+  const settings = (serviceToggles as Record<string, unknown> | null | undefined)?.[AGENT_SETTINGS_KEY] as
+    | { outboundCallMode?: unknown }
+    | undefined;
+  if (
+    settings?.outboundCallMode === 'AUTO' ||
+    settings?.outboundCallMode === 'MANUAL_ONLY' ||
+    settings?.outboundCallMode === 'OFF'
+  ) {
+    return settings.outboundCallMode;
+  }
+  return DEFAULT_OUTBOUND_CALL_MODE;
+}
+
+function stripAgentSettings(serviceToggles: unknown): Record<string, unknown> {
+  const input = { ...((serviceToggles as Record<string, unknown> | null | undefined) ?? {}) };
+  delete input[AGENT_SETTINGS_KEY];
+  return input;
+}
+
+function withAgentSettings(
+  serviceToggles: Record<string, unknown>,
+  settings: { outboundCallMode: 'AUTO' | 'MANUAL_ONLY' | 'OFF' },
+): Record<string, unknown> {
+  return {
+    ...serviceToggles,
+    [AGENT_SETTINGS_KEY]: settings,
+  };
 }

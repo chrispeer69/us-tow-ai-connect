@@ -74,11 +74,13 @@ export const CheckoutSessionSchema = z.discriminatedUnion('kind', [
 export type CheckoutSessionBody = z.infer<typeof CheckoutSessionSchema>;
 
 const VehicleClassPolicy = z.enum(['AI_HANDLES', 'TRANSFER', 'NOT_OFFERED']);
+const OutboundCallMode = z.enum(['AUTO', 'MANUAL_ONLY', 'OFF']);
 
 export const AgentConfigUpdateSchema = z.object({
   greetingMessage: z.string().max(250),
   defaultEtaMins: z.number().int().min(0).max(600),
   impoundEnabled: z.boolean().optional(),
+  outboundCallMode: OutboundCallMode.optional(),
   serviceToggles: z.record(
     z.object({
       enabled: z.boolean(),

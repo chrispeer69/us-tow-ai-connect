@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  renderCallBody,
   renderConfirmDetails,
   renderConviniPitch,
   renderOffer1,
@@ -86,5 +87,27 @@ describe('flip-scripts', () => {
     const hard = renderConviniPitch({ intensity: 'hard', rentalsAvailable: true });
     expect(hard.length).toBeGreaterThan(soft.length);
     expect(hard.length).toBeGreaterThan(medium.length);
+  });
+
+  it('adds winch-out recovery and photo guidance to the call body', () => {
+    const body = renderCallBody('unknown', {
+      repName: 'Emily',
+      companyName: 'Roadside Towing',
+      motorClub: '',
+      callbackNumber: '+15551234567',
+      conviniLink: 'https://convini.live',
+      customerFirstName: 'Pat',
+      vehicle: '2017 Ford Escape',
+      pickupLocation: 'I-70 near exit 101',
+      destination: 'your location',
+      issue: 'a stuck or off-road recovery',
+      issueSubcategory: 'winch_out',
+      rentalsAvailable: true,
+    });
+
+    expect(body).toContain('listed as a winch-out');
+    expect(body).toContain('pulled back onto solid ground');
+    expect(body).toContain('have a few photos of the situation ready');
+    expect(body).toContain('is this just the recovery service');
   });
 });

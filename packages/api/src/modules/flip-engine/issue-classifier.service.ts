@@ -79,7 +79,25 @@ export class IssueClassifierService {
       signals.push('fuel_kw');
       return { subcategory: 'fuel_delivery', confidence: 0.93, signals };
     }
-    if (has('winch out', 'winch-out', 'stuck in mud', 'stuck in snow', 'in a ditch', 'recovery')) {
+    if (
+      has(
+        'winch out',
+        'winch-out',
+        'stuck in mud',
+        'stuck in snow',
+        'stuck on ice',
+        'stuck on a rock',
+        'stuck on rock',
+        'stuck on rocks',
+        'slid off road',
+        'slipped off road',
+        'off the road',
+        'off-road recovery',
+        'in a ditch',
+        'embankment',
+        'recovery',
+      )
+    ) {
       signals.push('winch_kw');
       return { subcategory: 'winch_out', confidence: 0.91, signals };
     }

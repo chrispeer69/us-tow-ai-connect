@@ -144,6 +144,7 @@ AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your 
 /** Steps 3-6: confirm pickup, vehicle, issue, destination. Shared by A/B/C/D.
  *  `clarifyIssueLine` lets each scenario tailor the issue question. */
 function confirmBlock(ctx: ScriptContext, vars: Record<string, string>, clarifyIssueLine: string): string {
+  const isWinchOut = ctx.issueSubcategory === 'winch_out';
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
 AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
 [AGENT: If the customer corrects the location, acknowledge the correction warmly and confirm the corrected version back to them. This correction will be saved to the job notes.]`;
@@ -156,7 +157,10 @@ AI: "And I have a {{vehicle}}. Is that right?"
 ${clarifyIssueLine}
 [AGENT: Listen to their answer and acknowledge it in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`;
 
-  const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
+  const defaultDestination = isWinchOut
+    ? `[STEP 6 — CONFIRM WINCH-OUT SERVICE]
+AI: "For this winch-out, I have the service location as {{pickup_location}}. Once the vehicle is back on solid ground, is there anywhere else it needs to be towed, or is this just the recovery service?"`
+    : `[STEP 6 — CONFIRM DELIVERY DESTINATION]
 AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
 
   const pickup = ctx.scriptBlocks?.confirm_pickup ?? ctx.globalScriptBlocks?.confirm_pickup ?? defaultPickup;
@@ -172,6 +176,15 @@ AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd
     interpolate(issue, vars),
     ``,
     interpolate(destination, vars),
+  ].join('\n');
+}
+
+function issueGuidanceBlock(ctx: ScriptContext): string {
+  if (ctx.issueSubcategory !== 'winch_out') return '';
+  return [
+    `[STEP 6B — WINCH-OUT PHOTO GUIDANCE]`,
+    `[AGENT: A winch-out usually means the vehicle is stuck and needs to be pulled back onto solid ground, such as after sliding off the road, getting stuck in mud, snow, ice, rocks, or a ditch. Do not treat this as a normal repair-shop tow unless the customer says they also need a tow afterward.]`,
+    `AI: "For the winch-out, please have a few photos of the situation ready. When the driver calls, they may ask you to text those photos so they can see the depth of the problem before they arrive."`,
   ].join('\n');
 }
 
@@ -270,6 +283,8 @@ function scenarioA(ctx: ScriptContext): string {
     ``,
     confirmBlock(ctx, vars, clarify),
     ``,
+    issueGuidanceBlock(ctx),
+    ``,
     `=== PHASE 2: THE 3-TIER FLIP ===`,
     ...flipBlock,
     ...offer2Block,
@@ -309,6 +324,8 @@ function scenarioB(ctx: ScriptContext): string {
     ``,
     confirmBlock(ctx, vars, clarify),
     ``,
+    issueGuidanceBlock(ctx),
+    ``,
     `=== PHASE 2: BODY SHOP SOFT MENTION ===`,
     `[STEP 7 — BRAND AWARENESS]`,
     bodyShopMention,
@@ -325,11 +342,14 @@ function scenarioB(ctx: ScriptContext): string {
 
 function scenarioC(ctx: ScriptContext): string {
   const sub = (ctx.issueSubcategory ?? '').toLowerCase();
+  const isWinchOut = sub === 'winch_out';
   const isFlat =
     sub.includes('tire') ||
     ctx.issue.toLowerCase().includes('tire') ||
     ctx.issue.toLowerCase().includes('flat');
-  const clarify = isFlat
+  const clarify = isWinchOut
+    ? `AI: "I see this is listed as a winch-out. That usually means the vehicle is stuck and needs to be pulled back onto solid ground. Can you tell me what it is stuck on or stuck in?"`
+    : isFlat
     ? `AI: "I see you have a flat tire. Which tire is it — front left, front right, rear left, or rear right? And do you have a spare?"`
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
   
@@ -349,6 +369,8 @@ function scenarioC(ctx: ScriptContext): string {
     openingBlock(ctx, vars),
     ``,
     confirmBlock(ctx, vars, clarify),
+    ``,
+    issueGuidanceBlock(ctx),
     ``,
     ...conviniBlock,
     ``,
@@ -379,6 +401,8 @@ function scenarioD(ctx: ScriptContext): string {
     ``,
     confirmBlock(ctx, vars, clarify),
     ``,
+    issueGuidanceBlock(ctx),
+    ``,
     `=== PHASE 2: VIP WELCOME ===`,
     `AI: "Great news — your vehicle is coming to our shop at {{destination}}. When you arrive, let the front desk know you're a tow customer and they'll take priority care of you. You'll have a written estimate within one hour."`,
     ``,
@@ -405,6 +429,8 @@ function scenarioAaaBranded(ctx: ScriptContext): string {
     openingBlock(ctx, vars),
     ``,
     confirmBlock(ctx, vars, clarify),
+    ``,
+    issueGuidanceBlock(ctx),
     ``,
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),

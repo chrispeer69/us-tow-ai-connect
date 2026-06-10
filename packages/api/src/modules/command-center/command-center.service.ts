@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { and, desc, eq, ilike, inArray, notInArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -212,6 +212,20 @@ export class CommandCenterService {
     });
     this.broadcast(tenantId, 'job.updated', updated);
     return updated;
+  }
+
+  async callCustomerManually(tenantId: string, jobId: string) {
+    if (!this.flipOrchestrator) {
+      throw new BadRequestException({
+        status: 'error',
+        code: 'OUTBOUND_CALLS_UNAVAILABLE',
+        message: 'Outbound call engine is not available.',
+      });
+    }
+    await this.requireJob(tenantId, jobId);
+    const result = await this.flipOrchestrator.callUnifiedJobManually(tenantId, jobId);
+    await this.writeEvent(jobId, 'manual_customer_call_requested', result);
+    return result;
   }
 
   async createManualJob(tenantId: string, input: ManualJobInput) {

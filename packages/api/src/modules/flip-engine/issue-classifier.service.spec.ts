@@ -43,6 +43,12 @@ describe('IssueClassifierService.classify', () => {
     expect(r.subcategory).toBe('winch_out');
   });
 
+  it('classifies common winch-out descriptions', () => {
+    const r = svc.classify({ reasonText: 'Customer slid off road and is stuck on rocks' });
+    expect(r.subcategory).toBe('winch_out');
+    expect(r.signals).toContain('winch_kw');
+  });
+
   it('classifies airbag deployment', () => {
     const r = svc.classify({ reasonText: 'Accident with airbags deployed' });
     expect(r.subcategory).toBe('accident_with_airbags');

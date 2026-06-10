@@ -16,6 +16,7 @@ interface Props {
   drivers: Driver[];
   onAssign: (driverId: string | null) => Promise<void> | void;
   onStatusChange: (status: UnifiedJobStatus) => Promise<void> | void;
+  onCallCustomer: () => Promise<void> | void;
   onClose: () => void;
 }
 
@@ -25,9 +26,11 @@ const SOURCE_LABEL: Record<string, string> = {
   manual: 'Manual',
 };
 
-export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: Props) {
+export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustomer, onClose }: Props) {
   const [pendingDriver, setPendingDriver] = useState<string>(job.assignedDriverId ?? '');
   const [working, setWorking] = useState(false);
+  const [callMessage, setCallMessage] = useState<string | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
 
   async function handleAssign(value: string) {
     setPendingDriver(value);
@@ -43,6 +46,20 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
     setWorking(true);
     try {
       await onStatusChange(next);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleCallCustomer() {
+    setWorking(true);
+    setCallMessage(null);
+    setCallError(null);
+    try {
+      await onCallCustomer();
+      setCallMessage('Customer call requested.');
+    } catch (err) {
+      setCallError((err as Error).message);
     } finally {
       setWorking(false);
     }
@@ -96,6 +113,23 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onClose }: P
             <p className="mt-1 font-medium text-zinc-900">{job.dropoffAddress}</p>
           </section>
         )}
+
+        <section>
+          <h3 className="text-xs uppercase tracking-wide text-zinc-500">Customer call</h3>
+          <Button
+            className="mt-2 w-full"
+            variant="outline"
+            disabled={working || !job.callerPhone}
+            onClick={() => void handleCallCustomer()}
+          >
+            Call Customer
+          </Button>
+          {!job.callerPhone && (
+            <p className="mt-1 text-xs text-zinc-500">No caller phone number on this job.</p>
+          )}
+          {callMessage && <p className="mt-1 text-xs text-emerald-600">{callMessage}</p>}
+          {callError && <p className="mt-1 text-xs text-red-500">{callError}</p>}
+        </section>
 
         <section>
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Assign driver</h3>

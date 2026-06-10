@@ -122,6 +122,11 @@ export class CommandCenterController {
     );
   }
 
+  @Post('jobs/:id/call-customer')
+  callCustomer(@Req() req: AdminRequest, @Param('id') id: string) {
+    return this.service.callCustomerManually(req.tenantId, id);
+  }
+
   @Post('jobs/manual')
   @UsePipes(new ZodValidationPipe(ManualJobSchema))
   createManual(@Req() req: AdminRequest, @Body() body: z.infer<typeof ManualJobSchema>) {
