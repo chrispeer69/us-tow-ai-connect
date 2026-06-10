@@ -108,6 +108,52 @@ describe('flip-scripts', () => {
     expect(body).toContain('listed as a winch-out');
     expect(body).toContain('pulled back onto solid ground');
     expect(body).toContain('have a few photos of the situation ready');
-    expect(body).toContain('is this just the recovery service');
+    expect(body).toContain('I have the service location as I-70 near exit 101');
+    expect(body).toContain('Do not ask for or assume a delivery destination on winch-out calls');
+    expect(body).not.toContain('is there anywhere else it needs to be towed');
+    expect(body).not.toContain('headed to your location as planned');
+    expect(body).toContain('headed to the service location as planned');
+  });
+
+  it('does not confirm a delivery destination when no separate destination exists', () => {
+    const body = renderCallBody('unknown', {
+      repName: 'Emily',
+      companyName: 'Roadside Towing',
+      motorClub: '',
+      callbackNumber: '+15551234567',
+      conviniLink: 'https://convini.live',
+      customerFirstName: 'Pat',
+      vehicle: '2017 Ford Escape',
+      pickupLocation: '123 Main St',
+      destination: 'your destination',
+      issue: 'a jump start',
+      issueSubcategory: 'jump_start',
+      rentalsAvailable: true,
+    });
+
+    expect(body).toContain('I do not have a separate tow destination listed');
+    expect(body).toContain('service at 123 Main St');
+    expect(body).not.toContain('vehicle being towed to your destination');
+    expect(body).toContain('headed to the service location as planned');
+  });
+
+  it('treats matching pickup and destination as one service location', () => {
+    const body = renderCallBody('unknown', {
+      repName: 'Emily',
+      companyName: 'Roadside Towing',
+      motorClub: '',
+      callbackNumber: '+15551234567',
+      conviniLink: 'https://convini.live',
+      customerFirstName: 'Pat',
+      vehicle: '2017 Ford Escape',
+      pickupLocation: '123 Main Street',
+      destination: '123 Main St.',
+      issue: 'a fuel delivery',
+      issueSubcategory: 'fuel_delivery',
+      rentalsAvailable: true,
+    });
+
+    expect(body).toContain('I do not have a separate tow destination listed');
+    expect(body).not.toContain('vehicle being towed to 123 Main St.');
   });
 });

@@ -100,6 +100,45 @@ function interpolate(text: string, vars: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_m, name) => vars[name] ?? '');
 }
 
+function normalizeLocationForCompare(value: string | null | undefined): string {
+  const suffixes = new Set([
+    'street',
+    'st',
+    'road',
+    'rd',
+    'avenue',
+    'ave',
+    'drive',
+    'dr',
+    'lane',
+    'ln',
+    'boulevard',
+    'blvd',
+  ]);
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((part) => part && !suffixes.has(part))
+    .join('');
+}
+
+function hasSeparateDestination(ctx: ScriptContext): boolean {
+  const destination = ctx.destination.trim().toLowerCase();
+  if (!destination || destination === 'your destination' || destination === 'your location') {
+    return false;
+  }
+  const pickup = normalizeLocationForCompare(ctx.pickupLocation);
+  const dropoff = normalizeLocationForCompare(ctx.destination);
+  return pickup.length === 0 || dropoff.length === 0 || pickup !== dropoff;
+}
+
+function destinationPlanSentence(ctx: ScriptContext): string {
+  return hasSeparateDestination(ctx)
+    ? 'Your driver is headed to {{destination}} as planned'
+    : 'Your driver is headed to the service location as planned';
+}
+
 /** Base variable map shared by every scenario. */
 function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
@@ -145,6 +184,7 @@ AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your 
  *  `clarifyIssueLine` lets each scenario tailor the issue question. */
 function confirmBlock(ctx: ScriptContext, vars: Record<string, string>, clarifyIssueLine: string): string {
   const isWinchOut = ctx.issueSubcategory === 'winch_out';
+  const separateDestination = hasSeparateDestination(ctx);
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
 AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
 [AGENT: If the customer corrects the location, acknowledge the correction warmly and confirm the corrected version back to them. This correction will be saved to the job notes.]`;
@@ -158,8 +198,13 @@ ${clarifyIssueLine}
 [AGENT: Listen to their answer and acknowledge it in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`;
 
   const defaultDestination = isWinchOut
-    ? `[STEP 6 — CONFIRM WINCH-OUT SERVICE]
-AI: "For this winch-out, I have the service location as {{pickup_location}}. Once the vehicle is back on solid ground, is there anywhere else it needs to be towed, or is this just the recovery service?"`
+    ? `[STEP 6 — CONFIRM WINCH-OUT SERVICE LOCATION]
+AI: "For this winch-out, I have the service location as {{pickup_location}}. Is that correct?"
+[AGENT: Do not ask for or assume a delivery destination on winch-out calls. If the customer volunteers that they also need the vehicle towed after recovery, then confirm that destination back to them.]`
+    : !separateDestination
+    ? `[STEP 6 — CONFIRM SERVICE LOCATION]
+AI: "I do not have a separate tow destination listed, so I have this as service at {{pickup_location}}. Is that correct?"
+[AGENT: Do not ask for a delivery destination unless the customer says the vehicle also needs to be towed somewhere after the service.]`
     : `[STEP 6 — CONFIRM DELIVERY DESTINATION]
 AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
 
@@ -242,7 +287,7 @@ function scenarioA(ctx: ScriptContext): string {
   const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility ${distancePhrase}called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
   const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
   const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
 
   const flipBlock = !!ctx.nearestShop ? [
         ``,
@@ -308,7 +353,7 @@ function scenarioB(ctx: ScriptContext): string {
     ? `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area, like ${bodyShops.join(' and ')}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`
     : `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`;
 
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -354,7 +399,7 @@ function scenarioC(ctx: ScriptContext): string {
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
   
   const vars = baseVars(ctx);
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -385,7 +430,7 @@ function scenarioC(ctx: ScriptContext): string {
 function scenarioD(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -419,7 +464,7 @@ function scenarioD(ctx: ScriptContext): string {
 function scenarioAaaBranded(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free.`;
+  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free.`;
 
   return [
     `# SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE)`,
