@@ -1,8 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -30,7 +28,15 @@ const SERVICES = [
   'Lockout Service',
   'Winch Out & Recovery',
 ];
-const VEHICLE_CLASSES = ['Light Duty', 'Medium Duty', 'Heavy Duty', 'Motorcycle'];
+
+const SERVICE_HELP: Record<string, string> = {
+  Towing: 'Standard tow confirmations and repair-shop flip opportunities.',
+  'Jump Start': 'Battery or no-start support calls when enabled.',
+  'Tire Change': 'Flat tire and spare or tire-change support calls.',
+  'Fuel Delivery': 'Out-of-fuel support calls.',
+  'Lockout Service': 'Locked-out customer support calls.',
+  'Winch Out & Recovery': 'Recovery calls with photo-readiness guidance.',
+};
 
 interface AgentConfig {
   greetingMessage: string;
@@ -38,16 +44,15 @@ interface AgentConfig {
   impoundEnabled: boolean;
   outboundCallMode?: OutboundCallMode;
   serviceToggles: Record<string, Service>;
-  assignedPhoneNumber?: string;
 }
 
 export default function AiAgentPage() {
+  // Preserve legacy API fields while the UI focuses on active outbound controls.
   const [greeting, setGreeting] = useState('');
   const [defaultEta, setDefaultEta] = useState(45);
   const [impoundEnabled, setImpoundEnabled] = useState(false);
   const [outboundCallMode, setOutboundCallMode] = useState<OutboundCallMode>('AUTO');
   const [serviceToggles, setServiceToggles] = useState<Record<string, Service>>({});
-  const [agentPhone, setAgentPhone] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -67,7 +72,6 @@ export default function AiAgentPage() {
       setImpoundEnabled(Boolean(data.impoundEnabled));
       setOutboundCallMode(data.outboundCallMode ?? 'AUTO');
       setServiceToggles(normalizeToggles(data.serviceToggles ?? {}));
-      setAgentPhone(data.assignedPhoneNumber ?? '');
       setHasChanges(false);
     } catch (err) {
       setError((err as Error).message);
@@ -111,7 +115,7 @@ export default function AiAgentPage() {
         <header>
           <h1 className="text-3xl font-bold">AI Agent Configuration</h1>
           <p className="text-zinc-400 mt-1">
-            Configure how the AI agent greets callers and what services it offers.
+            Control outbound AI calls and which service types the AI can handle.
           </p>
         </header>
         <div className="flex items-center gap-3">
@@ -136,53 +140,6 @@ export default function AiAgentPage() {
         </div>
       ) : (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Agent Phone Number</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="font-mono text-lg text-zinc-200">
-                {agentPhone || 'Not yet assigned'}
-              </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                System-assigned; contact support to change.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Greeting Message</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                rows={3}
-                maxLength={250}
-                value={greeting}
-                onChange={(e) => mutate(setGreeting, e.target.value)}
-              />
-              <p className="text-xs text-zinc-500 mt-1">
-                {greeting.length}/250 characters
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Default ETA (minutes)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Input
-                type="number"
-                min={0}
-                max={600}
-                value={defaultEta}
-                onChange={(e) => mutate(setDefaultEta, Number(e.target.value))}
-                className="max-w-xs"
-              />
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>Outbound AI Calls</CardTitle>
@@ -211,26 +168,13 @@ export default function AiAgentPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                Impound Inquiries
-                <Switch
-                  checked={impoundEnabled}
-                  onCheckedChange={(v) => mutate(setImpoundEnabled, v)}
-                />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-zinc-400">
-                Allow the AI agent to handle impound-related inquiries.
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Service Configuration</CardTitle>
+              <CardTitle>Services AI Handles</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <p className="text-sm text-zinc-400">
+                Turn service types on or off for AI customer calls. Manual calls also respect these
+                switches.
+              </p>
               {SERVICES.map((service) => {
                 const cfg = serviceToggles[service] ?? defaultService();
                 return (
@@ -239,7 +183,10 @@ export default function AiAgentPage() {
                     className="rounded-md border border-zinc-800 bg-zinc-900/40 p-4"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{service}</span>
+                      <div>
+                        <div className="font-medium">{service}</div>
+                        <p className="text-xs text-zinc-500 mt-1">{SERVICE_HELP[service]}</p>
+                      </div>
                       <Switch
                         checked={cfg.enabled}
                         onCheckedChange={(v) =>
@@ -250,44 +197,6 @@ export default function AiAgentPage() {
                         }
                       />
                     </div>
-                    {cfg.enabled && (
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {VEHICLE_CLASSES.map((vc) => {
-                          const current = cfg.classes[vc] ?? 'AI_HANDLES';
-                          return (
-                            <label
-                              key={vc}
-                              className="flex items-center justify-between gap-3 text-sm text-zinc-300"
-                            >
-                              <span className="w-32">{vc}</span>
-                              <div className="flex-1">
-                                <Select
-                                  value={current}
-                                  onValueChange={(val) =>
-                                    mutate(setServiceToggles, {
-                                      ...serviceToggles,
-                                      [service]: {
-                                        ...cfg,
-                                        classes: { ...cfg.classes, [vc]: val as Policy },
-                                      },
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="AI_HANDLES">AI Handles</SelectItem>
-                                    <SelectItem value="TRANSFER">Transfer to Team</SelectItem>
-                                    <SelectItem value="NOT_OFFERED">Not Offered</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -318,7 +227,7 @@ function normalizeToggles(
   for (const svc of SERVICES) {
     const candidate = (raw[svc] ?? {}) as Partial<Service> & { classes?: Record<string, string> };
     out[svc] = {
-      enabled: Boolean(candidate.enabled),
+      enabled: candidate.enabled !== false,
       classes: (candidate.classes as Record<string, Policy>) ?? defaultService().classes,
     };
   }
