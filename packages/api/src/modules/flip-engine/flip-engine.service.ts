@@ -198,6 +198,25 @@ export class FlipEngineService {
     return row ?? null;
   }
 
+  async updateBlocklistEntry(
+    tenantId: string,
+    id: string,
+    patch: Partial<{
+      matchType: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
+      matchValue: string;
+      label: string;
+      notes: string | null;
+      active: boolean;
+    }>,
+  ) {
+    const [row] = await this.db
+      .update(aaaBrandedBlocklist)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(and(eq(aaaBrandedBlocklist.tenantId, tenantId), eq(aaaBrandedBlocklist.id, id)))
+      .returning();
+    return row ?? null;
+  }
+
   async deleteBlocklistEntry(tenantId: string, id: string) {
     await this.db
       .delete(aaaBrandedBlocklist)

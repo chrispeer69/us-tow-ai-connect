@@ -51,15 +51,15 @@ interface AlphaShop {
 
 interface BlocklistEntry {
   id: string;
-  tenant_id: string;
-  match_type: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
-  match_value: string;
+  tenantId: string;
+  matchType: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
+  matchValue: string;
   label: string;
   notes: string | null;
   active: boolean;
-  added_by: string | null;
-  created_at: string;
-  updated_at: string;
+  addedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface FlipEngineConfig {
@@ -554,6 +554,9 @@ function ShopsTab({
   setError: (s: string | null) => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editShop, setEditShop] = useState<AlphaShop | null>(null);
+  const [deleteShopId, setDeleteShopId] = useState<string | null>(null);
+
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -587,7 +590,21 @@ function ShopsTab({
             {shops.map((s) => (
               <TableRow key={s.id}>
                 <TableCell>
-                  <div className="font-medium">{s.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium">{s.name}</div>
+                    <button
+                      onClick={() => setEditShop(s)}
+                      className="text-xs text-emerald-500 hover:text-emerald-400"
+                    >
+                      (Edit)
+                    </button>
+                    <button
+                      onClick={() => setDeleteShopId(s.id)}
+                      className="text-xs text-rose-500 hover:text-rose-400"
+                    >
+                      (Delete)
+                    </button>
+                  </div>
                   {s.notes && <div className="text-xs text-zinc-500">{s.notes}</div>}
                 </TableCell>
                 <TableCell>
@@ -600,11 +617,13 @@ function ShopsTab({
                 </TableCell>
                 <TableCell className="text-xs font-mono">{s.phone ?? '—'}</TableCell>
                 <TableCell>
-                  {s.active ? (
-                    <Badge className="bg-emerald-900 text-emerald-200">Active</Badge>
-                  ) : (
-                    <Badge className="bg-zinc-800 text-zinc-400">Inactive</Badge>
-                  )}
+                  <ActiveToggleCell
+                    active={!!s.active}
+                    endpoint={`/v1/admin/flip-engine/shops/${s.id}`}
+                    method="PUT"
+                    reload={reload}
+                    setError={setError}
+                  />
                 </TableCell>
                 <TableCell className="text-xs">{s.rentalPickupAvailable ? 'Yes' : 'No'}</TableCell>
               </TableRow>
@@ -617,6 +636,28 @@ function ShopsTab({
           onClose={() => setShowAdd(false)}
           onSaved={async () => {
             setShowAdd(false);
+            await reload();
+          }}
+          setError={setError}
+        />
+      )}
+      {deleteShopId && (
+        <ConfirmDeleteModal
+          title="Delete Shop"
+          message="Are you sure you want to permanently delete this shop? This cannot be undone."
+          onClose={() => setDeleteShopId(null)}
+          onConfirm={async () => {
+            await api(`/v1/admin/flip-engine/shops/${deleteShopId}`, { method: 'DELETE' });
+            await reload();
+          }}
+        />
+      )}
+      {editShop && (
+        <EditShopModal
+          shop={editShop}
+          onClose={() => setEditShop(null)}
+          onSaved={async () => {
+            setEditShop(null);
             await reload();
           }}
           setError={setError}
@@ -673,6 +714,105 @@ function ShopTypeCell({
         </Select>
       </div>
       {saving && <Spinner />}
+    </div>
+  );
+}
+
+function ActiveToggleCell({
+  active,
+  endpoint,
+  method,
+  reload,
+  setError,
+}: {
+  active: boolean;
+  endpoint: string;
+  method: string;
+  reload: () => Promise<void>;
+  setError: (s: string | null) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const toggle = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api(endpoint, {
+        method,
+        json: { active: !active },
+      });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={() => void toggle()}
+      disabled={saving}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+        active ? 'bg-emerald-600' : 'bg-zinc-700'
+      } ${saving ? 'opacity-50' : ''}`}
+    >
+      <span className="sr-only">Toggle active status</span>
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          active ? 'translate-x-4' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
+}
+
+function ConfirmDeleteModal({
+  title,
+  message,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  onConfirm: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onConfirm();
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <Card className="w-full max-w-sm">
+        <CardContent className="space-y-4 p-5 text-center">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="text-sm text-zinc-400">{message}</p>
+          {error && <div className="text-sm text-rose-500">{error}</div>}
+          <div className="flex justify-center gap-3 pt-2">
+            <Button variant="outline" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void handleConfirm()} disabled={saving}>
+              {saving ? <Spinner className="mr-2" /> : null}
+              Delete
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -777,6 +917,107 @@ function AddShopModal({
   );
 }
 
+function EditShopModal({
+  shop,
+  onClose,
+  onSaved,
+  setError,
+}: {
+  shop: AlphaShop;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+  setError: (s: string | null) => void;
+}) {
+  const [form, setForm] = useState({
+    name: shop.name || '',
+    shopType: shop.shopType as 'REPAIR' | 'BODY',
+    addressLine: shop.addressLine || '',
+    city: shop.city || '',
+    state: shop.state || '',
+    postalCode: shop.postalCode || '',
+    phone: shop.phone || '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/v1/admin/flip-engine/shops/${shop.id}`, {
+        method: 'PUT',
+        json: form,
+      });
+      await onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <Card className="w-full max-w-lg">
+        <CardContent className="space-y-3 p-5">
+          <h2 className="text-lg font-semibold">Edit partner shop</h2>
+          <Input
+            placeholder="Shop name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+          <Select
+            value={form.shopType}
+            onValueChange={(v) => setForm({ ...form, shopType: v as 'REPAIR' | 'BODY' })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Shop type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="REPAIR">Repair</SelectItem>
+              <SelectItem value="BODY">Body</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Street address"
+            value={form.addressLine}
+            onChange={(e) => setForm({ ...form, addressLine: e.target.value })}
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <Input
+              placeholder="City"
+              value={form.city}
+              onChange={(e) => setForm({ ...form, city: e.target.value })}
+            />
+            <Input
+              placeholder="ST"
+              maxLength={2}
+              value={form.state}
+              onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
+            />
+            <Input
+              placeholder="ZIP"
+              value={form.postalCode}
+              onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+            />
+          </div>
+          <Input
+            placeholder="Phone (e.g. +16145551212)"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              {submitting ? <Spinner className="mr-2" /> : null}
+              Save changes
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ---------- blocklist tab ----------
 
 function BlocklistTab({
@@ -789,6 +1030,9 @@ function BlocklistTab({
   setError: (s: string | null) => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editEntry, setEditEntry] = useState<BlocklistEntry | null>(null);
+  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -821,19 +1065,37 @@ function BlocklistTab({
             )}
             {blocklist.map((b) => (
               <TableRow key={b.id}>
-                <TableCell>{b.label}</TableCell>
                 <TableCell>
-                  <Badge className={MATCH_TYPE_COLOR[b.match_type] ?? 'bg-zinc-700 text-zinc-200'}>
-                    {b.match_type}
+                  <div className="flex items-center gap-2">
+                    <span>{b.label}</span>
+                    <button
+                      onClick={() => setEditEntry(b)}
+                      className="text-xs text-emerald-500 hover:text-emerald-400"
+                    >
+                      (Edit)
+                    </button>
+                    <button
+                      onClick={() => setDeleteEntryId(b.id)}
+                      className="text-xs text-rose-500 hover:text-rose-400"
+                    >
+                      (Delete)
+                    </button>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge className={MATCH_TYPE_COLOR[b.matchType] ?? 'bg-zinc-700 text-zinc-200'}>
+                    {b.matchType}
                   </Badge>
                 </TableCell>
-                <TableCell className="font-mono text-xs">{b.match_value}</TableCell>
+                <TableCell className="font-mono text-xs">{b.matchValue}</TableCell>
                 <TableCell>
-                  {b.active ? (
-                    <Badge className="bg-emerald-900 text-emerald-200">Active</Badge>
-                  ) : (
-                    <Badge className="bg-zinc-800 text-zinc-400">Inactive</Badge>
-                  )}
+                  <ActiveToggleCell
+                    active={!!b.active}
+                    endpoint={`/v1/admin/flip-engine/aaa-blocklist/${b.id}`}
+                    method="PATCH"
+                    reload={reload}
+                    setError={setError}
+                  />
                 </TableCell>
                 <TableCell className="text-xs text-zinc-400">{b.notes ?? '—'}</TableCell>
               </TableRow>
@@ -851,6 +1113,28 @@ function BlocklistTab({
           setError={setError}
         />
       )}
+      {editEntry && (
+        <EditBlocklistModal
+          entry={editEntry}
+          onClose={() => setEditEntry(null)}
+          onSaved={async () => {
+            setEditEntry(null);
+            await reload();
+          }}
+          setError={setError}
+        />
+      )}
+      {deleteEntryId && (
+        <ConfirmDeleteModal
+          title="Delete Blocklist Entry"
+          message="Are you sure you want to permanently delete this blocklist entry?"
+          onClose={() => setDeleteEntryId(null)}
+          onConfirm={async () => {
+            await api(`/v1/admin/flip-engine/aaa-blocklist/${deleteEntryId}`, { method: 'DELETE' });
+            await reload();
+          }}
+        />
+      )}
     </Card>
   );
 }
@@ -865,7 +1149,7 @@ function AddBlocklistModal({
   setError: (s: string | null) => void;
 }) {
   const [form, setForm] = useState({
-    matchType: 'NAME_PATTERN' as BlocklistEntry['match_type'],
+    matchType: 'NAME_PATTERN' as BlocklistEntry['matchType'],
     matchValue: '',
     label: '',
     notes: '',
@@ -877,8 +1161,7 @@ function AddBlocklistModal({
     try {
       await api('/v1/admin/flip-engine/aaa-blocklist', {
         method: 'POST',
-        body: JSON.stringify(form),
-        headers: { 'content-type': 'application/json' },
+        json: form,
       });
       await onSaved();
     } catch (err) {
@@ -894,7 +1177,7 @@ function AddBlocklistModal({
           <h2 className="text-lg font-semibold">Add AAA-branded blocklist entry</h2>
           <Select
             value={form.matchType}
-            onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['match_type'] })}
+            onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['matchType'] })}
           >
             <SelectTrigger>
               <SelectValue placeholder="Match type" />
@@ -929,6 +1212,89 @@ function AddBlocklistModal({
             <Button onClick={() => void submit()} disabled={submitting}>
               {submitting ? <Spinner className="mr-2" /> : null}
               Save entry
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function EditBlocklistModal({
+  entry,
+  onClose,
+  onSaved,
+  setError,
+}: {
+  entry: BlocklistEntry;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+  setError: (s: string | null) => void;
+}) {
+  const [form, setForm] = useState({
+    matchType: entry.matchType,
+    matchValue: entry.matchValue,
+    label: entry.label,
+    notes: entry.notes ?? '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api(`/v1/admin/flip-engine/aaa-blocklist/${entry.id}`, {
+        method: 'PUT',
+        json: form,
+      });
+      await onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <Card className="w-full max-w-lg">
+        <CardContent className="space-y-3 p-5">
+          <h2 className="text-lg font-semibold">Edit AAA-branded blocklist entry</h2>
+          <Select
+            value={form.matchType}
+            onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['matchType'] })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Match type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="NAME_PATTERN">Name pattern (substring)</SelectItem>
+              <SelectItem value="EXACT_NAME">Exact business name</SelectItem>
+              <SelectItem value="EXACT_ADDRESS">Exact address</SelectItem>
+              <SelectItem value="PHONE">Phone number</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Match value"
+            value={form.matchValue}
+            onChange={(e) => setForm({ ...form, matchValue: e.target.value })}
+          />
+          <Input
+            placeholder="Human-readable label"
+            value={form.label}
+            onChange={(e) => setForm({ ...form, label: e.target.value })}
+          />
+          <textarea
+            className="h-20 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            placeholder="Notes (optional)"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              {submitting ? <Spinner className="mr-2" /> : null}
+              Save changes
             </Button>
           </div>
         </CardContent>

@@ -62,6 +62,11 @@ const BlocklistCreateSchema = z.object({
 });
 type BlocklistCreateBody = z.infer<typeof BlocklistCreateSchema>;
 
+const BlocklistPatchSchema = BlocklistCreateSchema.extend({
+  active: z.boolean().optional(),
+}).partial();
+type BlocklistPatchBody = z.infer<typeof BlocklistPatchSchema>;
+
 const ConfigPatchSchema = z.object({
   enabled: z.boolean().optional(),
   config: z
@@ -259,6 +264,24 @@ export class FlipEngineController {
       });
     }
     const row = await this.service.setBlocklistEntryActive(req.tenantId, id, body.active);
+    if (!row) {
+      throw new NotFoundException({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'blocklist entry not found',
+      });
+    }
+    return { status: 'success', data: row };
+  }
+
+  @Put('aaa-blocklist/:id')
+  @UsePipes(new ZodValidationPipe(BlocklistPatchSchema))
+  async updateBlocklist(
+    @Req() req: AdminRequest,
+    @Param('id') id: string,
+    @Body() body: BlocklistPatchBody,
+  ) {
+    const row = await this.service.updateBlocklistEntry(req.tenantId, id, body);
     if (!row) {
       throw new NotFoundException({
         status: 'error',
