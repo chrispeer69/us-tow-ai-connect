@@ -19,6 +19,7 @@ export const CompanyUpdateSchema = z.object({
   companyName: z.string().min(1).max(255),
   ownerEmail: z.string().email().max(255),
   timezone: z.string().min(1).max(50),
+  managerPhones: z.array(e164).max(20).optional(),
 });
 export type CompanyUpdateBody = z.infer<typeof CompanyUpdateSchema>;
 

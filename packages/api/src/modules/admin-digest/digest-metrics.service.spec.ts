@@ -23,6 +23,7 @@ import {
   dispatchRequests,
   driverJobEvents,
   driverPings,
+  outboundCalls,
   smsMessages,
   unifiedJobs,
 } from '../../db/schema';
@@ -50,6 +51,7 @@ describe('DigestMetricsService.collect', () => {
   it('computes per-section metrics from per-table mock responses', async () => {
     const byTable = new Map<unknown, ChainResult>();
     byTable.set(callInteractions, [{ count: 100, totalSec: 6000, phone: '+15551111' }]);
+    byTable.set(outboundCalls, [{ count: 20, totalSec: 1200 }]);
     // collectJobsCreated calls unifiedJobs FIRST (grouped by source), then
     // dispatchRequests. They share the per-collector flow so the from()
     // call sees them sequentially — we configure unified to return the
@@ -77,9 +79,10 @@ describe('DigestMetricsService.collect', () => {
     const m = await service.collect('tenant-1', 'daily', new Date('2026-05-23T08:00:00Z'));
 
     // Call activity
-    expect(m.callsHandled.count).toBe(100);
-    expect(m.callsHandled.totalMinutes).toBe(100); // 6000 / 60
+    expect(m.callsHandled.count).toBe(120);
+    expect(m.callsHandled.totalMinutes).toBe(120); // (6000 + 1200) / 60
     expect(m.callsHandled.avgDurationSec).toBe(60);
+    expect(m.callsHandled.byType).toEqual({ inbound: 100, outbound: 20 });
 
     // Jobs roll-up (unified + dispatch_requests fallback)
     expect(m.jobsCreated.total).toBe(50); // 25 + 15 + 10
@@ -112,6 +115,7 @@ describe('DigestMetricsService.collect', () => {
   it('caps conversion rate at 1 when jobs exceed calls', async () => {
     const byTable = new Map<unknown, ChainResult>();
     byTable.set(callInteractions, [{ count: 1, totalSec: 30, phone: '+1' }]);
+    byTable.set(outboundCalls, [{ count: 0, totalSec: 0 }]);
     byTable.set(unifiedJobs, [{ source: 'towbook', count: 5 }]);
     byTable.set(dispatchRequests, [{ count: 0 }]);
     byTable.set(dispatchDecisions, []);
@@ -131,7 +135,12 @@ describe('DigestMetricsService.collect', () => {
       },
     };
     const m = await new DigestMetricsService(db as never).collect('tenant-1', 'daily');
-    expect(m.callsHandled).toEqual({ count: 0, totalMinutes: 0, avgDurationSec: 0 });
+    expect(m.callsHandled).toEqual({
+      count: 0,
+      totalMinutes: 0,
+      avgDurationSec: 0,
+      byType: { inbound: 0, outbound: 0 },
+    });
     expect(m.jobsCreated.total).toBe(0);
     expect(m.conversionRate).toBe(0);
     expect(m.driverActivity).toEqual({

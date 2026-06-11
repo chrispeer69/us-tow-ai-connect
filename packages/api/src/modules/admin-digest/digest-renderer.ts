@@ -63,6 +63,14 @@ export function renderDigestHtml(ctx: RenderContext): string {
               <td style="padding:8px 0;font-variant-numeric:tabular-nums;font-weight:600;">${metrics.callsHandled.count.toLocaleString()}</td>
             </tr>
             <tr>
+              <td style="padding:8px 0;color:#6b7280;">Inbound AI calls</td>
+              <td style="padding:8px 0;font-variant-numeric:tabular-nums;">${metrics.callsHandled.byType.inbound.toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;color:#6b7280;">Outbound AI calls</td>
+              <td style="padding:8px 0;font-variant-numeric:tabular-nums;">${metrics.callsHandled.byType.outbound.toLocaleString()}</td>
+            </tr>
+            <tr>
               <td style="padding:8px 0;color:#6b7280;">Total minutes</td>
               <td style="padding:8px 0;font-variant-numeric:tabular-nums;">${metrics.callsHandled.totalMinutes.toLocaleString()}</td>
             </tr>

@@ -6,7 +6,12 @@ const FIXTURE: DigestMetrics = {
   range: 'daily',
   windowStart: new Date('2026-05-22T08:00:00Z'),
   windowEnd: new Date('2026-05-23T08:00:00Z'),
-  callsHandled: { count: 42, totalMinutes: 81, avgDurationSec: 116 },
+  callsHandled: {
+    count: 42,
+    totalMinutes: 81,
+    avgDurationSec: 116,
+    byType: { inbound: 17, outbound: 25 },
+  },
   jobsCreated: {
     total: 24,
     bySource: { towbook: 14, aaa_salesforce: 9, ai_dispatch: 1 },
@@ -47,6 +52,8 @@ describe('renderDigestHtml', () => {
     expect(html).toContain('Roadside Towing');
     expect(html).toContain('Daily digest');
     expect(html).toContain('Calls handled by AI');
+    expect(html).toContain('Inbound AI calls');
+    expect(html).toContain('Outbound AI calls');
     expect(html).toContain('42'); // calls
     expect(html).toContain('Total: <strong style="color:#111827;">24</strong>'); // jobs total
     expect(html).toContain('towbook');
@@ -70,7 +77,12 @@ describe('renderDigestHtml', () => {
   it('renders empty-window fixtures without crashing', () => {
     const empty: DigestMetrics = {
       ...FIXTURE,
-      callsHandled: { count: 0, totalMinutes: 0, avgDurationSec: 0 },
+      callsHandled: {
+        count: 0,
+        totalMinutes: 0,
+        avgDurationSec: 0,
+        byType: { inbound: 0, outbound: 0 },
+      },
       jobsCreated: { total: 0, bySource: {} },
       jobsCompleted: 0,
       conversionRate: 0,

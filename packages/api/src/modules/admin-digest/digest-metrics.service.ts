@@ -8,6 +8,7 @@ import {
   dispatchDecisions,
   driverPings,
   driverJobEvents,
+  outboundCalls,
   smsMessages,
   unifiedJobs,
 } from '../../db/schema';
@@ -18,7 +19,12 @@ export interface DigestMetrics {
   range: DigestRange;
   windowStart: Date;
   windowEnd: Date;
-  callsHandled: { count: number; totalMinutes: number; avgDurationSec: number };
+  callsHandled: {
+    count: number;
+    totalMinutes: number;
+    avgDurationSec: number;
+    byType: { inbound: number; outbound: number };
+  };
   jobsCreated: { total: number; bySource: Record<string, number> };
   jobsCompleted: number;
   conversionRate: number;
@@ -92,26 +98,53 @@ export class DigestMetricsService {
 
   private async collectCalls(tenantId: string, from: Date, to: Date) {
     try {
-      const rows = await this.db
-        .select({
-          count: sql<number>`count(*)::int`,
-          totalSec: sql<number>`coalesce(sum(${callInteractions.durationSec}), 0)::int`,
-        })
-        .from(callInteractions)
-        .where(
-          and(
-            eq(callInteractions.tenantId, tenantId),
-            gte(callInteractions.createdAt, from),
-            lt(callInteractions.createdAt, to),
+      const [inboundRows, outboundRows] = await Promise.all([
+        this.db
+          .select({
+            count: sql<number>`count(*)::int`,
+            totalSec: sql<number>`coalesce(sum(${callInteractions.durationSec}), 0)::int`,
+          })
+          .from(callInteractions)
+          .where(
+            and(
+              eq(callInteractions.tenantId, tenantId),
+              gte(callInteractions.createdAt, from),
+              lt(callInteractions.createdAt, to),
+            ),
           ),
-        );
-      const row = rows[0];
-      const totalMinutes = Math.round((row.totalSec ?? 0) / 60);
-      const avgDurationSec = row.count > 0 ? Math.round((row.totalSec ?? 0) / row.count) : 0;
-      return { count: row.count, totalMinutes, avgDurationSec };
+        this.db
+          .select({
+            count: sql<number>`count(*)::int`,
+            totalSec: sql<number>`coalesce(sum(${outboundCalls.durationSeconds}), 0)::int`,
+          })
+          .from(outboundCalls)
+          .where(
+            and(
+              eq(outboundCalls.tenantId, tenantId),
+              gte(outboundCalls.createdAt, from),
+              lt(outboundCalls.createdAt, to),
+              sql`${outboundCalls.status} in ('completed', 'no_answer')`,
+            ),
+          ),
+      ]);
+      const inbound = inboundRows[0] ?? { count: 0, totalSec: 0 };
+      const outbound = outboundRows[0] ?? { count: 0, totalSec: 0 };
+      const count = (inbound.count ?? 0) + (outbound.count ?? 0);
+      const totalSec = (inbound.totalSec ?? 0) + (outbound.totalSec ?? 0);
+      const totalMinutes = Math.round(totalSec / 60);
+      const avgDurationSec = count > 0 ? Math.round(totalSec / count) : 0;
+      return {
+        count,
+        totalMinutes,
+        avgDurationSec,
+        byType: {
+          inbound: inbound.count ?? 0,
+          outbound: outbound.count ?? 0,
+        },
+      };
     } catch (err) {
       this.logger.warn(`collectCalls failed: ${(err as Error).message}`);
-      return { count: 0, totalMinutes: 0, avgDurationSec: 0 };
+      return { count: 0, totalMinutes: 0, avgDurationSec: 0, byType: { inbound: 0, outbound: 0 } };
     }
   }
 
@@ -263,25 +296,50 @@ export class DigestMetricsService {
 
   private async collectTopCallers(tenantId: string, from: Date, to: Date) {
     try {
-      const rows = await this.db
-        .select({
-          phone: callInteractions.callerPhone,
-          count: sql<number>`count(*)::int`,
-        })
-        .from(callInteractions)
-        .where(
-          and(
-            eq(callInteractions.tenantId, tenantId),
-            gte(callInteractions.createdAt, from),
-            lt(callInteractions.createdAt, to),
-          ),
-        )
-        .groupBy(callInteractions.callerPhone)
-        .orderBy(desc(sql`count(*)`))
-        .limit(5);
-      return rows
-        .filter((r) => r.phone)
-        .map((r) => ({ phone: r.phone ?? 'unknown', count: r.count }));
+      const [inboundRows, outboundRows] = await Promise.all([
+        this.db
+          .select({
+            phone: callInteractions.callerPhone,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(callInteractions)
+          .where(
+            and(
+              eq(callInteractions.tenantId, tenantId),
+              gte(callInteractions.createdAt, from),
+              lt(callInteractions.createdAt, to),
+            ),
+          )
+          .groupBy(callInteractions.callerPhone)
+          .orderBy(desc(sql`count(*)`))
+          .limit(10),
+        this.db
+          .select({
+            phone: outboundCalls.toPhone,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(outboundCalls)
+          .where(
+            and(
+              eq(outboundCalls.tenantId, tenantId),
+              gte(outboundCalls.createdAt, from),
+              lt(outboundCalls.createdAt, to),
+              sql`${outboundCalls.status} in ('completed', 'no_answer')`,
+            ),
+          )
+          .groupBy(outboundCalls.toPhone)
+          .orderBy(desc(sql`count(*)`))
+          .limit(10),
+      ]);
+      const counts = new Map<string, number>();
+      for (const row of [...inboundRows, ...outboundRows]) {
+        if (!row.phone) continue;
+        counts.set(row.phone, (counts.get(row.phone) ?? 0) + row.count);
+      }
+      return Array.from(counts.entries())
+        .map(([phone, count]) => ({ phone, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
     } catch (err) {
       this.logger.warn(`collectTopCallers failed: ${(err as Error).message}`);
       return [];

@@ -648,6 +648,7 @@ export class AdminService {
           assignedPhoneNumber: tenants.assignedPhoneNumber,
           thinkrrAgentId: tenants.thinkrrAgentId,
           apiKeyPrefix: tenants.apiKeyPrefix,
+          managerPhones: tenants.managerPhones,
           isActive: tenants.isActive,
           createdAt: tenants.createdAt,
           updatedAt: tenants.updatedAt,
@@ -674,6 +675,7 @@ export class AdminService {
         companyName: body.companyName,
         ownerEmail: body.ownerEmail,
         timezone: body.timezone,
+        ...(body.managerPhones ? { managerPhones: body.managerPhones as unknown as never } : {}),
         updatedAt: new Date(),
       })
       .where(eq(tenants.id, tenantId));

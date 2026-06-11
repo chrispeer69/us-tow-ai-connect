@@ -175,26 +175,60 @@ export class FlipNotifierService {
     if (cfg.send_daily_report === false) return { sent: 0, due: false };
 
     const targetHour = Number(cfg.daily_report_hour_local ?? 21);
-    const localHourNow = new Date().getHours();
-    if (localHourNow !== targetHour) return { sent: 0, due: false };
+    const localNow = getTenantLocalNow(tenant.timezone);
+    if (localNow.hour !== targetHour) return { sent: 0, due: false };
 
+    if (cfg._daily_report_last_sent_date_local === localNow.date) {
+      return { sent: 0, due: true };
+    }
     const lastSent = typeof cfg._daily_report_last_sent_iso === 'string'
       ? new Date(cfg._daily_report_last_sent_iso)
       : null;
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    if (lastSent && lastSent > startOfDay) {
+    const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    if (lastSent && lastSent > windowStart && cfg._daily_report_last_sent_date_local == null) {
       // Already sent today; skip.
       return { sent: 0, due: true };
     }
 
+    const result = await this.sendDailyReport(tenant, windowStart, localNow.date);
+
+    if (result.recipients.length === 0) return { sent: 0, due: true };
+
+    // Mark as sent for today.
+    const newCfg = {
+      ...cfg,
+      _daily_report_last_sent_iso: new Date().toISOString(),
+      _daily_report_last_sent_date_local: localNow.date,
+    };
+    await this.db
+      .update(tenants)
+      .set({ flipEngineConfig: newCfg as never, updatedAt: new Date() })
+      .where(eq(tenants.id, tenantId));
+
+    return { sent: result.sent, due: true };
+  }
+
+  async sendDailyReportNow(tenantId: string): Promise<{ sent: number; recipients: string[] }> {
+    const tenant = await this.fetchTenant(tenantId);
+    if (!tenant) return { sent: 0, recipients: [] };
+    const localNow = getTenantLocalNow(tenant.timezone);
+    const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return this.sendDailyReport(tenant, windowStart, localNow.date);
+  }
+
+  private async sendDailyReport(
+    tenant: typeof tenants.$inferSelect,
+    windowStart: Date,
+    dateLocal: string,
+  ): Promise<{ sent: number; recipients: string[] }> {
+    const tenantId = tenant.id;
     const rows = await this.db
       .select()
       .from(outboundCallLogs)
       .where(
         and(
           eq(outboundCallLogs.tenantId, tenantId),
-          gte(outboundCallLogs.callTime, startOfDay),
+          gte(outboundCallLogs.callTime, windowStart),
         ),
       );
 
@@ -218,11 +252,11 @@ export class FlipNotifierService {
     const skippedAaaBranded = rows.filter((r) => r.destinationType === 'aaa_branded').length;
 
     const recipients = readManagerPhones(tenant);
-    if (recipients.length === 0) return { sent: 0, due: true };
+    if (recipients.length === 0) return { sent: 0, recipients };
 
     const body = renderDailyReportSms({
       companyName: tenant.companyName,
-      dateLocal: new Date().toISOString().slice(0, 10),
+      dateLocal,
       totalAttempts: rows.length,
       wins: wins.length,
       losses,
@@ -247,17 +281,7 @@ export class FlipNotifierService {
       }
     }
 
-    // Mark as sent for today.
-    const newCfg = {
-      ...cfg,
-      _daily_report_last_sent_iso: new Date().toISOString(),
-    };
-    await this.db
-      .update(tenants)
-      .set({ flipEngineConfig: newCfg as never, updatedAt: new Date() })
-      .where(eq(tenants.id, tenantId));
-
-    return { sent, due: true };
+    return { sent, recipients };
   }
 
   // ---------- internal ----------
@@ -284,6 +308,35 @@ function readManagerPhones(tenant: typeof tenants.$inferSelect): string[] {
   const raw = tenant.managerPhones as unknown;
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+}
+
+function getTenantLocalNow(timeZone: string): { hour: number; date: string } {
+  const safeTimeZone = timeZone || 'America/New_York';
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: safeTimeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+  } catch {
+    parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+  }
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return {
+    hour: Number(get('hour')),
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+  };
 }
 
 function readBatchMark(tenant: typeof tenants.$inferSelect): Date | null {

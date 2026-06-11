@@ -23,6 +23,7 @@ interface Company {
   assignedPhoneNumber: string | null;
   thinkrrAgentId: string | null;
   apiKeyPrefix: string;
+  managerPhones: string[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +44,7 @@ export default function CompanyPage() {
   const [companyName, setCompanyName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [timezone, setTimezone] = useState('America/New_York');
+  const [managerPhones, setManagerPhones] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -62,6 +64,7 @@ export default function CompanyPage() {
       setCompanyName(data.companyName);
       setOwnerEmail(data.ownerEmail);
       setTimezone(data.timezone);
+      setManagerPhones((data.managerPhones ?? []).join(', '));
       setHasChanges(false);
     } catch (err) {
       setError((err as Error).message);
@@ -82,9 +85,15 @@ export default function CompanyPage() {
     try {
       const updated = await api<Company>('/v1/admin/company', {
         method: 'PUT',
-        json: { companyName, ownerEmail, timezone },
+        json: {
+          companyName,
+          ownerEmail,
+          timezone,
+          managerPhones: parsePhoneList(managerPhones),
+        },
       });
       setCompany(updated);
+      setManagerPhones((updated.managerPhones ?? []).join(', '));
       setHasChanges(false);
       setSavedMessage('Saved');
     } catch (err) {
@@ -172,6 +181,20 @@ export default function CompanyPage() {
                   </Select>
                 </div>
               </label>
+
+              <label className="block text-sm text-zinc-300">
+                Manager report phones
+                <Input
+                  value={managerPhones}
+                  onChange={(e) => mutate(setManagerPhones, e.target.value)}
+                  placeholder="+16145550111, +16145550222"
+                  className="mt-1"
+                />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  Daily flip reports, batch summaries, and flip-win alerts are texted to these
+                  numbers. Use comma, space, or line breaks between numbers.
+                </span>
+              </label>
             </CardContent>
           </Card>
 
@@ -218,6 +241,17 @@ export default function CompanyPage() {
         </>
       )}
     </div>
+  );
+}
+
+function parsePhoneList(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\s,;]+/)
+        .map((phone) => phone.trim())
+        .filter(Boolean),
+    ),
   );
 }
 

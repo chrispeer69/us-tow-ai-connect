@@ -117,7 +117,7 @@ export class SendGridEmailService {
         .where(eq(emailMessages.id, row.id));
       return { id: row.id, sendgridMessageId: sendgridId, status: 'sent' };
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = describeSendGridError(err);
       this.logger.warn(
         `SendGrid send failed tenant=${params.tenantId} to=${params.to}: ${msg}`,
       );
@@ -141,4 +141,24 @@ function stripTags(html: string): string {
     .replace(/&gt;/g, '>')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function describeSendGridError(err: unknown): string {
+  const fallback = err instanceof Error ? err.message : String(err);
+  const response = (err as { response?: { statusCode?: number; body?: unknown } })?.response;
+  if (!response?.body) return fallback;
+
+  const body = response.body as {
+    errors?: Array<{ message?: string; field?: string; help?: string }>;
+  };
+  const details = Array.isArray(body.errors)
+    ? body.errors
+        .map((e) =>
+          [e.message, e.field ? `field=${e.field}` : '', e.help].filter(Boolean).join(' '),
+        )
+        .filter(Boolean)
+        .join('; ')
+    : '';
+  const status = response.statusCode ? `HTTP ${response.statusCode}` : '';
+  return [fallback, status, details].filter(Boolean).join(' — ');
 }
