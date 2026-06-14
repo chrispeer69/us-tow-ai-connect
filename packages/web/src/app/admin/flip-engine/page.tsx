@@ -297,8 +297,8 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${active
-          ? 'border-emerald-500 text-zinc-100'
-          : 'border-transparent text-zinc-400 hover:text-zinc-200'
+        ? 'border-emerald-500 text-zinc-100'
+        : 'border-transparent text-zinc-400 hover:text-zinc-200'
         }`}
     >
       {label}
@@ -349,15 +349,15 @@ function SandboxTab({ setError }: { setError: (s: string | null) => void }) {
       const json = jobId
         ? { jobId }
         : {
-            destinationName: emptyToNull(form.destinationName),
-            destinationAddress: emptyToNull(form.destinationAddress),
-            pickupAddress: emptyToNull(form.pickupAddress),
-            pickupLat: numberOrNull(form.pickupLat),
-            pickupLng: numberOrNull(form.pickupLng),
-            reasonText: emptyToNull(form.reasonText),
-            vehicleNotes: emptyToNull(form.vehicleNotes),
-            motorClubServiceCode: emptyToNull(form.motorClubServiceCode),
-          };
+          destinationName: emptyToNull(form.destinationName),
+          destinationAddress: emptyToNull(form.destinationAddress),
+          pickupAddress: emptyToNull(form.pickupAddress),
+          pickupLat: numberOrNull(form.pickupLat),
+          pickupLng: numberOrNull(form.pickupLng),
+          reasonText: emptyToNull(form.reasonText),
+          vehicleNotes: emptyToNull(form.vehicleNotes),
+          motorClubServiceCode: emptyToNull(form.motorClubServiceCode),
+        };
       const res = await api<{ data: SandboxResult }>('/v1/admin/flip-engine/sandbox/classify', {
         method: 'POST',
         json,
@@ -753,16 +753,14 @@ function ActiveToggleCell({
     <button
       onClick={() => void toggle()}
       disabled={saving}
-      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-        active ? 'bg-emerald-600' : 'bg-zinc-700'
-      } ${saving ? 'opacity-50' : ''}`}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${active ? 'bg-emerald-600' : 'bg-zinc-700'
+        } ${saving ? 'opacity-50' : ''}`}
     >
       <span className="sr-only">Toggle active status</span>
       <span
         aria-hidden="true"
-        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-          active ? 'translate-x-4' : 'translate-x-0'
-        }`}
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${active ? 'translate-x-4' : 'translate-x-0'
+          }`}
       />
     </button>
   );

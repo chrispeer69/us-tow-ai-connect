@@ -25,12 +25,25 @@ export default function SignInPage() {
         body: JSON.stringify({ email, password }),
       });
       
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.message || 'Login failed');
+      const bodyText = await res.text();
+      let data: { access_token?: string; message?: string | string[]; error?: string } = {};
+      if (bodyText) {
+        try {
+          data = JSON.parse(bodyText);
+        } catch {
+          data = { message: res.ok ? 'Invalid login response' : 'Login failed. Please try again.' };
+        }
       }
-      
+
+      if (!res.ok) {
+        const message = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+        throw new Error(message || data.error || 'Login failed');
+      }
+
+      if (!data.access_token) {
+        throw new Error('Login failed. Please try again.');
+      }
+
       setToken(data.access_token);
       router.push('/admin/command-center');
     } catch (err: any) {

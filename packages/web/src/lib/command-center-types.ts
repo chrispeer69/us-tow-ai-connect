@@ -47,6 +47,33 @@ export interface UnifiedJob {
   driver?: Driver | null;
   truck?: Truck | null;
   events?: JobEvent[];
+  latestCall?: CommandCenterCallSummary | null;
+  latestFlip?: CommandCenterFlipSummary | null;
+}
+
+export interface CommandCenterCallSummary {
+  id: string;
+  purpose: string;
+  status: string;
+  attempts: number;
+  durationSeconds: number | null;
+  error: string | null;
+  transcript: string | null;
+  analysisData: Record<string, unknown> | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  createdAt: string;
+}
+
+export interface CommandCenterFlipSummary {
+  id: string;
+  destinationType: string | null;
+  flipEligible: boolean;
+  nearestOurShop: string | null;
+  flipOutcome: string | null;
+  conviniLinkSent: boolean;
+  managementNotified: boolean;
+  callTime: string;
 }
 
 export interface Driver {

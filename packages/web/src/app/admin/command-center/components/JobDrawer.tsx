@@ -131,6 +131,90 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustom
           {callError && <p className="mt-1 text-xs text-red-500">{callError}</p>}
         </section>
 
+        {(job.latestCall || job.latestFlip) && (
+          <section className="rounded border border-zinc-200 bg-zinc-50 p-4">
+            <h3 className="text-xs uppercase tracking-wide text-zinc-500">AI call result</h3>
+            {job.latestCall && (
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-zinc-600">Call status</span>
+                <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-zinc-800">
+                  {job.latestCall.status.replace(/_/g, ' ')}
+                </span>
+              </div>
+            )}
+            {job.latestCall?.error && (
+              <p className="mt-2 rounded bg-rose-50 p-2 text-xs text-rose-700">
+                {job.latestCall.error}
+              </p>
+            )}
+            {job.latestCall?.analysisData && Object.keys(job.latestCall.analysisData).length > 0 && (
+              <div className="mt-3 rounded bg-white p-3 text-xs">
+                <div className="font-semibold uppercase tracking-wide text-zinc-500">
+                  Retell data received
+                </div>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                  {Object.entries(job.latestCall.analysisData)
+                    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+                    .slice(0, 8)
+                    .map(([key, value]) => (
+                      <div key={key} className="contents">
+                        <dt className="truncate text-zinc-500">{key.replace(/_/g, ' ')}</dt>
+                        <dd className="truncate text-right font-medium text-zinc-900">
+                          {String(value)}
+                        </dd>
+                      </div>
+                    ))}
+                </dl>
+              </div>
+            )}
+            {job.latestCall?.transcript && (
+              <div className="mt-3 rounded bg-white p-3 text-xs">
+                <div className="font-semibold uppercase tracking-wide text-zinc-500">
+                  Transcript
+                </div>
+                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-zinc-700">
+                  {job.latestCall.transcript}
+                </p>
+              </div>
+            )}
+            {job.latestFlip && (
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-zinc-600">Flip result</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${flipResultClass(job.latestFlip.flipOutcome)}`}>
+                    {formatFlipResult(job.latestFlip.flipOutcome, job.latestFlip.flipEligible)}
+                  </span>
+                </div>
+                {job.latestFlip.destinationType && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-zinc-600">Destination</span>
+                    <span className="text-right font-medium text-zinc-900">
+                      {job.latestFlip.destinationType.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                )}
+                {job.latestFlip.nearestOurShop && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-zinc-600">Redirect shop</span>
+                    <span className="text-right font-medium text-emerald-700">
+                      {job.latestFlip.nearestOurShop}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-zinc-600">CONVINI</span>
+                  <span className="font-medium text-zinc-900">
+                    {job.latestFlip.conviniLinkSent ? 'sent' : 'not sent'}
+                  </span>
+                </div>
+                <p className="pt-1 text-xs text-zinc-500">
+                  Updated {new Date(job.latestFlip.callTime).toLocaleString()}
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
         <section>
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Assign driver</h3>
           <select
@@ -215,4 +299,17 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustom
       </div>
     </aside>
   );
+}
+
+function formatFlipResult(outcome: string | null, eligible: boolean): string {
+  if (outcome && /WIN|ACCEPTED/i.test(outcome)) return 'Flip win';
+  if (!eligible) return 'No flip';
+  if (!outcome || outcome === 'NOT_ATTEMPTED') return 'Pending';
+  return outcome.replace(/_/g, ' ').toLowerCase();
+}
+
+function flipResultClass(outcome: string | null): string {
+  if (outcome && /WIN|ACCEPTED/i.test(outcome)) return 'bg-emerald-100 text-emerald-700';
+  if (outcome && /DECLINED|LOSS|FAILED/i.test(outcome)) return 'bg-rose-100 text-rose-700';
+  return 'bg-zinc-100 text-zinc-700';
 }

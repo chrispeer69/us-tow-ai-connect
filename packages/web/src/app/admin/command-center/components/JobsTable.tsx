@@ -55,6 +55,7 @@ export function JobsTable({
             <th className="px-3 py-2 text-left">Pickup</th>
             <th className="px-3 py-2 text-left">ETA</th>
             <th className="px-3 py-2 text-left">Driver</th>
+            <th className="px-3 py-2 text-left">AI call</th>
             <th className="px-3 py-2 text-left">Age</th>
           </tr>
         </thead>
@@ -88,6 +89,9 @@ export function JobsTable({
                   : '—'}
               </td>
               <td className="px-3 py-2 text-zinc-700">{j.driver?.name || '—'}</td>
+              <td className="px-3 py-2">
+                <CallResultPill job={j} />
+              </td>
               <td className="px-3 py-2 text-zinc-400 text-xs">{formatAge(j.createdAt)}</td>
             </tr>
           ))}
@@ -95,4 +99,37 @@ export function JobsTable({
       </table>
     </div>
   );
+}
+
+function CallResultPill({ job }: { job: UnifiedJob }) {
+  const flip = job.latestFlip;
+  const call = job.latestCall;
+
+  if (flip?.flipOutcome && /WIN|ACCEPTED/i.test(flip.flipOutcome)) {
+    return (
+      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+        Flip win
+      </span>
+    );
+  }
+  if (call?.status) {
+    const color = call.status === 'completed'
+      ? 'bg-blue-100 text-blue-700'
+      : call.status === 'failed' || call.status === 'no_answer'
+        ? 'bg-rose-100 text-rose-700'
+        : 'bg-zinc-100 text-zinc-700';
+    return (
+      <span className={cn('inline-flex rounded-full px-2 py-1 text-xs font-semibold', color)}>
+        {call.status.replace(/_/g, ' ')}
+      </span>
+    );
+  }
+  if (flip) {
+    return (
+      <span className="inline-flex rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-600">
+        Flip checked
+      </span>
+    );
+  }
+  return <span className="text-xs text-zinc-400">—</span>;
 }

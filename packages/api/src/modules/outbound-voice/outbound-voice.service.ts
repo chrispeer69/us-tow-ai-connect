@@ -958,9 +958,17 @@ function normalizeOutcomeValue(value: string | null | undefined): string | null 
   if (!value || typeof value !== 'string') return null;
   const normalized = value.trim().replace(/[\s-]+/g, '_').toUpperCase();
   if (!normalized) return null;
-  if (/ACCEPT|SUCCESS|YES|WIN/.test(normalized)) return 'ACCEPTED';
-  if (/DECLINE|REJECT|NO|LOST|LOSS/.test(normalized)) return 'DECLINED';
   if (/NOT_ATTEMPT|SKIP|N\/A|NONE/.test(normalized)) return 'NOT_ATTEMPTED';
+  if (/DECLINE|REJECT|NO|LOST|LOSS|REFUSE|DID_NOT|DONT|DON'T|NO_CHANGE|NOT_CHANGE|NO_SWITCH/.test(normalized)) {
+    return 'DECLINED';
+  }
+  if (
+    /ACCEPT|SUCCESS|YES|WIN|AGREE|SWITCH|REDIRECT|CHANGE_DESTINATION|DESTINATION_CHANGE|CHANGED_DESTINATION|UPDATE_DESTINATION/.test(
+      normalized,
+    )
+  ) {
+    return 'ACCEPTED';
+  }
   return trimForColumn(normalized, 20);
 }
 

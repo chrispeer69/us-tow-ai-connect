@@ -5,9 +5,12 @@ import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   drivers,
   jobEvents,
+  outboundCallLogs,
+  outboundCalls,
   trucks,
   unifiedJobs,
   type DriverRow,
+  type OutboundCallRow,
   type TruckRow,
   type UnifiedJobRow,
 } from '../../db/schema';
@@ -21,7 +24,34 @@ import type { UnifiedJobInput, UnifiedJobStatus } from './normalizers/types';
 type EnrichedJob = UnifiedJobRow & {
   driver?: DriverRow | null;
   truck?: TruckRow | null;
+  latestCall?: CommandCenterCallSummary | null;
+  latestFlip?: CommandCenterFlipSummary | null;
 };
+
+export interface CommandCenterCallSummary {
+  id: string;
+  purpose: string;
+  status: string;
+  attempts: number;
+  durationSeconds: number | null;
+  error: string | null;
+  transcript: string | null;
+  analysisData: unknown;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface CommandCenterFlipSummary {
+  id: string;
+  destinationType: string | null;
+  flipEligible: boolean;
+  nearestOurShop: string | null;
+  flipOutcome: string | null;
+  conviniLinkSent: boolean;
+  managementNotified: boolean;
+  callTime: Date;
+}
 
 const TERMINAL: ReadonlySet<UnifiedJobStatus> = new Set(['completed', 'canceled', 'declined']);
 
@@ -121,8 +151,10 @@ export class CommandCenterService {
         .where(where),
     ]);
 
+    const items = await this.attachCallSummaries(tenantId, rows);
+
     return {
-      items: rows,
+      items,
       total: totalRow[0]?.count ?? 0,
       limit,
       offset,
@@ -140,7 +172,8 @@ export class CommandCenterService {
       .from(jobEvents)
       .where(eq(jobEvents.jobId, jobId))
       .orderBy(desc(jobEvents.createdAt));
-    return { ...row, events: eventRows };
+    const [enriched] = await this.attachCallSummaries(tenantId, [{ ...row, events: eventRows }]);
+    return { ...enriched, events: eventRows };
   }
 
   async assignJob(tenantId: string, jobId: string, driverId: string | null, truckId: string | null) {
@@ -639,6 +672,93 @@ export class CommandCenterService {
       this.logger.warn(`chargeJobCredit failed for tenant ${tenantId}: ${(err as Error).message}`);
     }
   }
+
+  private async attachCallSummaries<T extends EnrichedJob>(
+    tenantId: string,
+    rows: T[],
+  ): Promise<Array<T & { latestCall: CommandCenterCallSummary | null; latestFlip: CommandCenterFlipSummary | null }>> {
+    if (rows.length === 0) return [];
+
+    const jobIds = rows.map((row) => row.id);
+    const phones = Array.from(new Set(rows.map((row) => row.callerPhone).filter(Boolean))) as string[];
+
+    const callRows = await this.db
+      .select()
+      .from(outboundCalls)
+      .where(and(eq(outboundCalls.tenantId, tenantId), inArray(outboundCalls.relatedJobId, jobIds)))
+      .orderBy(desc(outboundCalls.createdAt));
+
+    const latestCallByJob = new Map<string, typeof outboundCalls.$inferSelect>();
+    for (const call of callRows) {
+      if (call.relatedJobId && !latestCallByJob.has(call.relatedJobId)) {
+        latestCallByJob.set(call.relatedJobId, call);
+      }
+    }
+
+    const logRows = phones.length
+      ? await this.db
+          .select()
+          .from(outboundCallLogs)
+          .where(
+            and(
+              eq(outboundCallLogs.tenantId, tenantId),
+              inArray(outboundCallLogs.customerPhone, phones),
+            ),
+          )
+          .orderBy(desc(outboundCallLogs.callTime))
+      : [];
+
+    const latestFlipByPhone = new Map<string, typeof outboundCallLogs.$inferSelect>();
+    for (const log of logRows) {
+      if (!latestFlipByPhone.has(log.customerPhone)) {
+        latestFlipByPhone.set(log.customerPhone, log);
+      }
+    }
+
+    return rows.map((row) => {
+      const latestPhoneFlip = row.callerPhone ? latestFlipByPhone.get(row.callerPhone) ?? null : null;
+      const latestFlip =
+        latestPhoneFlip && latestPhoneFlip.callTime >= row.createdAt ? latestPhoneFlip : null;
+      return {
+        ...row,
+        latestCall: summarizeCall(latestCallByJob.get(row.id) ?? null),
+        latestFlip: summarizeFlip(latestFlip),
+      };
+    });
+  }
+}
+
+function summarizeCall(call: OutboundCallRow | null): CommandCenterCallSummary | null {
+  if (!call) return null;
+  return {
+    id: call.id,
+    purpose: call.purpose,
+    status: call.status,
+    attempts: call.attempts,
+    durationSeconds: call.durationSeconds,
+    error: call.error,
+    transcript: call.transcript,
+    analysisData: call.analysisData,
+    startedAt: call.startedAt,
+    endedAt: call.endedAt,
+    createdAt: call.createdAt,
+  };
+}
+
+function summarizeFlip(
+  log: typeof outboundCallLogs.$inferSelect | null,
+): CommandCenterFlipSummary | null {
+  if (!log) return null;
+  return {
+    id: log.id,
+    destinationType: log.destinationType,
+    flipEligible: log.flipEligible,
+    nearestOurShop: log.nearestOurShop,
+    flipOutcome: log.flipOutcome,
+    conviniLinkSent: log.conviniLinkSent,
+    managementNotified: log.managementNotified,
+    callTime: log.callTime,
+  };
 }
 
 export type { EnrichedJob };

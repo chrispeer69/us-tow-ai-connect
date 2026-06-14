@@ -78,7 +78,12 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     dynamicVariables.script_template = params.scriptTemplate;
     dynamicVariables.tenant_id = params.tenantId;
     dynamicVariables.ustow_call_id = params.callId;
-    if (params.toName) dynamicVariables.customer_name = params.toName;
+    if (params.toName) {
+      dynamicVariables.customer_name = params.toName;
+      // Backward compatibility for older Retell prompts / voicemail fallback
+      // text that referenced {{user_name}} instead of {{customer_name}}.
+      dynamicVariables.user_name = params.toName;
+    }
 
     const testModeEnabled = process.env.OUTBOUND_TEST_MODE_ENABLED === 'true';
     const testNumber = process.env.RETELL_TEST_OVERRIDE_NUMBER?.trim();

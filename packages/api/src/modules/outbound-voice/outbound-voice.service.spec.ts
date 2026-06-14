@@ -404,6 +404,81 @@ describe('OutboundVoiceService', () => {
     );
   });
 
+  it('treats destination change language as a flip win', async () => {
+    const seedRow = {
+      id: 'voice-destination-change',
+      tenantId: TENANT_ID,
+      provider: 'retell',
+      retellCallId: 'retell-change',
+      purpose: 'custom',
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      toPhone: '+15551234567',
+      toName: 'Mary',
+      scriptTemplate: 'custom',
+      scriptVariables: {},
+      status: 'dialing',
+      attempts: 1,
+      maxAttempts: 3,
+      outcome: null,
+      startedAt: null,
+      endedAt: null,
+      durationSeconds: null,
+      transcript: null,
+      recordingUrl: null,
+    };
+    const seedLog = {
+      id: 'log-destination-change',
+      tenantId: TENANT_ID,
+      customerName: 'Mary Customer',
+      customerPhone: '+15551234567',
+      vehicle: '2022 Toyota Camry',
+      issueType: 'tow',
+      originalDestination: 'Competitor Auto',
+      nearestOurShop: 'Roadside Towing Shop',
+      offer1Result: 'NOT_ATTEMPTED',
+      offer2Result: 'NOT_ATTEMPTED',
+      offer3Result: 'NOT_ATTEMPTED',
+      flipOutcome: 'NOT_ATTEMPTED',
+      conviniLinkSent: false,
+      managementNotified: false,
+      callTime: new Date(),
+    };
+    const { db, logs } = makeFakeDb(
+      [seedRow],
+      { managerPhones: ['+15557654321'] },
+      [seedLog],
+    );
+    const thinkrr = new ThinkrrOutboundClient();
+    const retell = new RetellOutboundClient();
+    const provider = {
+      providerName: 'retell',
+      placeCall: vi.fn(async () => null),
+      cancelCall: vi.fn(async () => false),
+    } as any;
+    const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
+    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+
+    await svc.handleProviderWebhookEvent({
+      provider: 'retell',
+      callId: 'retell-change',
+      status: 'completed',
+      transcript: 'Mary said she wants the destination changed to our shop',
+      analysisData: {
+        flip_eligible: true,
+        flip_outcome: 'destination changed',
+        offer_1_result: 'customer wants destination changed',
+        destination_type: 'competitor_repair',
+      },
+    });
+
+    expect(logs[0]).toMatchObject({
+      flipOutcome: 'ACCEPTED',
+      offer1Result: 'ACCEPTED',
+      managementNotified: true,
+    });
+    expect(sms.sendSms).toHaveBeenCalledTimes(1);
+  });
+
   it('testCall creates an outbound log row even when the provider is unconfigured', async () => {
     const { db, calls } = makeFakeDb();
     const svc = createSvc(db);
