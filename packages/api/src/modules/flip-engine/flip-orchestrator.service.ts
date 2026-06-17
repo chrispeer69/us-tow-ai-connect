@@ -23,6 +23,13 @@ import {
 } from './flip-scripts';
 import { GeocoderService } from '../command-center/geocoder.service';
 
+type ManualCallScriptType =
+  | 'auto_flip'
+  | 'eta_confirmation'
+  | 'status_update'
+  | 'winch_out'
+  | 'convini_only';
+
 function issuePhrase(subcategory: string | null | undefined): string {
   switch (subcategory) {
     case 'single_tire_issue':
@@ -484,6 +491,7 @@ export class FlipOrchestratorService {
   async callUnifiedJobManually(
     tenantId: string,
     jobId: string,
+    opts: { scriptType?: ManualCallScriptType } = {},
   ): Promise<{ status: 'queued' | 'skipped'; message: string }> {
     const row = await this.db.query.unifiedJobs.findFirst({
       where: and(eq(unifiedJobs.id, jobId), eq(unifiedJobs.tenantId, tenantId)),
@@ -492,11 +500,105 @@ export class FlipOrchestratorService {
       throw new NotFoundException({ status: 'error', code: 'JOB_NOT_FOUND' });
     }
     if (!row.callerPhone) {
+      await this.voice.notifyManagersOfJobAttention({
+        tenantId,
+        jobId: row.id,
+        customerName: row.callerName,
+        customerPhone: row.callerPhone,
+        reason: 'missing or incomplete customer phone number',
+      });
       return { status: 'skipped', message: 'Job has no caller phone number.' };
     }
 
-    await this.handleNewlyCreatedJob(tenantId, row as UnifiedJobRow, { automatic: false });
-    return { status: 'queued', message: 'Customer call queued if this job has not already been called.' };
+    const scriptType = opts.scriptType ?? 'auto_flip';
+    if (scriptType === 'auto_flip') {
+      await this.handleNewlyCreatedJob(tenantId, row as UnifiedJobRow, { automatic: false });
+      return { status: 'queued', message: 'Customer call queued if this job has not already been called.' };
+    }
+
+    await this.enqueueManualScriptCall(tenantId, row as UnifiedJobRow, scriptType);
+    return { status: 'queued', message: `Customer call queued with ${manualScriptLabel(scriptType)} script.` };
+  }
+
+  private async enqueueManualScriptCall(
+    tenantId: string,
+    job: UnifiedJobRow,
+    scriptType: ManualCallScriptType,
+  ): Promise<void> {
+    if (!job.callerPhone) return;
+
+    const tenantRows = await this.db
+      .select({
+        outboundVoiceEnabled: tenants.outboundVoiceEnabled,
+        outboundVoiceConfig: tenants.outboundVoiceConfig,
+        flipEngineConfig: tenants.flipEngineConfig,
+        companyName: tenants.companyName,
+        managerPhones: tenants.managerPhones,
+        assignedPhoneNumber: tenants.assignedPhoneNumber,
+      })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const tenant = tenantRows[0];
+    if (!tenant?.outboundVoiceEnabled) {
+      throw new BadRequestException('Outbound AI calls are off for this account.');
+    }
+    if (demoCallsBlocked(tenant.outboundVoiceConfig)) {
+      throw new BadRequestException('Demo calls are disabled for this account.');
+    }
+
+    const issue = this.issueClassifier.classify({
+      reasonText: job.serviceType ?? null,
+      vehicleNotes: null,
+      motorClubServiceCode: job.serviceType ?? null,
+    });
+    const callPolicy = await this.getAgentCallPolicy(tenantId, issue.subcategory);
+    if (callPolicy.outboundCallMode === 'OFF' || !callPolicy.serviceEnabled) {
+      throw new BadRequestException(
+        `${callPolicy.serviceName} is not enabled for AI customer calls.`,
+      );
+    }
+
+    const globalConfig = await this.flipEngine.getGlobalConfig();
+    const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
+    const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
+    const callbackNumber =
+      (cfg.callback_number as string) ||
+      (globalCfg.callback_number as string) ||
+      readFirstManagerPhone(tenant.managerPhones) ||
+      tenant.assignedPhoneNumber ||
+      '';
+
+    await this.voice.enqueueCall({
+      tenantId,
+      purpose: 'custom',
+      toPhone: job.callerPhone,
+      toName: job.callerName ?? '',
+      scriptTemplate: 'custom',
+      scriptVariables: {
+        body: renderManualScript(scriptType, {
+          repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || 'Emily',
+          companyName:
+            (cfg.company_name as string) ||
+            (globalCfg.company_name as string) ||
+            tenant.companyName ||
+            'Roadside Towing',
+          customerFirstName: firstNameOf(job.callerName),
+          vehicle:
+            [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
+              .filter(Boolean)
+              .join(' ') || 'your vehicle',
+          pickupLocation: job.pickupAddress ?? 'your service location',
+          destination: job.dropoffAddress ?? '',
+          issue: issuePhrase(issue.subcategory),
+          etaMinutes: job.etaMinutes,
+          callbackNumber,
+          conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+        }),
+      },
+      relatedJobId: job.id,
+      dedupeRelatedJob: false,
+    });
   }
 
   /**
@@ -521,13 +623,23 @@ export class FlipOrchestratorService {
     opts: { automatic?: boolean } = {},
   ): Promise<void> {
     const automatic = opts.automatic ?? true;
-    // Skip if no phone number — nothing to call.
-    if (!job.callerPhone) return;
-
-    // Dedup: never enqueue the same job twice.
     const seenKey = `welcome:${tenantId}:${job.id}`;
     if (automatic && this.seen.has(seenKey)) return;
 
+    // Skip if no phone number — nothing to call.
+    if (!job.callerPhone) {
+      if (automatic) this.seen.set(seenKey, Date.now());
+      await this.voice.notifyManagersOfJobAttention({
+        tenantId,
+        jobId: job.id,
+        customerName: job.callerName,
+        customerPhone: job.callerPhone,
+        reason: 'missing or incomplete customer phone number',
+      });
+      return;
+    }
+
+    // Dedup: never enqueue the same job twice.
     // DB-level deduplication to prevent looping across server restarts
     const existingCalls = await this.db
       .select({ id: outboundCalls.id })
@@ -551,13 +663,21 @@ export class FlipOrchestratorService {
     try {
       // Gate: only proceed if tenant has opted into outbound voice.
       const tenantRows = await this.db
-        .select({ outboundVoiceEnabled: tenants.outboundVoiceEnabled, flipEngineConfig: tenants.flipEngineConfig })
+        .select({
+          outboundVoiceEnabled: tenants.outboundVoiceEnabled,
+          outboundVoiceConfig: tenants.outboundVoiceConfig,
+          flipEngineConfig: tenants.flipEngineConfig,
+        })
         .from(tenants)
         .where(eq(tenants.id, tenantId))
         .limit(1);
       const tenant = tenantRows[0];
       if (!tenant?.outboundVoiceEnabled) {
         if (!automatic) throw new BadRequestException('Outbound AI calls are off for this account.');
+        return;
+      }
+      if (demoCallsBlocked(tenant.outboundVoiceConfig)) {
+        if (!automatic) throw new BadRequestException('Demo calls are disabled for this account.');
         return;
       }
 
@@ -975,6 +1095,94 @@ function serviceNameForIssue(issueSubcategory: string | null | undefined): strin
     default:
       return 'Towing';
   }
+}
+
+function demoCallsBlocked(config: unknown): boolean {
+  const cfg = (config as Record<string, unknown> | null | undefined) ?? {};
+  return cfg.demo_mode === true && cfg.demo_calls_enabled !== true;
+}
+
+function manualScriptLabel(scriptType: ManualCallScriptType): string {
+  switch (scriptType) {
+    case 'eta_confirmation':
+      return 'ETA confirmation';
+    case 'status_update':
+      return 'status update';
+    case 'winch_out':
+      return 'winch-out';
+    case 'convini_only':
+      return 'CONVINI only';
+    default:
+      return 'auto flip';
+  }
+}
+
+function renderManualScript(
+  scriptType: ManualCallScriptType,
+  vars: {
+    repName: string;
+    companyName: string;
+    customerFirstName: string;
+    vehicle: string;
+    pickupLocation: string;
+    destination: string;
+    issue: string;
+    etaMinutes: number | null;
+    callbackNumber: string;
+    conviniLink: string;
+  },
+): string {
+  const eta = vars.etaMinutes != null ? `${vars.etaMinutes} minutes` : 'as soon as possible';
+  const destinationLine = vars.destination
+    ? `I have the destination as ${vars.destination}.`
+    : 'I do not have a separate delivery address on this job.';
+  const callbackLine = vars.callbackNumber
+    ? `If anything changes, please call us back at ${vars.callbackNumber}.`
+    : 'If anything changes, please call dispatch back.';
+
+  switch (scriptType) {
+    case 'eta_confirmation':
+      return [
+        `Hi ${vars.customerFirstName}, this is ${vars.repName} calling from ${vars.companyName}.`,
+        `I am calling to confirm your roadside service. I have the pickup as ${vars.pickupLocation}.`,
+        destinationLine,
+        `Your driver should arrive in about ${eta}. Please stay in a safe location while you wait.`,
+        callbackLine,
+      ].join('\n');
+    case 'status_update':
+      return [
+        `Hi ${vars.customerFirstName}, this is ${vars.repName} from ${vars.companyName}.`,
+        `I am calling with an update on your service request for ${vars.vehicle}.`,
+        `We have the issue listed as ${vars.issue}, and the pickup as ${vars.pickupLocation}.`,
+        `Your request is active and our team is working on it now.`,
+        callbackLine,
+      ].join('\n');
+    case 'winch_out':
+      return [
+        `Hi ${vars.customerFirstName}, this is ${vars.repName} calling from ${vars.companyName}.`,
+        `I am calling about your winch-out or recovery request at ${vars.pickupLocation}.`,
+        'A winch-out usually means we come to get the vehicle back onto solid ground.',
+        'Please have a few photos of the situation ready. When the driver calls, they may ask you to text those photos so they can see the depth of the problem before they arrive.',
+        'Do not worry about a delivery destination unless the driver confirms a tow is also needed after the recovery.',
+        callbackLine,
+      ].join('\n');
+    case 'convini_only':
+      return [
+        `Hi ${vars.customerFirstName}, this is ${vars.repName} from ${vars.companyName}.`,
+        `I am calling to quickly confirm your service request at ${vars.pickupLocation}.`,
+        `One quick thing before I let you go. We have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and member deals in one place.`,
+        'Can I text you the download link? It is free and takes about 30 seconds to set up.',
+        callbackLine,
+      ].join('\n');
+    default:
+      return '';
+  }
+}
+
+function readFirstManagerPhone(raw: unknown): string | null {
+  if (!Array.isArray(raw)) return null;
+  const first = raw.find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return first?.trim() ?? null;
 }
 
 /**

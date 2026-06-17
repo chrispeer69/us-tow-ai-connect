@@ -123,8 +123,14 @@ export class CommandCenterController {
   }
 
   @Post('jobs/:id/call-customer')
-  callCustomer(@Req() req: AdminRequest, @Param('id') id: string) {
-    return this.service.callCustomerManually(req.tenantId, id);
+  callCustomer(
+    @Req() req: AdminRequest,
+    @Param('id') id: string,
+    @Body() body: { scriptType?: string },
+  ) {
+    return this.service.callCustomerManually(req.tenantId, id, {
+      scriptType: parseManualScriptType(body?.scriptType),
+    });
   }
 
   @Post('jobs/manual')
@@ -207,4 +213,11 @@ export class CommandCenterController {
   stats(@Req() req: AdminRequest) {
     return this.service.stats(req.tenantId);
   }
+}
+
+function parseManualScriptType(value: unknown) {
+  const parsed = z
+    .enum(['auto_flip', 'eta_confirmation', 'status_update', 'winch_out', 'convini_only'])
+    .safeParse(value);
+  return parsed.success ? parsed.data : 'auto_flip';
 }

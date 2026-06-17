@@ -5,19 +5,21 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
+  const { token, loading } = useAuth();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    if (loading) return;
     if (!token) {
+      setIsReady(false);
       router.push('/sign-in');
     } else {
       setIsReady(true);
     }
-  }, [token, router]);
+  }, [loading, token, router]);
 
-  if (!isReady) {
+  if (loading || !isReady) {
     return null; // Or a loading spinner
   }
 

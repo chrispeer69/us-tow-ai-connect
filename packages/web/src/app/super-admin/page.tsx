@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/utils';
 import { ArrowRight, Activity, Users, PhoneCall } from 'lucide-react';
 
@@ -25,7 +26,13 @@ interface TenantStats {
   createdAt: string;
   activeJobs: number;
   callsLast24h: number;
+  callsTotal: number;
+  callMinutesUsed: number;
   plan: string | null;
+  version: string;
+  billingStatus: string;
+  outboundVoiceEnabled: boolean;
+  freeTrialCallMinutes: number;
 }
 
 export default function SuperAdminPage() {
@@ -33,6 +40,7 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tickets, setTickets] = useState<any[]>([]);
+  const [savingTenantId, setSavingTenantId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -120,21 +128,24 @@ export default function SuperAdminPage() {
             <TableRow className="border-zinc-800 hover:bg-transparent">
               <TableHead className="text-zinc-400">Company</TableHead>
               <TableHead className="text-zinc-400">Status</TableHead>
+              <TableHead className="text-zinc-400">Billing</TableHead>
               <TableHead className="text-zinc-400 text-right">Active Jobs</TableHead>
               <TableHead className="text-zinc-400 text-right">24h Calls</TableHead>
-              <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+              <TableHead className="text-zinc-400 text-right">Minutes Used</TableHead>
+              <TableHead className="text-zinc-400 text-right">Minute Cap</TableHead>
+              <TableHead className="text-zinc-400 text-center">Calls</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={5} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
                   <Spinner className="mx-auto" />
                 </TableCell>
               </TableRow>
             ) : tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={5} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
                   No tenants found.
                 </TableCell>
               </TableRow>
@@ -152,20 +163,60 @@ export default function SuperAdminPage() {
                       <Badge variant="outline">Inactive</Badge>
                     )}
                   </TableCell>
+                  <TableCell>
+                    <div className="font-medium text-zinc-100">{t.version || t.plan || 'Free'}</div>
+                    <div className="text-xs text-zinc-500">{t.billingStatus || 'ACTIVE'}</div>
+                  </TableCell>
                   <TableCell className="text-right font-medium">
                     {t.activeJobs}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {t.callsLast24h}
                   </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {t.callMinutesUsed}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      disabled={true}
-                    >
-                      Billing (Coming Soon)
-                    </Button>
+                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={savingTenantId === t.id || t.freeTrialCallMinutes <= 0}
+                        onClick={() =>
+                          void updateTenantCallControls(t.id, {
+                            freeTrialCallMinutes: Math.max(0, t.freeTrialCallMinutes - 5),
+                          })
+                        }
+                        className="h-7 px-2 text-xs"
+                      >
+                        -5
+                      </Button>
+                      <span className="min-w-[72px] text-center text-xs font-medium text-zinc-300">
+                        {t.freeTrialCallMinutes > 0 ? `${t.freeTrialCallMinutes} min` : 'No cap'}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={savingTenantId === t.id}
+                        onClick={() =>
+                          void updateTenantCallControls(t.id, {
+                            freeTrialCallMinutes: t.freeTrialCallMinutes + 5,
+                          })
+                        }
+                        className="h-7 px-2 text-xs"
+                      >
+                        +5
+                      </Button>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Switch
+                      checked={t.outboundVoiceEnabled}
+                      disabled={savingTenantId === t.id}
+                      onCheckedChange={(enabled) =>
+                        void updateTenantCallControls(t.id, { outboundVoiceEnabled: enabled })
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ))
@@ -224,4 +275,38 @@ export default function SuperAdminPage() {
       </Card>
     </div>
   );
+
+  async function updateTenantCallControls(
+    tenantId: string,
+    patch: {
+      outboundVoiceEnabled?: boolean;
+      freeTrialCallMinutes?: number;
+    },
+  ) {
+    setSavingTenantId(tenantId);
+    setError(null);
+    try {
+      await api(`/v1/super-admin/tenants/${tenantId}/call-controls`, {
+        method: 'PATCH',
+        json: patch,
+      });
+      setTenants((prev) =>
+        prev.map((tenant) =>
+          tenant.id === tenantId
+            ? {
+                ...tenant,
+                outboundVoiceEnabled:
+                  patch.outboundVoiceEnabled ?? tenant.outboundVoiceEnabled,
+                freeTrialCallMinutes:
+                  patch.freeTrialCallMinutes ?? tenant.freeTrialCallMinutes,
+              }
+            : tenant,
+        ),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingTenantId(null);
+    }
+  }
 }

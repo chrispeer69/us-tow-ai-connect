@@ -16,9 +16,16 @@ interface Props {
   drivers: Driver[];
   onAssign: (driverId: string | null) => Promise<void> | void;
   onStatusChange: (status: UnifiedJobStatus) => Promise<void> | void;
-  onCallCustomer: () => Promise<void> | void;
+  onCallCustomer: (scriptType: ManualCallScriptType) => Promise<void> | void;
   onClose: () => void;
 }
+
+export type ManualCallScriptType =
+  | 'auto_flip'
+  | 'eta_confirmation'
+  | 'status_update'
+  | 'winch_out'
+  | 'convini_only';
 
 const SOURCE_LABEL: Record<string, string> = {
   towbook: 'Towbook',
@@ -31,6 +38,7 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustom
   const [working, setWorking] = useState(false);
   const [callMessage, setCallMessage] = useState<string | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  const [manualScriptType, setManualScriptType] = useState<ManualCallScriptType>('auto_flip');
 
   async function handleAssign(value: string) {
     setPendingDriver(value);
@@ -56,7 +64,7 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustom
     setCallMessage(null);
     setCallError(null);
     try {
-      await onCallCustomer();
+      await onCallCustomer(manualScriptType);
       setCallMessage('Customer call requested.');
     } catch (err) {
       setCallError((err as Error).message);
@@ -116,6 +124,20 @@ export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustom
 
         <section>
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Customer call</h3>
+          <label className="mt-2 block text-xs font-medium text-zinc-600">
+            Script
+            <select
+              value={manualScriptType}
+              onChange={(e) => setManualScriptType(e.target.value as ManualCallScriptType)}
+              className="mt-1 block w-full rounded-md border border-zinc-200 bg-white px-2 py-2 text-sm text-zinc-900"
+            >
+              <option value="auto_flip">Auto: confirm + flip logic</option>
+              <option value="eta_confirmation">ETA confirmation</option>
+              <option value="status_update">Status update</option>
+              <option value="winch_out">Winch-out photo reminder</option>
+              <option value="convini_only">CONVINI only</option>
+            </select>
+          </label>
           <Button
             className="mt-2 w-full"
             variant="outline"

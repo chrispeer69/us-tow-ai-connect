@@ -7,6 +7,7 @@ interface AuthContextType {
   setToken: (token: string | null) => void;
   logout: () => void;
   isSuperAdmin: boolean;
+  loading: boolean;
 }
 
 function parseJwt(token: string) {
@@ -70,10 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/sign-in';
   };
 
-  if (loading) return null;
-
   return (
-    <AuthContext.Provider value={{ token, setToken, logout, isSuperAdmin }}>
+    <AuthContext.Provider value={{ token, setToken, logout, isSuperAdmin, loading }}>
       {children}
     </AuthContext.Provider>
   );

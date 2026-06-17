@@ -78,7 +78,18 @@ export default function Home() {
             <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/sign-in" className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Log In</Link>
+            <Link
+              href="/demo"
+              className="hidden sm:inline-flex items-center rounded-full border border-cyan-400/50 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.16)] transition-colors hover:border-cyan-300 hover:bg-cyan-400/20 hover:text-white"
+            >
+              Try Demo
+            </Link>
+            <Link
+              href="/sign-in"
+              className="hidden sm:inline-flex items-center rounded-full border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm font-bold text-blue-100 transition-colors hover:border-blue-300 hover:bg-blue-500/20 hover:text-white"
+            >
+              Log In
+            </Link>
           </div>
         </div>
       </nav>

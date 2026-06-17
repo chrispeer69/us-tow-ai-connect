@@ -564,27 +564,45 @@ export class AdminService {
 
   // ─── agent config ───────────────────────────────────────────────────
   async getAgentConfig(tenantId: string) {
-    const existing = (
-      await this.db
+    const [existing, tenant] = await Promise.all([
+      this.db
         .select()
         .from(aiAgentConfigs)
         .where(eq(aiAgentConfigs.tenantId, tenantId))
         .limit(1)
-    )[0];
+        .then((res) => res[0]),
+      this.db
+        .select({
+          outboundVoiceEnabled: tenants.outboundVoiceEnabled,
+          outboundVoiceConfig: tenants.outboundVoiceConfig,
+        })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1)
+        .then((res) => res[0]),
+    ]);
+
+    const defaultMode = tenant?.outboundVoiceEnabled ? 'AUTO' : 'OFF';
+
     if (existing) {
+      let mode = readOutboundCallMode(existing.serviceToggles);
+      if (mode === DEFAULT_OUTBOUND_CALL_MODE && !tenant?.outboundVoiceEnabled) {
+        mode = 'OFF';
+      }
       return {
         ...existing,
         serviceToggles: stripAgentSettings(existing.serviceToggles),
-        outboundCallMode: readOutboundCallMode(existing.serviceToggles),
+        outboundCallMode: mode,
       };
     }
+
     return {
       tenantId,
       greetingMessage: DEFAULT_GREETING,
       serviceToggles: {},
       defaultEtaMins: 45,
       impoundEnabled: false,
-      outboundCallMode: DEFAULT_OUTBOUND_CALL_MODE,
+      outboundCallMode: defaultMode,
     };
   }
 

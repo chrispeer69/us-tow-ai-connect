@@ -14,7 +14,7 @@ import { getCommandCenterSocket } from '@/lib/socket';
 import { api } from '@/lib/utils';
 import { DriversModal } from './components/DriversModal';
 import { FilterBar, type CommandCenterFilters } from './components/FilterBar';
-import { JobDrawer } from './components/JobDrawer';
+import { JobDrawer, type ManualCallScriptType } from './components/JobDrawer';
 import { JobsTable } from './components/JobsTable';
 import { MapPanel } from './components/MapPanel';
 import { StatsStrip } from './components/StatsStrip';
@@ -175,11 +175,12 @@ export default function CommandCenterPage() {
     setSelectedJob(fresh);
   }
 
-  async function handleCallCustomer() {
+  async function handleCallCustomer(scriptType: ManualCallScriptType) {
     if (!selectedJobId) return;
     setError(null);
     await api(`/v1/admin/command-center/jobs/${selectedJobId}/call-customer`, {
       method: 'POST',
+      json: { scriptType },
     });
     await refreshJobs();
     const fresh = await api<UnifiedJob>(`/v1/admin/command-center/jobs/${selectedJobId}`);

@@ -7,6 +7,7 @@ import {
   outboundCalls,
   tenants,
   alphaShops,
+  tenantBilling,
   type OutboundCallRow,
 } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
@@ -71,6 +72,7 @@ export class OutboundVoiceService {
     scriptTemplate: string;
     scriptVariables: Record<string, unknown>;
     relatedJobId?: string | null;
+    dedupeRelatedJob?: boolean;
     scheduledFor?: Date | null;
     maxAttempts?: number;
   }): Promise<OutboundCallRow> {
@@ -94,7 +96,7 @@ export class OutboundVoiceService {
       );
     }
 
-    if (input.relatedJobId && input.purpose === 'custom') {
+    if (input.relatedJobId && input.purpose === 'custom' && input.dedupeRelatedJob !== false) {
       const existing = await this.db
         .select()
         .from(outboundCalls)
@@ -269,6 +271,28 @@ export class OutboundVoiceService {
 
     const out: OutboundCallRow[] = [];
     for (const { call, tenant } of queued) {
+      if (demoCallsBlocked(tenant)) {
+        await this.db
+          .update(outboundCalls)
+          .set({
+            status: 'failed',
+            error: 'Demo calls are disabled for this tenant',
+            updatedAt: new Date(),
+          })
+          .where(eq(outboundCalls.id, call.id));
+        continue;
+      }
+      if (await this.freeTrialLimitReached(tenant)) {
+        await this.db
+          .update(outboundCalls)
+          .set({
+            status: 'failed',
+            error: 'Outbound trial call limit reached. Please contact support to enable more calls.',
+            updatedAt: new Date(),
+          })
+          .where(eq(outboundCalls.id, call.id));
+        continue;
+      }
       const updated = await this.dispatchOne(call, tenant);
       if (updated) out.push(updated);
     }
@@ -297,6 +321,14 @@ export class OutboundVoiceService {
         })
         .where(eq(outboundCalls.id, call.id))
         .returning();
+      await this.notifyManagersOfAttentionNeeded(call, {
+        status: 'failed',
+        error: `template_render_failed: ${(err as Error).message}`,
+      }).catch((notifyErr) => {
+        this.logger.warn(
+          `[outbound-voice] attention-needed SMS failed call=${call.id}: ${(notifyErr as Error).message}`,
+        );
+      });
       return updated[0];
     }
 
@@ -334,6 +366,16 @@ export class OutboundVoiceService {
         })
         .where(eq(outboundCalls.id, call.id))
         .returning();
+      if (finalStatus === 'failed') {
+        await this.notifyManagersOfAttentionNeeded(call, {
+          status: 'failed',
+          error: `${this.provider.providerName}_unavailable_or_unconfigured`,
+        }).catch((notifyErr) => {
+          this.logger.warn(
+            `[outbound-voice] attention-needed SMS failed call=${call.id}: ${(notifyErr as Error).message}`,
+          );
+        });
+      }
       return updated[0];
     }
 
@@ -500,17 +542,89 @@ export class OutboundVoiceService {
     }
     if (event.error != null) patch.error = event.error;
 
-    patch.analysisData = event.analysisData;
+    const analysisData = event.analysisData ?? {};
+    if (event.analysisData != null) patch.analysisData = event.analysisData;
+
+    const shouldNotifyAttention =
+      ['no_answer', 'failed'].includes(newStatus) && existing.status !== newStatus;
 
     await this.db.update(outboundCalls).set(patch).where(eq(outboundCalls.id, existing.id));
-    if (TERMINAL_STATUSES.has(newStatus) && Object.keys(event.analysisData).length > 0) {
-      await this.syncFlipActivityFromAnalysis(existing, patch, event.analysisData).catch((err) => {
+    if (shouldNotifyAttention) {
+      await this.notifyManagersOfAttentionNeeded(existing, {
+        status: newStatus,
+        error: event.error ?? patch.error ?? existing.error,
+      }).catch((err) => {
+        this.logger.warn(
+          `[outbound-voice] attention-needed SMS failed call=${existing.id}: ${(err as Error).message}`,
+        );
+      });
+    }
+    if (TERMINAL_STATUSES.has(newStatus) && Object.keys(analysisData).length > 0) {
+      await this.syncFlipActivityFromAnalysis(existing, patch, analysisData).catch((err) => {
         this.logger.warn(
           `[outbound-voice] flip activity sync failed for call ${existing.id}: ${(err as Error).message}`,
         );
       });
     }
     return { matched: true, previousStatus: existing.status, newStatus };
+  }
+
+  private async notifyManagersOfAttentionNeeded(
+    call: typeof outboundCalls.$inferSelect,
+    details: { status: string; error?: string | null },
+  ): Promise<void> {
+    await this.notifyManagersOfJobAttention({
+      tenantId: call.tenantId,
+      jobId: call.relatedJobId,
+      customerName: call.toName,
+      customerPhone: call.toPhone,
+      reason: details.status === 'no_answer' ? 'no answer / voicemail' : 'call failed',
+      error: details.error,
+    });
+  }
+
+  async notifyManagersOfJobAttention(input: {
+    tenantId: string;
+    jobId?: string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    reason: string;
+    error?: string | null;
+  }): Promise<void> {
+    const tenantRows = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, input.tenantId))
+      .limit(1);
+    const tenant = tenantRows[0];
+    if (!tenant) return;
+    if (!readConfigBool(tenant, 'manager_alerts_for_unanswered_calls', true)) return;
+
+    const recipients = readManagerPhones(tenant);
+    if (recipients.length === 0) return;
+
+    const body = [
+      `AI CALL NEEDS ATTENTION - ${tenant.companyName}`,
+      `Customer: ${input.customerName || 'unknown'} ${input.customerPhone || 'no phone on job'}`,
+      `Result: ${input.reason}`,
+      input.jobId ? `Job: ${input.jobId}` : null,
+      input.error ? `Error: ${String(input.error).slice(0, 120)}` : null,
+      'Please review the job and call the customer manually.',
+    ].filter(Boolean).join('\n');
+
+    for (const phone of recipients) {
+      await this.sms
+        .sendSms({
+          to: phone,
+          body,
+          tenantId: input.tenantId,
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `[outbound-voice] attention-needed SMS failed phone=${phone} job=${input.jobId ?? 'unknown'}: ${(err as Error).message}`,
+          ),
+        );
+    }
   }
 
   private async syncFlipActivityFromAnalysis(
@@ -826,11 +940,48 @@ export class OutboundVoiceService {
     if (!tenant.outboundVoiceEnabled) {
       throw new Error('Outbound voice is disabled for this tenant');
     }
+    if (demoCallsBlocked(tenant)) {
+      throw new Error('Demo calls are disabled for this tenant');
+    }
+    if (await this.freeTrialLimitReached(tenant)) {
+      throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
+    }
     const allowed = readConfigArray(tenant, 'enabled_purposes');
     if (allowed && allowed.length > 0 && !allowed.includes(purpose)) {
       throw new Error(`Outbound voice purpose "${purpose}" is not enabled for this tenant`);
     }
     return tenant;
+  }
+
+  private async freeTrialLimitReached(tenant: typeof tenants.$inferSelect): Promise<boolean> {
+    const limitMinutes = readConfigNumber(tenant, 'free_trial_call_minutes', 15);
+    if (limitMinutes <= 0) return false;
+
+    const billing = (
+      await this.db
+        .select({ plan: tenantBilling.plan })
+        .from(tenantBilling)
+        .where(eq(tenantBilling.tenantId, tenant.id))
+        .limit(1)
+    )[0];
+    const plan = (billing?.plan ?? 'FREE').trim().toUpperCase();
+    if (plan !== 'FREE' && plan !== 'TRIAL') return false;
+
+    const usage = (
+      await this.db
+        .select({
+          seconds: sql<number>`coalesce(sum(coalesce(${outboundCalls.durationSeconds}, 60)), 0)::int`,
+        })
+        .from(outboundCalls)
+        .where(
+          and(
+            eq(outboundCalls.tenantId, tenant.id),
+            sql`${outboundCalls.status} <> 'cancelled'`,
+          ),
+        )
+        .limit(1)
+    )[0];
+    return (usage?.seconds ?? 0) >= limitMinutes * 60;
   }
 
   async testCall(
@@ -1056,6 +1207,16 @@ function readConfigString(
   return defaultValue;
 }
 
+function readConfigNumber(
+  tenant: typeof tenants.$inferSelect,
+  key: string,
+  defaultValue: number,
+): number {
+  const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) ?? {};
+  const v = cfg[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : defaultValue;
+}
+
 function readConfigArray(
   tenant: typeof tenants.$inferSelect,
   key: string,
@@ -1064,6 +1225,10 @@ function readConfigArray(
   const v = cfg[key];
   if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
   return null;
+}
+
+function demoCallsBlocked(tenant: typeof tenants.$inferSelect): boolean {
+  return readConfigBool(tenant, 'demo_mode', false) && !readConfigBool(tenant, 'demo_calls_enabled', false);
 }
 
 function buildCallbackUrl(provider: 'retell' | 'thinkrr'): string {

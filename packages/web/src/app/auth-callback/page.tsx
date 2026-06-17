@@ -1,10 +1,18 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<AuthCallbackLoading />}>
+      <AuthCallbackContent />
+    </Suspense>
+  );
+}
+
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setToken } = useAuth();
@@ -34,8 +42,14 @@ export default function AuthCallbackPage() {
   }, [searchParams, router, setToken]);
 
   return (
+    <AuthCallbackLoading />
+  );
+}
+
+function AuthCallbackLoading() {
+  return (
     <div className="flex min-h-screen items-center justify-center bg-gray-900">
-      <div className="text-white text-lg animate-pulse">Authenticating...</div>
+      <div className="text-lg text-white animate-pulse">Authenticating...</div>
     </div>
   );
 }

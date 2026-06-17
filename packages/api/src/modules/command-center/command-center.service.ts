@@ -247,7 +247,13 @@ export class CommandCenterService {
     return updated;
   }
 
-  async callCustomerManually(tenantId: string, jobId: string) {
+  async callCustomerManually(
+    tenantId: string,
+    jobId: string,
+    opts: {
+      scriptType?: 'auto_flip' | 'eta_confirmation' | 'status_update' | 'winch_out' | 'convini_only';
+    } = {},
+  ) {
     if (!this.flipOrchestrator) {
       throw new BadRequestException({
         status: 'error',
@@ -256,7 +262,7 @@ export class CommandCenterService {
       });
     }
     await this.requireJob(tenantId, jobId);
-    const result = await this.flipOrchestrator.callUnifiedJobManually(tenantId, jobId);
+    const result = await this.flipOrchestrator.callUnifiedJobManually(tenantId, jobId, opts);
     await this.writeEvent(jobId, 'manual_customer_call_requested', result);
     return result;
   }

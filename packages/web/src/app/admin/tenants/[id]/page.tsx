@@ -3,6 +3,7 @@ import React, { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -18,9 +19,30 @@ interface TenantDetail {
     partnerAccountId: string | null;
     isActive: boolean;
     createdAt: string;
+    outboundVoiceEnabled: boolean;
+    demoMode: boolean;
+    demoCallsEnabled: boolean;
+    freeTrialCallMinutes: number;
   };
-  stats: { callsLast24h: number; callsLast7d: number; activeJobs: number };
-  billing: { plan: string; status: string; currentPeriodEnd: string } | null;
+  stats: {
+    callsLast24h: number;
+    callsLast7d: number;
+    aiCallsLast24h: number;
+    aiCallsLast7d: number;
+    aiCallsTotal: number;
+    activeJobs: number;
+  };
+  billing: { plan: string; status: string; version: string; currentPeriodEnd: string | null } | null;
+  members: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    status: string;
+    invitedAt: string;
+    acceptedAt: string | null;
+    lastLoginAt: string | null;
+  }>;
   recentInteractions: Array<{
     id: string;
     category: string;
@@ -35,6 +57,8 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const [data, setData] = useState<TenantDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [savingControls, setSavingControls] = useState(false);
+  const [minutesDraft, setMinutesDraft] = useState('15');
   const email = typeof window !== 'undefined' ? (localStorage.getItem('superAdminEmail') ?? '') : '';
 
   useEffect(() => {
@@ -47,7 +71,10 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
         if (!r.ok) throw new Error((await r.json()).message ?? `HTTP ${r.status}`);
         return r.json();
       })
-      .then(setData)
+      .then((fresh: TenantDetail) => {
+        setData(fresh);
+        setMinutesDraft(String(fresh.tenant.freeTrialCallMinutes ?? 15));
+      })
       .catch((e) => setErr((e as Error).message));
   }, [id, email]);
 
@@ -56,6 +83,31 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   }
   if (!data) return <div className="text-sm text-zinc-400">Loading…</div>;
   const t = data.tenant;
+
+  async function updateCallControls(patch: {
+    outboundVoiceEnabled?: boolean;
+    demoMode?: boolean;
+    demoCallsEnabled?: boolean;
+    freeTrialCallMinutes?: number;
+  }) {
+    setSavingControls(true);
+    setErr(null);
+    try {
+      const res = await fetch(`${API_BASE}/v1/super-admin/tenants/${id}/call-controls`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-super-admin-email': email },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
+      const fresh = (await res.json()) as TenantDetail;
+      setData(fresh);
+      setMinutesDraft(String(fresh.tenant.freeTrialCallMinutes ?? 15));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSavingControls(false);
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -69,17 +121,110 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
       </div>
       <div className="grid grid-cols-3 gap-4">
         <Card><CardHeader><CardTitle>Active jobs</CardTitle></CardHeader><CardContent className="text-3xl font-semibold">{data.stats.activeJobs}</CardContent></Card>
-        <Card><CardHeader><CardTitle>Calls (24h)</CardTitle></CardHeader><CardContent className="text-3xl font-semibold">{data.stats.callsLast24h}</CardContent></Card>
-        <Card><CardHeader><CardTitle>Calls (7d)</CardTitle></CardHeader><CardContent className="text-3xl font-semibold">{data.stats.callsLast7d}</CardContent></Card>
+        <Card><CardHeader><CardTitle>AI calls (24h)</CardTitle></CardHeader><CardContent className="text-3xl font-semibold">{data.stats.aiCallsLast24h}</CardContent></Card>
+        <Card><CardHeader><CardTitle>AI calls total</CardTitle></CardHeader><CardContent className="text-3xl font-semibold">{data.stats.aiCallsTotal}</CardContent></Card>
       </div>
       <Card>
-        <CardHeader><CardTitle>Billing</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Version</CardTitle></CardHeader>
         <CardContent className="text-sm text-zinc-300">
           {data.billing ? (
-            <div>Plan: <b>{data.billing.plan}</b> • Status: {data.billing.status} • Period end: {new Date(data.billing.currentPeriodEnd).toLocaleDateString()}</div>
+            <div>
+              Version: <b>{data.billing.version || 'Free'}</b> • Status: {data.billing.status}
+              {data.billing.currentPeriodEnd
+                ? ` • Period end: ${new Date(data.billing.currentPeriodEnd).toLocaleDateString()}`
+                : ''}
+            </div>
           ) : (
-            <div className="text-zinc-500">No billing record</div>
+            <div>Version: <b>Free</b></div>
           )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Platform call controls</CardTitle></CardHeader>
+        <CardContent className="space-y-4 text-sm text-zinc-300">
+          <div className="flex items-start justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+            <div>
+              <div className="font-medium text-zinc-100">Outbound AI calls</div>
+              <p className="mt-1 text-zinc-400">
+                Master platform switch for this tenant. When off, automatic and manual outbound AI calls are blocked.
+              </p>
+            </div>
+            <Switch
+              checked={t.outboundVoiceEnabled}
+              disabled={savingControls}
+              onCheckedChange={(v) =>
+                void updateCallControls({ outboundVoiceEnabled: v })
+              }
+            />
+          </div>
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="font-medium text-zinc-100">Free/trial call minutes</div>
+            <p className="mt-1 text-zinc-400">
+              Total outbound AI call minutes allowed before the account is blocked from more calls. Set 0 for no cap.
+            </p>
+            <div className="mt-3 flex max-w-xs gap-2">
+              <input
+                type="number"
+                min={0}
+                max={10000}
+                value={minutesDraft}
+                onChange={(event) => setMinutesDraft(event.target.value)}
+                className="h-10 w-32 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+              />
+              <Button
+                disabled={savingControls}
+                onClick={() =>
+                  void updateCallControls({
+                    freeTrialCallMinutes: Number(minutesDraft || 0),
+                  })
+                }
+              >
+                Save cap
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-start justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+            <div>
+              <div className="font-medium text-zinc-100">Demo account</div>
+              <p className="mt-1 text-zinc-400">
+                Platform-only safety flag. Use this for demo tenants, not real operating accounts.
+              </p>
+            </div>
+            <Switch
+              checked={t.demoMode}
+              disabled={savingControls}
+              onCheckedChange={(v) =>
+                void updateCallControls({ demoMode: v, demoCallsEnabled: false })
+              }
+            />
+          </div>
+          <div className="flex items-start justify-between gap-4 rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+            <div>
+              <div className="font-medium text-zinc-100">Allow demo calls</div>
+              <p className="mt-1 text-zinc-400">
+                Enable only while a platform manager is actively running a live demo.
+              </p>
+            </div>
+            <Switch
+              checked={t.demoMode && t.demoCallsEnabled}
+              disabled={savingControls || !t.demoMode}
+              onCheckedChange={(v) => void updateCallControls({ demoCallsEnabled: v })}
+            />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Tenant users</CardTitle></CardHeader>
+        <CardContent className="space-y-1 text-xs text-zinc-300">
+          {data.members.length === 0 && <div className="text-zinc-500">No members on this tenant.</div>}
+          {data.members.map((m) => (
+            <div key={m.id} className="grid grid-cols-4 gap-2 border-t border-zinc-800 py-2">
+              <span className="truncate font-medium text-zinc-100">{m.name || m.email}</span>
+              <span className="truncate">{m.email}</span>
+              <span>{m.role}</span>
+              <span>{m.status}</span>
+            </div>
+          ))}
         </CardContent>
       </Card>
       <Card>

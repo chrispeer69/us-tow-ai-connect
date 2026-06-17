@@ -218,6 +218,40 @@ describe('OutboundVoiceService', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('enqueueCall can bypass related-job dedupe for deliberate manual follow-up calls', async () => {
+    const existing = {
+      id: 'voice-existing',
+      tenantId: TENANT_ID,
+      purpose: 'custom',
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      toPhone: '+15551234567',
+      toName: 'Pat',
+      scriptTemplate: 'custom',
+      scriptVariables: { body: 'first attempt' },
+      status: 'no_answer',
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const { db, calls } = makeFakeDb([existing]);
+    const svc = createSvc(db);
+
+    const row = await svc.enqueueCall({
+      tenantId: TENANT_ID,
+      purpose: 'custom',
+      toPhone: '+15551234567',
+      toName: 'Pat',
+      scriptTemplate: 'custom',
+      scriptVariables: { body: 'manual follow-up' },
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      dedupeRelatedJob: false,
+    });
+
+    expect(row.id).not.toBe('voice-existing');
+    expect(calls).toHaveLength(2);
+  });
+
   it('enqueueCall raises MissingVariableError when required variable is empty', async () => {
     const { db } = makeFakeDb();
     const svc = createSvc(db);
@@ -257,6 +291,28 @@ describe('OutboundVoiceService', () => {
     ).rejects.toThrow(/disabled/i);
   });
 
+  it('enqueueCall refuses when tenant is in demo mode and demo calls are disabled', async () => {
+    const { db } = makeFakeDb([], {
+      outboundVoiceConfig: { demo_mode: true, demo_calls_enabled: false },
+    });
+    const svc = createSvc(db);
+
+    await expect(
+      svc.enqueueCall({
+        tenantId: TENANT_ID,
+        purpose: 'customer_status_update',
+        toPhone: '+15551234567',
+        scriptTemplate: 'customer_status_update',
+        scriptVariables: {
+          customer_name: 'Pat',
+          company_name: 'Roadside',
+          job_id: 'J-1',
+          status: 'queued',
+        },
+      }),
+    ).rejects.toThrow(/demo calls are disabled/i);
+  });
+
   it('handleWebhookEvent transitions a dialing row to in_progress and completed', async () => {
     const seedRow = {
       id: 'voice-1',
@@ -289,6 +345,57 @@ describe('OutboundVoiceService', () => {
     expect(updated.status).toBe('completed');
     expect(updated.durationSeconds).toBe(42);
     expect(updated.transcript).toBe('Hello … goodbye.');
+  });
+
+  it('sends manager attention SMS when a provider webhook reports no answer', async () => {
+    const seedRow = {
+      id: 'voice-no-answer',
+      tenantId: TENANT_ID,
+      retellCallId: 'retell-no-answer',
+      purpose: 'custom',
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      toPhone: '+15551234567',
+      toName: 'Pat Customer',
+      scriptTemplate: 'custom',
+      scriptVariables: {},
+      status: 'dialing',
+      attempts: 1,
+      maxAttempts: 3,
+      outcome: null,
+      startedAt: null,
+      endedAt: null,
+    };
+    const { db } = makeFakeDb([seedRow], { managerPhones: ['+15557654321'] });
+    const thinkrr = new ThinkrrOutboundClient();
+    const retell = new RetellOutboundClient();
+    const provider = {
+      providerName: 'retell',
+      placeCall: vi.fn(async () => null),
+      cancelCall: vi.fn(async () => false),
+    } as any;
+    const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
+    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+
+    const result = await svc.handleProviderWebhookEvent({
+      provider: 'retell',
+      callId: 'retell-no-answer',
+      status: 'no_answer',
+      error: 'voicemail_reached',
+    });
+
+    expect(result.matched).toBe(true);
+    expect(sms.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '+15557654321',
+        tenantId: TENANT_ID,
+        body: expect.stringContaining('AI CALL NEEDS ATTENTION'),
+      }),
+    );
+    expect(sms.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining('no answer / voicemail'),
+      }),
+    );
   });
 
   it('handleWebhookEvent is idempotent on the terminal status', async () => {
