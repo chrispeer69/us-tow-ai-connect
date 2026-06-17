@@ -19,6 +19,18 @@ export class SuperAdminController {
     return this.service.listTenants();
   }
 
+  @Get('demo-call-settings')
+  getDemoCallSettings() {
+    return this.service.getDemoCallSettings();
+  }
+
+  @Patch('demo-call-settings')
+  updateDemoCallSettings(@Body() body: { enabled?: boolean }) {
+    return this.service.updateDemoCallSettings({
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+    });
+  }
+
   @Get('tenants/:id')
   getTenant(@Param('id') id: string) {
     return this.service.getTenant(id);

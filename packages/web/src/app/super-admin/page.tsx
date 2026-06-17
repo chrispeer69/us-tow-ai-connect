@@ -34,8 +34,6 @@ interface TenantStats {
   version: string;
   billingStatus: string;
   outboundVoiceEnabled: boolean;
-  demoMode: boolean;
-  demoCallsEnabled: boolean;
   freeTrialCallMinutes: number;
 }
 
@@ -45,17 +43,21 @@ export default function SuperAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [tickets, setTickets] = useState<any[]>([]);
   const [savingTenantId, setSavingTenantId] = useState<string | null>(null);
+  const [savingDemoSettings, setSavingDemoSettings] = useState(false);
+  const [publicDemoCallsEnabled, setPublicDemoCallsEnabled] = useState(false);
   const [capDrafts, setCapDrafts] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [data, tix] = await Promise.all([
+      const [data, tix, demoSettings] = await Promise.all([
         api<TenantStats[]>('/v1/super-admin/tenants'),
         api<any[]>('/v1/super-admin/tickets'),
+        api<{ enabled: boolean }>('/v1/super-admin/demo-call-settings'),
       ]);
       setTenants(data);
+      setPublicDemoCallsEnabled(Boolean(demoSettings.enabled));
       setCapDrafts(
         Object.fromEntries(
           data.map((tenant) => [
@@ -129,6 +131,27 @@ export default function SuperAdminPage() {
       </div>
 
       <Card className="bg-zinc-900 border-zinc-800">
+        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Public demo calls</h2>
+            <p className="mt-1 max-w-2xl text-sm text-zinc-400">
+              One global switch for the public /demo page. Off shows the booking/demo form for every call action. On allows controlled live demo calls from the seeded demo workspace.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-zinc-300">
+              {publicDemoCallsEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+            <Switch
+              checked={publicDemoCallsEnabled}
+              disabled={savingDemoSettings}
+              onCheckedChange={(enabled) => void updatePublicDemoCalls(enabled)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-zinc-900 border-zinc-800">
         <div className="flex items-center justify-between p-6 border-b border-zinc-800">
           <h2 className="text-lg font-semibold text-white">Client Directory</h2>
           <Button variant="outline" onClick={() => void loadData()} disabled={loading} size="sm">
@@ -147,19 +170,18 @@ export default function SuperAdminPage() {
               <TableHead className="text-zinc-400 text-right">Minutes Used</TableHead>
               <TableHead className="text-zinc-400 text-right">Minute Allowance</TableHead>
               <TableHead className="text-zinc-400 text-center">Calls</TableHead>
-              <TableHead className="text-zinc-400 text-center">Test Calls</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={9} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
                   <Spinner className="mx-auto" />
                 </TableCell>
               </TableRow>
             ) : tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={9} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
                   No tenants found.
                 </TableCell>
               </TableRow>
@@ -239,18 +261,6 @@ export default function SuperAdminPage() {
                       }
                     />
                   </TableCell>
-                  <TableCell className="text-center">
-                    <Switch
-                      checked={t.demoMode && t.demoCallsEnabled}
-                      disabled={savingTenantId === t.id || !t.demoMode}
-                      onCheckedChange={(enabled) =>
-                        void updateTenantCallControls(t.id, { demoCallsEnabled: enabled })
-                      }
-                    />
-                    {!t.demoMode && (
-                      <div className="mt-1 text-[10px] text-zinc-500">demo only</div>
-                    )}
-                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -313,7 +323,6 @@ export default function SuperAdminPage() {
     tenantId: string,
     patch: {
       outboundVoiceEnabled?: boolean;
-      demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
       plan?: string;
     },
@@ -332,7 +341,6 @@ export default function SuperAdminPage() {
                 ...tenant,
                 outboundVoiceEnabled:
                   patch.outboundVoiceEnabled ?? tenant.outboundVoiceEnabled,
-                demoCallsEnabled: patch.demoCallsEnabled ?? tenant.demoCallsEnabled,
                 freeTrialCallMinutes:
                   patch.freeTrialCallMinutes ?? tenant.freeTrialCallMinutes,
                 plan: patch.plan ?? tenant.plan,
@@ -366,6 +374,22 @@ export default function SuperAdminPage() {
       [tenant.id]: rounded > 0 ? String(rounded) : '',
     }));
     await updateTenantCallControls(tenant.id, { freeTrialCallMinutes: rounded });
+  }
+
+  async function updatePublicDemoCalls(enabled: boolean) {
+    setSavingDemoSettings(true);
+    setError(null);
+    try {
+      const result = await api<{ enabled: boolean }>('/v1/super-admin/demo-call-settings', {
+        method: 'PATCH',
+        json: { enabled },
+      });
+      setPublicDemoCallsEnabled(Boolean(result.enabled));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingDemoSettings(false);
+    }
   }
 }
 

@@ -5,6 +5,7 @@ import {
   callInteractions,
   interactionLogs,
   outboundCalls,
+  platformSettings,
   tenantBilling,
   tenantMembers,
   tenants,
@@ -103,6 +104,32 @@ export class SuperAdminService {
         15,
       ),
     }));
+  }
+
+  async getDemoCallSettings() {
+    return {
+      enabled: await this.readPlatformBool('public_demo_calls_enabled', false),
+    };
+  }
+
+  async updateDemoCallSettings(patch: { enabled?: boolean }) {
+    if (typeof patch.enabled === 'boolean') {
+      await this.db
+        .insert(platformSettings)
+        .values({
+          key: 'public_demo_calls_enabled',
+          value: { enabled: patch.enabled } as never,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: platformSettings.key,
+          set: {
+            value: { enabled: patch.enabled } as never,
+            updatedAt: new Date(),
+          },
+        });
+    }
+    return this.getDemoCallSettings();
   }
 
   async getTenant(tenantId: string) {
@@ -296,6 +323,20 @@ export class SuperAdminService {
       .from(supportTickets)
       .leftJoin(tenants, eq(tenants.id, supportTickets.tenantId))
       .orderBy(desc(supportTickets.createdAt));
+  }
+
+  private async readPlatformBool(key: string, defaultValue: boolean) {
+    const row = (
+      await this.db
+        .select({ value: platformSettings.value })
+        .from(platformSettings)
+        .where(eq(platformSettings.key, key))
+        .limit(1)
+    )[0];
+    const value = row?.value as Record<string, unknown> | boolean | null | undefined;
+    if (typeof value === 'boolean') return value;
+    if (value && typeof value.enabled === 'boolean') return value.enabled;
+    return defaultValue;
   }
 
   private async upsertBillingPlan(tenantId: string, plan: string) {

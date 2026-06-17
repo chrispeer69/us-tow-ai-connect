@@ -3,11 +3,12 @@ import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
+  alphaShops,
   outboundCallLogs,
   outboundCalls,
-  tenants,
-  alphaShops,
+  platformSettings,
   tenantBilling,
+  tenants,
   type OutboundCallRow,
 } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
@@ -272,17 +273,6 @@ export class OutboundVoiceService {
 
     const out: OutboundCallRow[] = [];
     for (const { call, tenant } of queued) {
-      if (demoCallsBlocked(tenant)) {
-        await this.db
-          .update(outboundCalls)
-          .set({
-            status: 'failed',
-            error: 'Demo calls are disabled for this tenant',
-            updatedAt: new Date(),
-          })
-          .where(eq(outboundCalls.id, call.id));
-        continue;
-      }
       if (await this.freeTrialLimitReached(tenant)) {
         await this.db
           .update(outboundCalls)
@@ -941,9 +931,6 @@ export class OutboundVoiceService {
     if (!tenant.outboundVoiceEnabled) {
       throw new Error('Outbound voice is disabled for this tenant');
     }
-    if (demoCallsBlocked(tenant)) {
-      throw new Error('Demo calls are disabled for this tenant');
-    }
     if (await this.freeTrialLimitReached(tenant)) {
       throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
@@ -998,6 +985,9 @@ export class OutboundVoiceService {
     motorClub?: string | null;
     ipKey: string;
   }) {
+    if (!(await this.publicDemoCallsEnabled())) {
+      throw new Error('Public demo calls are currently disabled.');
+    }
     const phoneKey = formatOutboundPhone(input.toPhone);
     this.assertPublicDemoRateLimit(`${input.ipKey}:${phoneKey}`);
     const tenantId = await this.resolvePublicDemoTenantId();
@@ -1035,19 +1025,18 @@ export class OutboundVoiceService {
   async publicDemoCallStatus() {
     try {
       const tenantId = await this.resolvePublicDemoTenantId();
+      const platformEnabled = await this.publicDemoCallsEnabled();
       const tenant = (
         await this.db
           .select({
             outboundVoiceEnabled: tenants.outboundVoiceEnabled,
-            outboundVoiceConfig: tenants.outboundVoiceConfig,
           })
           .from(tenants)
           .where(eq(tenants.id, tenantId))
           .limit(1)
       )[0];
-      const cfg = (tenant?.outboundVoiceConfig as Record<string, unknown> | null | undefined) ?? {};
       return {
-        enabled: Boolean(tenant?.outboundVoiceEnabled && cfg.demo_calls_enabled === true),
+        enabled: Boolean(platformEnabled && tenant?.outboundVoiceEnabled),
       };
     } catch {
       return { enabled: false };
@@ -1083,9 +1072,6 @@ export class OutboundVoiceService {
     if (!tenant) throw new Error('Tenant not found');
     if (!tenant.outboundVoiceEnabled) {
       throw new Error('Outbound voice is disabled for this tenant');
-    }
-    if (demoCallsBlocked(tenant)) {
-      throw new Error('Demo calls are disabled for this tenant');
     }
     if (await this.freeTrialLimitReached(tenant)) {
       throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
@@ -1227,10 +1213,20 @@ export class OutboundVoiceService {
     if (cfg.demo_mode !== true) {
       throw new Error('Public demo calls require a demo account.');
     }
-    if (cfg.demo_calls_enabled !== true) {
-      throw new Error('Public demo calls are currently disabled.');
-    }
     return tenant.id;
+  }
+
+  private async publicDemoCallsEnabled(): Promise<boolean> {
+    const row = (
+      await this.db
+        .select({ value: platformSettings.value })
+        .from(platformSettings)
+        .where(eq(platformSettings.key, 'public_demo_calls_enabled'))
+        .limit(1)
+    )[0];
+    const value = row?.value as Record<string, unknown> | boolean | null | undefined;
+    if (typeof value === 'boolean') return value;
+    return Boolean(value?.enabled);
   }
 }
 
@@ -1354,10 +1350,6 @@ function readConfigArray(
   const v = cfg[key];
   if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
   return null;
-}
-
-function demoCallsBlocked(tenant: typeof tenants.$inferSelect): boolean {
-  return readConfigBool(tenant, 'demo_mode', false) && !readConfigBool(tenant, 'demo_calls_enabled', false);
 }
 
 function formatOutboundPhone(value: string): string {
