@@ -17,15 +17,12 @@ import { NAV_GROUPS } from '@/components/admin/nav-config';
 import { FilterBar, type CommandCenterFilters } from '../admin/command-center/components/FilterBar';
 import { JobsTable } from '../admin/command-center/components/JobsTable';
 import { JobDrawer, type ManualCallScriptType } from '../admin/command-center/components/JobDrawer';
+import { ScheduleDemoClient } from '../schedule-demo/ScheduleDemoClient';
 
 const TENANT_ID = 'demo-tenant';
 const COMMAND_CENTER_HREF = '/admin/command-center';
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'v0.1.0';
 const DEMO_NOW_MS = Date.UTC(2026, 5, 17, 14, 0, 0);
-const demoFormInputClass =
-  'h-11 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500';
-const demoFormLabelClass =
-  'mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-400';
 export default function PublicDemoPage() {
   const [jobs, setJobs] = useState<UnifiedJob[]>(() => seededJobs());
   const [drivers] = useState<Driver[]>(() => seededDrivers());
@@ -1058,6 +1055,7 @@ function DemoCheckingModal({ onClose }: { onClose: () => void }) {
 }
 
 function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
+  const [mode, setMode] = useState('explicit');
   const [scenario, setScenario] = useState('competitor_repair');
   const [toPhone, setToPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -1079,7 +1077,8 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          scenario,
+          mode,
+          scenario: mode === 'explicit' ? scenario : undefined,
           toPhone,
           customerName: customerName || undefined,
           vehicle: vehicle || undefined,
@@ -1101,78 +1100,82 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950/85 p-4 backdrop-blur-sm">
-      <div className="mx-auto my-6 w-full max-w-xl rounded-2xl border border-blue-500/30 bg-zinc-950 text-zinc-100 shadow-2xl shadow-blue-950/40">
-        <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
-          <span className="rounded-full border border-blue-500/40 bg-blue-500/15 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-blue-300">
-            Test Agent Call
-          </span>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border border-zinc-200 bg-white p-5 text-zinc-900 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-zinc-900">Test Agent Call</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-sm font-semibold text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
+            aria-label="Close"
           >
-            Close
+            ✕
           </button>
         </div>
         {success ? (
-          <div className="px-6 py-12 text-center">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/15 text-2xl font-black text-cyan-300">
-              ✓
-            </div>
-            <h2 className="text-2xl font-black tracking-tight text-white">Call triggered successfully.</h2>
-            <p className="mt-3 text-sm leading-6 text-zinc-400">
-              The demo agent call was queued for the phone number entered.
-            </p>
-            <Button className="mt-6 bg-blue-600 font-bold text-white hover:bg-blue-500" onClick={onClose}>
-              Back to demo
-            </Button>
+          <div className="p-4 text-center font-medium text-green-600">
+            Call triggered successfully!
           </div>
         ) : (
-          <form onSubmit={(event) => void submit(event)} className="space-y-4 p-6">
-            <p className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm leading-6 text-cyan-100">
-              Demo calls are enabled. This will actually ring the test number you enter.
-            </p>
-            <label className={demoFormLabelClass} htmlFor="demo-test-scenario">
-              Scenario
+          <form onSubmit={(event) => void submit(event)} className="space-y-3">
+            <label className="block text-sm font-medium text-zinc-900">
+              Mode
+              <select
+                value={mode}
+                onChange={(event) => setMode(event.target.value)}
+                className="mt-1 block w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              >
+                <option value="explicit">Explicit Scenario (Fast Test)</option>
+                <option value="live">Live AI Simulation (Full Engine)</option>
+              </select>
             </label>
-            <select id="demo-test-scenario" value={scenario} onChange={(event) => setScenario(event.target.value)} className={demoFormInputClass}>
-              <option value="competitor_repair">Competitor Repair</option>
-              <option value="auto_body">Auto Body</option>
-              <option value="residence">Residence</option>
-              <option value="our_shop">Our Shop</option>
-              <option value="unknown">Unknown</option>
-            </select>
-            <label className={demoFormLabelClass} htmlFor="demo-test-phone">
-              To Phone *
+            <label className="block text-sm font-medium text-zinc-900">
+              To Phone (Test Number - required)
+              <span className="ml-2 text-xs font-normal text-rose-500">
+                Warning: this will actually ring the number you enter. Use your own phone number, not a real customer.
+              </span>
+              <input
+                value={toPhone}
+                onChange={(event) => setToPhone(event.target.value)}
+                placeholder="+1234567890"
+                className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                required
+              />
             </label>
-            <input id="demo-test-phone" value={toPhone} onChange={(event) => setToPhone(event.target.value)} placeholder="+1234567890" className={demoFormInputClass} required />
-            <label className={demoFormLabelClass} htmlFor="demo-test-name">
-              Customer Name
-            </label>
-            <input id="demo-test-name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} className={demoFormInputClass} />
-            <label className={demoFormLabelClass} htmlFor="demo-test-vehicle">
-              Vehicle
-            </label>
-            <input id="demo-test-vehicle" value={vehicle} onChange={(event) => setVehicle(event.target.value)} placeholder="e.g. 2020 Honda Civic" className={demoFormInputClass} />
-            <label className={demoFormLabelClass} htmlFor="demo-test-destination">
-              Destination
-            </label>
-            <input id="demo-test-destination" value={destination} onChange={(event) => setDestination(event.target.value)} className={demoFormInputClass} />
-            <label className={demoFormLabelClass} htmlFor="demo-test-pickup">
-              Pickup Location
-            </label>
-            <input id="demo-test-pickup" value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} placeholder="e.g. 123 Main St" className={demoFormInputClass} />
-            <label className={demoFormLabelClass} htmlFor="demo-test-club">
-              Motor Club
-            </label>
-            <input id="demo-test-club" value={motorClub} onChange={(event) => setMotorClub(event.target.value)} placeholder="e.g. Agero Motor Club" className={demoFormInputClass} />
-            {err && <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">{err}</p>}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" className="border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-900" onClick={onClose}>
+            {mode === 'explicit' && (
+              <label className="block text-sm font-medium text-zinc-900">
+                Scenario
+                <select
+                  value={scenario}
+                  onChange={(event) => setScenario(event.target.value)}
+                  className="mt-1 block w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="competitor_repair">Competitor Repair</option>
+                  <option value="auto_body">Auto Body</option>
+                  <option value="residence">Residence</option>
+                  <option value="our_shop">Our Shop</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+            )}
+            <DemoTenantCallField label="Customer Name (optional)" value={customerName} onChange={setCustomerName} />
+            <DemoTenantCallField label="Vehicle (optional)" value={vehicle} onChange={setVehicle} placeholder="e.g. 2020 Honda Civic" />
+            <DemoTenantCallField label="Destination (optional)" value={destination} onChange={setDestination} />
+            <DemoTenantCallField label="Pickup Location (optional)" value={pickupLocation} onChange={setPickupLocation} placeholder="e.g. 123 Main St" />
+            <DemoTenantCallField label="Motor Club (optional)" value={motorClub} onChange={setMotorClub} placeholder="e.g. Agero Motor Club" />
+            {err && <p className="text-sm text-red-500">{err}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={busy || !toPhone.trim()} className="bg-blue-600 font-bold text-white hover:bg-blue-500">
+              <Button type="submit" disabled={busy || !toPhone.trim()}>
                 {busy ? 'Triggering...' : 'Trigger Call'}
               </Button>
             </div>
@@ -1184,129 +1187,49 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
 }
 
 function DemoCallModal({ onClose }: { onClose: () => void }) {
-  const [submitted, setSubmitted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  async function submitDemoCall(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setSubmitError(null);
-    const form = new FormData(event.currentTarget);
-    try {
-      const res = await fetch('/api/v1/public/demo-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerName: String(form.get('name') || ''),
-          businessName: String(form.get('businessName') || ''),
-          toPhone: String(form.get('phone') || ''),
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.message || 'Demo calls are currently disabled.');
-      }
-      setSubmitted(true);
-    } catch (err) {
-      setSubmitError((err as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950/85 p-4 backdrop-blur-sm">
-      <div className="mx-auto my-6 w-full max-w-2xl rounded-2xl border border-blue-500/30 bg-zinc-950 text-zinc-100 shadow-2xl shadow-blue-950/40">
-        <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+    <div className="dark fixed inset-0 z-50 overflow-y-auto bg-zinc-950/90 p-4 text-foreground backdrop-blur-sm">
+      <div className="mx-auto my-6 w-full max-w-6xl rounded-2xl border border-blue-500/30 bg-background p-5 shadow-2xl shadow-blue-950/40 lg:p-8">
+        <div className="mb-6 flex items-center justify-between gap-4 border-b border-border pb-4">
           <span className="rounded-full border border-blue-500/40 bg-blue-500/15 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-blue-300">
-            Test Agent Call
+            Schedule a Demo
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-sm font-semibold text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            className="rounded-md px-2 py-1 text-sm font-semibold text-muted-foreground hover:bg-card hover:text-foreground"
             aria-label="Close"
           >
             Close
           </button>
         </div>
-
-        {submitted ? (
-          <div className="mx-auto max-w-2xl px-6 py-16 text-center">
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/15 text-3xl font-black text-cyan-300">
-              ✓
-            </div>
-            <h2 className="text-3xl font-black tracking-tight text-white">Demo call requested.</h2>
-            <p className="mt-3 text-sm leading-6 text-zinc-400">
-              The agent call has been queued. The public demo still does not write dispatch changes to a real account.
-            </p>
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Link href="/schedule-demo">
-                <Button className="bg-blue-600 font-bold text-white hover:bg-blue-500">
-                  Open full booking page
-                </Button>
-              </Link>
-              <Button variant="outline" className="border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-900" onClick={onClose}>
-                Back to demo
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={(event) => void submitDemoCall(event)} className="p-6 lg:p-8">
-            <h2 className="text-3xl font-black leading-tight tracking-tight text-white">
-              Place a live demo call
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-zinc-400">
-              If the platform admin has enabled demo test calls, Emily will call the number below
-              with a short sample outbound script. If the switch is off, no call is placed.
-            </p>
-            <div className="mt-6 rounded-xl border border-blue-500/30 bg-zinc-900/70 p-5 shadow-xl lg:p-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className={demoFormLabelClass} htmlFor="demo-modal-name">
-                    Name *
-                  </label>
-                  <input id="demo-modal-name" name="name" className={demoFormInputClass} placeholder="Jane Owner" required />
-                </div>
-                <div>
-                  <label className={demoFormLabelClass} htmlFor="demo-modal-phone">
-                    Phone *
-                  </label>
-                  <input id="demo-modal-phone" name="phone" type="tel" className={demoFormInputClass} placeholder="(555) 555-5555" required />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={demoFormLabelClass} htmlFor="demo-modal-business">
-                    Business name
-                  </label>
-                  <input id="demo-modal-business" name="businessName" className={demoFormInputClass} placeholder="Acme Towing & Recovery" />
-                </div>
-              </div>
-              {submitError && (
-                <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
-                  {submitError} Book a live demo if you want us to enable a controlled test call.
-                  </div>
-                )}
-
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Button
-                    type="submit"
-                    disabled={submitting}
-                    className="h-12 flex-1 bg-blue-600 font-bold text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500"
-                  >
-                    {submitting ? 'Requesting call...' : 'Request Demo Call'}
-                  </Button>
-                  <Link href="/schedule-demo" className="sm:w-auto">
-                    <Button type="button" variant="outline" className="h-12 w-full border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-800">
-                      Full booking page
-                    </Button>
-                  </Link>
-                </div>
-            </div>
-          </form>
-        )}
+        <ScheduleDemoClient />
       </div>
     </div>
+  );
+}
+
+function DemoTenantCallField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block text-sm font-medium text-zinc-900">
+      {label}
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+      />
+    </label>
   );
 }
 
