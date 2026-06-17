@@ -589,7 +589,7 @@ function DemoHelp({
       {tooltipStyle && (
         <span
           role="tooltip"
-          className="pointer-events-none fixed z-[80] rounded-lg border border-zinc-200 bg-white p-3 text-left text-xs leading-5 text-zinc-600 shadow-xl"
+          className="pointer-events-none fixed z-[80] block max-w-[calc(100vw-24px)] whitespace-normal break-words rounded-lg border border-zinc-200 bg-white p-3 text-left text-xs leading-5 text-zinc-600 shadow-xl"
           style={tooltipStyle}
         >
           <span className="mb-1 block font-label text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">
