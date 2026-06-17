@@ -1026,10 +1026,8 @@ export class OutboundVoiceService {
 
   async publicDemoCallStatus() {
     try {
-      const platformEnabled = await this.publicDemoCallsEnabled();
-      await this.resolvePublicDemoTenantId();
       return {
-        enabled: platformEnabled,
+        enabled: await this.publicDemoCallsEnabled(),
       };
     } catch {
       return { enabled: false };
