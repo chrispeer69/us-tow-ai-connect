@@ -17,7 +17,6 @@ import { NAV_GROUPS } from '@/components/admin/nav-config';
 import { FilterBar, type CommandCenterFilters } from '../admin/command-center/components/FilterBar';
 import { JobsTable } from '../admin/command-center/components/JobsTable';
 import { JobDrawer, type ManualCallScriptType } from '../admin/command-center/components/JobDrawer';
-import { StatsStrip } from '../admin/command-center/components/StatsStrip';
 
 const TENANT_ID = 'demo-tenant';
 const COMMAND_CENTER_HREF = '/admin/command-center';
@@ -93,30 +92,27 @@ export default function PublicDemoPage() {
 
   return (
     <div className="flex h-screen flex-col bg-zinc-50 text-zinc-900">
-      <header className="shrink-0 border-b border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-        <div className="mb-4 flex min-w-0 flex-col justify-between gap-4 xl:flex-row xl:items-start">
-          <div className="flex min-w-0 items-start gap-3">
+      <header className="shrink-0 border-b border-zinc-200 bg-white px-3 py-2 shadow-sm sm:px-4">
+        <div className="flex min-w-0 flex-col justify-between gap-3 xl:flex-row xl:items-center">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setShowMobileNav(true)}
-              className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 shadow-sm lg:hidden"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 shadow-sm lg:hidden"
               aria-label="Open demo navigation"
             >
               <Menu className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="font-label text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">
-                Demo Account
+              <div className="flex items-center gap-2">
+                <div className="font-label text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-600">
+                  Demo Account
+                </div>
+                <DemoHelp title="Demo mode" side="right">
+                  This workspace is seeded and session-only. Visitors can explore the interface, but calls and database writes are blocked.
+                </DemoHelp>
               </div>
-              <DemoHelp title="Demo mode" side="right">
-                This workspace is seeded and session-only. Visitors can explore the interface, but calls and database writes are blocked.
-              </DemoHelp>
-            </div>
-            <h1 className="font-display text-2xl font-extrabold text-zinc-900">{activeLabel}</h1>
-            <p className="text-sm text-zinc-500">
-              Seeded account workspace. Changes stay in this browser session and outbound calls are disabled.
-            </p>
+              <h1 className="font-display text-xl font-extrabold leading-tight text-zinc-900 sm:text-2xl">{activeLabel}</h1>
             </div>
           </div>
           <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap pb-1 xl:justify-end">
@@ -143,51 +139,10 @@ export default function PublicDemoPage() {
             </Link>
           </div>
         </div>
-        <div className="mb-4 flex gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible md:pb-0">
-          <ExplainerBox
-            title="Live dispatch view"
-            body="Jobs, drivers, map pins, status, ETA, and assignment controls are shown in one operating screen."
-          />
-          <ExplainerBox
-            title="AI call workflow"
-            body="Manual calls can choose a script; automatic calls are gated by tenant and platform settings."
-          />
-          <ExplainerBox
-            title="Flip decisions"
-            body="The system classifies destination and service type before deciding if a repair-shop offer is appropriate."
-          />
-          <ExplainerBox
-            title="Management alerts"
-            body="No-answer, failed, and accepted outcomes are visible in logs and can notify managers."
-          />
-        </div>
-        <div className="mb-3 flex items-center gap-2">
-          <div className="font-label text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-            Account snapshot
-          </div>
-          <DemoHelp title="Top metrics" side="right">
-            These counters summarize the currently visible jobs. They help operators understand workload without opening each job.
-          </DemoHelp>
-        </div>
-        <StatsStrip stats={stats} />
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+        <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
           Demo mode: outbound calls and writes to the real database are disabled.
         </p>
       </header>
-
-      {activeHref === COMMAND_CENTER_HREF && (
-        <div className="px-4 pt-4">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="font-label text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-              Filter queue
-            </span>
-            <DemoHelp title="Queue filters" side="right">
-              Narrow the dispatch board by status, integration source, priority, or search term. This affects the map and table together.
-            </DemoHelp>
-          </div>
-          <FilterBar filters={filters} onChange={setFilters} />
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1">
         <DemoSidebar activeHref={activeHref} onSelect={setActiveHref} />
@@ -204,6 +159,18 @@ export default function PublicDemoPage() {
         {activeHref === COMMAND_CENTER_HREF ? (
           <main className="grid min-w-0 flex-1 grid-cols-12 overflow-y-auto lg:overflow-hidden">
             <section className="col-span-12 flex min-h-0 flex-col gap-3 p-3 sm:p-4 lg:col-span-9 lg:overflow-y-auto">
+              <CompactStatsStrip stats={stats} />
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="font-label text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                    Filter queue
+                  </span>
+                  <DemoHelp title="Queue filters" side="right">
+                    Narrow the dispatch board by status, integration source, priority, or search term. This affects the map and table together.
+                  </DemoHelp>
+                </div>
+                <FilterBar filters={filters} onChange={setFilters} />
+              </div>
               <GuidanceStrip
                 items={[
                   ['Map pins', 'Click a job pin to open the same job in the detail drawer.'],
@@ -224,7 +191,7 @@ export default function PublicDemoPage() {
               </div>
             </section>
 
-            <section className="col-span-12 min-h-[420px] border-t border-zinc-200 bg-white lg:col-span-3 lg:min-h-0 lg:overflow-hidden lg:border-l lg:border-t-0">
+            <section className="col-span-12 min-h-[420px] overflow-visible border-t border-zinc-200 bg-white lg:col-span-3 lg:min-h-0 lg:border-l lg:border-t-0">
               <div className="border-b border-zinc-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 <div className="flex items-center gap-2 font-semibold">
                   Job drawer
@@ -312,6 +279,27 @@ function DemoSidebar({
         <DemoSidebarFooter tenantName="Seeded Demo Account" />
       </nav>
     </aside>
+  );
+}
+
+function CompactStatsStrip({ stats }: { stats: Stats }) {
+  const items = [
+    { label: 'Active', value: stats.activeJobs.toLocaleString(), tone: 'text-blue-700' },
+    { label: 'Avg ETA', value: `${stats.avgEtaMinutes.toFixed(0)}m`, tone: 'text-emerald-700' },
+    { label: '24h Jobs', value: stats.jobsLast24h.toLocaleString(), tone: 'text-zinc-900' },
+    { label: 'Jobs/hr', value: stats.jobsPerHour.toFixed(1), tone: 'text-amber-700' },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+          <div className={cn('text-lg font-black leading-none', item.tone)}>{item.value}</div>
+          <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+            {item.label}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

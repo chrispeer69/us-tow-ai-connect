@@ -17,6 +17,8 @@ import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/utils';
 import { ArrowRight, Activity, Users, PhoneCall } from 'lucide-react';
 
+const PLAN_OPTIONS = ['FREE', 'TRIAL', 'STARTER', 'PRO', 'ENTERPRISE'];
+
 interface TenantStats {
   id: string;
   companyName: string;
@@ -41,6 +43,7 @@ export default function SuperAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [tickets, setTickets] = useState<any[]>([]);
   const [savingTenantId, setSavingTenantId] = useState<string | null>(null);
+  const [capDrafts, setCapDrafts] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -51,6 +54,14 @@ export default function SuperAdminPage() {
         api<any[]>('/v1/super-admin/tickets'),
       ]);
       setTenants(data);
+      setCapDrafts(
+        Object.fromEntries(
+          data.map((tenant) => [
+            tenant.id,
+            tenant.freeTrialCallMinutes > 0 ? String(tenant.freeTrialCallMinutes) : '',
+          ]),
+        ),
+      );
       setTickets(tix);
     } catch (err) {
       setError((err as Error).message);
@@ -132,7 +143,7 @@ export default function SuperAdminPage() {
               <TableHead className="text-zinc-400 text-right">Active Jobs</TableHead>
               <TableHead className="text-zinc-400 text-right">24h Calls</TableHead>
               <TableHead className="text-zinc-400 text-right">Minutes Used</TableHead>
-              <TableHead className="text-zinc-400 text-right">Minute Cap</TableHead>
+              <TableHead className="text-zinc-400 text-right">Minute Allowance</TableHead>
               <TableHead className="text-zinc-400 text-center">Calls</TableHead>
             </TableRow>
           </TableHeader>
@@ -163,8 +174,21 @@ export default function SuperAdminPage() {
                       <Badge variant="outline">Inactive</Badge>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <div className="font-medium text-zinc-100">{t.version || t.plan || 'Free'}</div>
+                  <TableCell className="min-w-[140px]">
+                    <select
+                      value={(t.plan ?? 'FREE').toUpperCase()}
+                      disabled={savingTenantId === t.id}
+                      onChange={(event) =>
+                        void updateTenantCallControls(t.id, { plan: event.target.value })
+                      }
+                      className="h-8 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 text-xs font-semibold text-zinc-100"
+                    >
+                      {PLAN_OPTIONS.map((plan) => (
+                        <option key={plan} value={plan}>
+                          {displayVersion(plan)}
+                        </option>
+                      ))}
+                    </select>
                     <div className="text-xs text-zinc-500">{t.billingStatus || 'ACTIVE'}</div>
                   </TableCell>
                   <TableCell className="text-right font-medium">
@@ -178,36 +202,30 @@ export default function SuperAdminPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={savingTenantId === t.id || t.freeTrialCallMinutes <= 0}
-                        onClick={() =>
-                          void updateTenantCallControls(t.id, {
-                            freeTrialCallMinutes: Math.max(0, t.freeTrialCallMinutes - 5),
-                          })
-                        }
-                        className="h-7 px-2 text-xs"
-                      >
-                        -5
-                      </Button>
-                      <span className="min-w-[72px] text-center text-xs font-medium text-zinc-300">
-                        {t.freeTrialCallMinutes > 0 ? `${t.freeTrialCallMinutes} min` : 'No cap'}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
+                      <input
+                        inputMode="numeric"
+                        value={capDrafts[t.id] ?? ''}
+                        placeholder="No cap"
                         disabled={savingTenantId === t.id}
-                        onClick={() =>
-                          void updateTenantCallControls(t.id, {
-                            freeTrialCallMinutes: t.freeTrialCallMinutes + 5,
-                          })
+                        onChange={(event) =>
+                          setCapDrafts((prev) => ({ ...prev, [t.id]: event.target.value }))
                         }
-                        className="h-7 px-2 text-xs"
-                      >
-                        +5
-                      </Button>
+                        onBlur={() => void saveMinuteCap(t)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        className="h-8 w-24 rounded-md border border-zinc-700 bg-zinc-950 px-2 text-right text-xs font-semibold text-zinc-100 placeholder:text-zinc-500"
+                      />
+                      <span className="text-xs text-zinc-500">min</span>
                     </div>
+                    {(t.plan ?? 'FREE').toUpperCase() !== 'FREE' &&
+                      (t.plan ?? 'FREE').toUpperCase() !== 'TRIAL' && (
+                        <div className="mt-1 text-right text-[10px] text-zinc-500">
+                          Paid tier: cap not enforced
+                        </div>
+                      )}
                   </TableCell>
                   <TableCell className="text-center">
                     <Switch
@@ -281,6 +299,7 @@ export default function SuperAdminPage() {
     patch: {
       outboundVoiceEnabled?: boolean;
       freeTrialCallMinutes?: number;
+      plan?: string;
     },
   ) {
     setSavingTenantId(tenantId);
@@ -299,6 +318,8 @@ export default function SuperAdminPage() {
                   patch.outboundVoiceEnabled ?? tenant.outboundVoiceEnabled,
                 freeTrialCallMinutes:
                   patch.freeTrialCallMinutes ?? tenant.freeTrialCallMinutes,
+                plan: patch.plan ?? tenant.plan,
+                version: patch.plan ? displayVersion(patch.plan) : tenant.version,
               }
             : tenant,
         ),
@@ -309,4 +330,30 @@ export default function SuperAdminPage() {
       setSavingTenantId(null);
     }
   }
+
+  async function saveMinuteCap(tenant: TenantStats) {
+    const raw = (capDrafts[tenant.id] ?? '').trim();
+    const next = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(next) || next < 0) {
+      setCapDrafts((prev) => ({
+        ...prev,
+        [tenant.id]:
+          tenant.freeTrialCallMinutes > 0 ? String(tenant.freeTrialCallMinutes) : '',
+      }));
+      return;
+    }
+    const rounded = Math.round(next);
+    if (rounded === tenant.freeTrialCallMinutes) return;
+    setCapDrafts((prev) => ({
+      ...prev,
+      [tenant.id]: rounded > 0 ? String(rounded) : '',
+    }));
+    await updateTenantCallControls(tenant.id, { freeTrialCallMinutes: rounded });
+  }
+}
+
+function displayVersion(plan: string | null | undefined): string {
+  const normalized = (plan ?? 'FREE').trim().toUpperCase();
+  if (!normalized || normalized === 'FREE') return 'Free';
+  return normalized.charAt(0) + normalized.slice(1).toLowerCase();
 }

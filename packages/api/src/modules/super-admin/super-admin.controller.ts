@@ -45,6 +45,7 @@ export class SuperAdminController {
       demoMode?: boolean;
       demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
+      plan?: string;
     },
   ) {
     return this.service.updateTenantCallControls(id, {
@@ -61,6 +62,7 @@ export class SuperAdminController {
         typeof body.freeTrialCallMinutes === 'number'
           ? body.freeTrialCallMinutes
           : undefined,
+      plan: typeof body.plan === 'string' ? body.plan : undefined,
     });
   }
 

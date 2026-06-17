@@ -223,6 +223,7 @@ export class SuperAdminService {
       demoMode?: boolean;
       demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
+      plan?: string;
     },
   ) {
     const t = (
@@ -275,6 +276,9 @@ export class SuperAdminService {
       .update(tenants)
       .set(set)
       .where(eq(tenants.id, tenantId));
+    if (patch.plan !== undefined) {
+      await this.upsertBillingPlan(tenantId, patch.plan);
+    }
     return this.getTenant(tenantId);
   }
 
@@ -292,6 +296,37 @@ export class SuperAdminService {
       .from(supportTickets)
       .leftJoin(tenants, eq(tenants.id, supportTickets.tenantId))
       .orderBy(desc(supportTickets.createdAt));
+  }
+
+  private async upsertBillingPlan(tenantId: string, plan: string) {
+    const normalized = plan.trim().toUpperCase();
+    if (!['FREE', 'TRIAL', 'STARTER', 'PRO', 'ENTERPRISE'].includes(normalized)) {
+      return;
+    }
+    const existing = (
+      await this.db
+        .select({ id: tenantBilling.id })
+        .from(tenantBilling)
+        .where(eq(tenantBilling.tenantId, tenantId))
+        .limit(1)
+    )[0];
+    const now = new Date();
+    if (existing) {
+      await this.db
+        .update(tenantBilling)
+        .set({ plan: normalized, status: 'ACTIVE', updatedAt: now })
+        .where(eq(tenantBilling.tenantId, tenantId));
+      return;
+    }
+    const periodEnd = new Date(now);
+    periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
+    await this.db.insert(tenantBilling).values({
+      tenantId,
+      plan: normalized,
+      status: 'ACTIVE',
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+    });
   }
 }
 
