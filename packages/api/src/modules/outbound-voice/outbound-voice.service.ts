@@ -1019,24 +1019,17 @@ export class OutboundVoiceService {
       destination: input.destination || 'demo destination',
       motorClub: input.motorClub || 'Demo',
       scriptBody,
+      ignoreTenantOutboundDisabled: true,
+      ignoreTrialLimit: true,
     });
   }
 
   async publicDemoCallStatus() {
     try {
-      const tenantId = await this.resolvePublicDemoTenantId();
       const platformEnabled = await this.publicDemoCallsEnabled();
-      const tenant = (
-        await this.db
-          .select({
-            outboundVoiceEnabled: tenants.outboundVoiceEnabled,
-          })
-          .from(tenants)
-          .where(eq(tenants.id, tenantId))
-          .limit(1)
-      )[0];
+      await this.resolvePublicDemoTenantId();
       return {
-        enabled: Boolean(platformEnabled && tenant?.outboundVoiceEnabled),
+        enabled: platformEnabled,
       };
     } catch {
       return { enabled: false };
@@ -1054,6 +1047,8 @@ export class OutboundVoiceService {
       pickupLocation?: string;
       motorClub?: string;
       scriptBody?: string;
+      ignoreTenantOutboundDisabled?: boolean;
+      ignoreTrialLimit?: boolean;
     },
   ) {
     const { renderCallBody } = await import('../flip-engine/flip-scripts');
@@ -1070,10 +1065,10 @@ export class OutboundVoiceService {
       .limit(1);
     const tenant = rows[0];
     if (!tenant) throw new Error('Tenant not found');
-    if (!tenant.outboundVoiceEnabled) {
+    if (!tenant.outboundVoiceEnabled && !input.ignoreTenantOutboundDisabled) {
       throw new Error('Outbound voice is disabled for this tenant');
     }
-    if (await this.freeTrialLimitReached(tenant)) {
+    if (!input.ignoreTrialLimit && await this.freeTrialLimitReached(tenant)) {
       throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
     const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) || {};

@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icons';
@@ -549,33 +549,55 @@ function DemoHelp({
   children: ReactNode;
   side?: 'left' | 'right' | 'bottom';
 }) {
-  const position =
-    side === 'left'
-      ? 'right-0 top-8'
-      : side === 'right'
-        ? 'left-0 top-8'
-        : 'left-1/2 top-8 -translate-x-1/2';
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties | null>(null);
+
+  function showTooltip() {
+    const button = buttonRef.current;
+    if (!button || typeof window === 'undefined') return;
+    const rect = button.getBoundingClientRect();
+    const width = 288;
+    const margin = 12;
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const preferredLeft =
+      side === 'left'
+        ? rect.right - width
+        : side === 'right'
+          ? rect.left
+          : rect.left + rect.width / 2 - width / 2;
+    setTooltipStyle({
+      left: Math.min(Math.max(preferredLeft, margin), maxLeft),
+      top: rect.bottom + 8,
+      width,
+    });
+  }
+
   return (
-    <span className="group relative inline-flex">
+    <span className="relative inline-flex">
       <button
+        ref={buttonRef}
         type="button"
         className="flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-xs font-bold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
         aria-label={`Explain ${title}`}
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltipStyle(null)}
+        onFocus={showTooltip}
+        onBlur={() => setTooltipStyle(null)}
       >
         ?
       </button>
-      <span
-        role="tooltip"
-        className={cn(
-          'pointer-events-none absolute z-50 hidden w-72 rounded-lg border border-zinc-200 bg-white p-3 text-left text-xs leading-5 text-zinc-600 shadow-xl group-hover:block group-focus-within:block',
-          position,
-        )}
-      >
-        <span className="mb-1 block font-label text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">
-          {title}
+      {tooltipStyle && (
+        <span
+          role="tooltip"
+          className="pointer-events-none fixed z-[80] rounded-lg border border-zinc-200 bg-white p-3 text-left text-xs leading-5 text-zinc-600 shadow-xl"
+          style={tooltipStyle}
+        >
+          <span className="mb-1 block font-label text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">
+            {title}
+          </span>
+          {children}
         </span>
-        {children}
-      </span>
+      )}
     </span>
   );
 }
