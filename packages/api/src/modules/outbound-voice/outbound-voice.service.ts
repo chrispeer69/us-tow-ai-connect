@@ -50,6 +50,7 @@ import type { OutboundVoiceProvider } from './outbound-voice-provider.interface'
 @Injectable()
 export class OutboundVoiceService {
   private readonly logger = new Logger(OutboundVoiceService.name);
+  private readonly publicDemoAttempts = new Map<string, number>();
   private dispatching = false;
 
   constructor(
@@ -984,6 +985,75 @@ export class OutboundVoiceService {
     return (usage?.seconds ?? 0) >= limitMinutes * 60;
   }
 
+  async publicDemoCall(input: {
+    mode?: 'explicit' | 'live';
+    scenario?: 'competitor_repair' | 'auto_body' | 'residence' | 'our_shop' | 'unknown';
+    scriptType?: 'auto_flip' | 'eta_confirmation' | 'status_update' | 'winch_out' | 'convini_only';
+    toPhone: string;
+    customerName?: string | null;
+    businessName?: string | null;
+    vehicle?: string | null;
+    destination?: string | null;
+    pickupLocation?: string | null;
+    motorClub?: string | null;
+    ipKey: string;
+  }) {
+    const phoneKey = formatOutboundPhone(input.toPhone);
+    this.assertPublicDemoRateLimit(`${input.ipKey}:${phoneKey}`);
+    const tenantId = await this.resolvePublicDemoTenantId();
+    const customerName = input.customerName?.trim() || 'Demo Caller';
+    const scriptBody =
+      input.scriptType && input.scriptType !== 'auto_flip'
+        ? renderPublicDemoScript(input.scriptType, {
+            customerName,
+            vehicle: input.vehicle || 'demo tow request',
+            pickupLocation:
+              input.pickupLocation ||
+              (input.businessName
+                ? `${input.businessName} demo service location`
+                : 'demo service location'),
+            destination: input.destination || 'demo destination',
+            motorClub: input.motorClub || 'Demo',
+          })
+        : undefined;
+    return this.testCall(tenantId, {
+      scenario: scriptBody ? undefined : input.scenario ?? 'unknown',
+      toPhone: phoneKey,
+      customerName,
+      vehicle: input.vehicle || 'demo tow request',
+      pickupLocation:
+        input.pickupLocation ||
+        (input.businessName
+          ? `${input.businessName} demo service location`
+          : 'demo service location'),
+      destination: input.destination || 'demo destination',
+      motorClub: input.motorClub || 'Demo',
+      scriptBody,
+    });
+  }
+
+  async publicDemoCallStatus() {
+    try {
+      const tenantId = await this.resolvePublicDemoTenantId();
+      const tenant = (
+        await this.db
+          .select({
+            outboundVoiceEnabled: tenants.outboundVoiceEnabled,
+            outboundVoiceConfig: tenants.outboundVoiceConfig,
+          })
+          .from(tenants)
+          .where(eq(tenants.id, tenantId))
+          .limit(1)
+      )[0];
+      const cfg = (tenant?.outboundVoiceConfig as Record<string, unknown> | null | undefined) ?? {};
+      return {
+        enabled: Boolean(tenant?.outboundVoiceEnabled && cfg.demo_calls_enabled === true),
+      };
+    } catch {
+      return { enabled: false };
+    }
+  }
+
   async testCall(
     tenantId: string,
     input: {
@@ -1011,6 +1081,15 @@ export class OutboundVoiceService {
       .limit(1);
     const tenant = rows[0];
     if (!tenant) throw new Error('Tenant not found');
+    if (!tenant.outboundVoiceEnabled) {
+      throw new Error('Outbound voice is disabled for this tenant');
+    }
+    if (demoCallsBlocked(tenant)) {
+      throw new Error('Demo calls are disabled for this tenant');
+    }
+    if (await this.freeTrialLimitReached(tenant)) {
+      throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
+    }
     const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) || {};
 
     const activeShops = await this.db
@@ -1102,6 +1181,56 @@ export class OutboundVoiceService {
       scriptPreview: fullBody.split('\n').slice(0, 10).join('\n') + '...',
       message: `Test call placed to ${formattedPhone}. The AI agent should call within 10 seconds.`,
     };
+  }
+
+  private assertPublicDemoRateLimit(key: string) {
+    const now = Date.now();
+    const last = this.publicDemoAttempts.get(key) ?? 0;
+    const waitMs = 10 * 60 * 1000;
+    if (now - last < waitMs) {
+      throw new Error('Demo call limit reached. Please try again later or book a live demo.');
+    }
+    this.publicDemoAttempts.set(key, now);
+    for (const [attemptKey, timestamp] of this.publicDemoAttempts.entries()) {
+      if (now - timestamp > waitMs) this.publicDemoAttempts.delete(attemptKey);
+    }
+  }
+
+  private async resolvePublicDemoTenantId(): Promise<string> {
+    const configured =
+      process.env.PUBLIC_DEMO_TENANT_ID ||
+      process.env.DEMO_TENANT_ID ||
+      process.env.NEXT_PUBLIC_DEMO_TENANT_ID;
+    const rows = configured
+      ? await this.db
+          .select({
+            id: tenants.id,
+            outboundVoiceConfig: tenants.outboundVoiceConfig,
+          })
+          .from(tenants)
+          .where(eq(tenants.id, configured))
+          .limit(1)
+      : await this.db
+          .select({
+            id: tenants.id,
+            outboundVoiceConfig: tenants.outboundVoiceConfig,
+          })
+          .from(tenants)
+          .where(sql`${tenants.outboundVoiceConfig}->>'demo_mode' = 'true'`)
+          .orderBy(desc(tenants.createdAt))
+          .limit(1);
+    const tenant = rows[0];
+    if (!tenant) {
+      throw new Error('Public demo calls are not configured.');
+    }
+    const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null | undefined) ?? {};
+    if (cfg.demo_mode !== true) {
+      throw new Error('Public demo calls require a demo account.');
+    }
+    if (cfg.demo_calls_enabled !== true) {
+      throw new Error('Public demo calls are currently disabled.');
+    }
+    return tenant.id;
   }
 }
 
@@ -1229,6 +1358,42 @@ function readConfigArray(
 
 function demoCallsBlocked(tenant: typeof tenants.$inferSelect): boolean {
   return readConfigBool(tenant, 'demo_mode', false) && !readConfigBool(tenant, 'demo_calls_enabled', false);
+}
+
+function formatOutboundPhone(value: string): string {
+  let formatted = value.replace(/\D/g, '');
+  if (formatted.length === 10) formatted = `1${formatted}`;
+  if (formatted.length < 8 || formatted.length > 15) {
+    throw new Error('Please enter a valid phone number.');
+  }
+  return `+${formatted}`;
+}
+
+function firstName(value: string): string {
+  return value.trim().split(/\s+/)[0] || 'there';
+}
+
+function renderPublicDemoScript(
+  scriptType: 'eta_confirmation' | 'status_update' | 'winch_out' | 'convini_only',
+  vars: {
+    customerName: string;
+    vehicle: string;
+    pickupLocation: string;
+    destination: string;
+    motorClub: string;
+  },
+): string {
+  const name = firstName(vars.customerName);
+  switch (scriptType) {
+    case 'eta_confirmation':
+      return `Hi ${name}, this is Emily from Roadside Towing. I am calling to confirm your ${vars.motorClub} service request. The pickup is ${vars.pickupLocation}. The destination is ${vars.destination}. Your driver will call if they need anything else.`;
+    case 'status_update':
+      return `Hi ${name}, this is Emily from Roadside Towing with a quick update on your service request for ${vars.vehicle}. Your job is still active, and the dispatch team is tracking it.`;
+    case 'winch_out':
+      return `Hi ${name}, this is Emily from Roadside Towing about your winch-out request at ${vars.pickupLocation}. A winch out means we help get the vehicle back onto solid ground. Please have photos of the situation ready to send by text when the driver calls.`;
+    case 'convini_only':
+      return `Hi ${name}, this is Emily from Roadside Towing. I am calling about your ${vars.motorClub} service request. Please watch for the CONVINI app link so you can track and manage the service details from your phone.`;
+  }
 }
 
 function buildCallbackUrl(provider: 'retell' | 'thinkrr'): string {

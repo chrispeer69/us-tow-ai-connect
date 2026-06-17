@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   STATUS_FLOW,
@@ -18,6 +18,7 @@ interface Props {
   onStatusChange: (status: UnifiedJobStatus) => Promise<void> | void;
   onCallCustomer: (scriptType: ManualCallScriptType) => Promise<void> | void;
   onClose: () => void;
+  initialScriptType?: ManualCallScriptType;
 }
 
 export type ManualCallScriptType =
@@ -33,12 +34,24 @@ const SOURCE_LABEL: Record<string, string> = {
   manual: 'Manual',
 };
 
-export function JobDrawer({ job, drivers, onAssign, onStatusChange, onCallCustomer, onClose }: Props) {
+export function JobDrawer({
+  job,
+  drivers,
+  onAssign,
+  onStatusChange,
+  onCallCustomer,
+  onClose,
+  initialScriptType = 'auto_flip',
+}: Props) {
   const [pendingDriver, setPendingDriver] = useState<string>(job.assignedDriverId ?? '');
   const [working, setWorking] = useState(false);
   const [callMessage, setCallMessage] = useState<string | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
-  const [manualScriptType, setManualScriptType] = useState<ManualCallScriptType>('auto_flip');
+  const [manualScriptType, setManualScriptType] = useState<ManualCallScriptType>(initialScriptType);
+
+  useEffect(() => {
+    setManualScriptType(initialScriptType);
+  }, [initialScriptType, job.id]);
 
   async function handleAssign(value: string) {
     setPendingDriver(value);

@@ -92,7 +92,7 @@ export class OutboundVoiceController {
           missing: err.missing,
         });
       }
-      if (err instanceof Error && /disabled|not enabled/i.test(err.message)) {
+      if (err instanceof Error && /disabled|not enabled|limit reached/i.test(err.message)) {
         throw new BadRequestException({
           status: 'error',
           code: 'OUTBOUND_VOICE_DISABLED',

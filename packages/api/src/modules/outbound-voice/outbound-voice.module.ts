@@ -3,6 +3,7 @@ import { DbModule } from '../../db/db.module';
 import { OutboundSmsModule } from '../outbound-sms/outbound-sms.module';
 import { OutboundVoiceController } from './outbound-voice.controller';
 import { OutboundVoiceWebhookController } from './outbound-voice-webhook.controller';
+import { PublicDemoCallController } from './public-demo-call.controller';
 import { OutboundVoiceService } from './outbound-voice.service';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
 import { RetellOutboundClient } from './retell-outbound.client';
@@ -27,6 +28,7 @@ import {
   controllers: [
     OutboundVoiceController,
     OutboundVoiceWebhookController,
+    PublicDemoCallController,
     RetellWebhookController,
   ],
   providers: [

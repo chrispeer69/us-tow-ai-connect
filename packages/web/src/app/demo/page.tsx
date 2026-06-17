@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icons';
@@ -26,22 +26,17 @@ const demoFormInputClass =
   'h-11 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500';
 const demoFormLabelClass =
   'mb-2 block text-xs font-bold uppercase tracking-wider text-zinc-400';
-const DEMO_REVENUE_OPTIONS = [
-  'Under $500K',
-  '$500K - $1M',
-  '$1M - $5M',
-  '$5M - $10M',
-  '$10M+',
-  'Prefer not to say',
-];
-const DEMO_FLEET_OPTIONS = ['1-3 trucks', '4-10 trucks', '11-25 trucks', '26+ trucks'];
-
 export default function PublicDemoPage() {
   const [jobs, setJobs] = useState<UnifiedJob[]>(() => seededJobs());
   const [drivers] = useState<Driver[]>(() => seededDrivers());
   const [selectedJobId, setSelectedJobId] = useState('demo-job-1');
   const [activeHref, setActiveHref] = useState(COMMAND_CENTER_HREF);
   const [showCallDemo, setShowCallDemo] = useState(false);
+  const [demoCallMode, setDemoCallMode] = useState<'checking' | 'fallback' | 'test'>('fallback');
+  const [showManualJob, setShowManualJob] = useState(false);
+  const [initialScriptByJobId, setInitialScriptByJobId] = useState<
+    Record<string, ManualCallScriptType>
+  >({});
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [filters, setFilters] = useState<CommandCenterFilters>({
     status: new Set(['new', 'assigned', 'en_route', 'on_scene', 'in_tow']),
@@ -87,6 +82,85 @@ export default function PublicDemoPage() {
     updateJob(selectedJob.id, { status });
   }
 
+  async function openTestAgentCall() {
+    setShowCallDemo(true);
+    setDemoCallMode('checking');
+    setDemoCallMode((await publicDemoCallsEnabled()) ? 'test' : 'fallback');
+  }
+
+  async function openManualJob() {
+    setShowCallDemo(true);
+    setDemoCallMode('checking');
+    if (await publicDemoCallsEnabled()) {
+      setShowCallDemo(false);
+      setShowManualJob(true);
+      return;
+    }
+    setDemoCallMode('fallback');
+  }
+
+  async function handleDemoCallCustomer(scriptType: ManualCallScriptType) {
+    if (!selectedJob) return;
+    setShowCallDemo(true);
+    setDemoCallMode('checking');
+    if (!(await publicDemoCallsEnabled())) {
+      setDemoCallMode('fallback');
+      throw new Error('Demo calls are disabled. Book a live demo to enable controlled test calls.');
+    }
+    setShowCallDemo(false);
+
+    const vehicle = [
+      selectedJob.vehicleYear,
+      selectedJob.vehicleColor,
+      selectedJob.vehicleMake,
+      selectedJob.vehicleModel,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const res = await fetch('/api/v1/public/demo-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scriptType,
+        toPhone: selectedJob.callerPhone || '',
+        customerName: selectedJob.callerName || undefined,
+        vehicle: vehicle || undefined,
+        pickupLocation: selectedJob.pickupAddress || undefined,
+        destination: selectedJob.dropoffAddress || undefined,
+        motorClub: selectedJob.source?.toUpperCase?.() || 'Demo',
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || body?.status === 'error') {
+      throw new Error(body?.message || body?.error || 'Unable to start demo call.');
+    }
+    updateJob(selectedJob.id, {
+      latestCall: {
+        id: body?.callId || `demo-call-${Date.now()}`,
+        purpose: 'custom',
+        status: 'queued',
+        attempts: 1,
+        durationSeconds: null,
+        error: null,
+        transcript: null,
+        analysisData: { script_type: scriptType },
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  async function publicDemoCallsEnabled() {
+    try {
+      const res = await fetch('/api/v1/public/demo-call/status', { cache: 'no-store' });
+      const body = await res.json().catch(() => null);
+      return Boolean(body?.data?.enabled);
+    } catch {
+      return false;
+    }
+  }
+
   const activeLabel = NAV_GROUPS.flatMap((group) => group.items).find((item) => item.href === activeHref)?.label
     ?? 'Command Center';
 
@@ -119,7 +193,7 @@ export default function PublicDemoPage() {
             <ExplainedAction
               label="Test Agent Call"
               help="Shows what happens when a dispatcher tries to place an AI call from the demo. The public demo blocks the actual call."
-              onClick={() => setShowCallDemo(true)}
+              onClick={() => void openTestAgentCall()}
             />
             <ExplainedAction
               label="Manage Drivers"
@@ -129,7 +203,7 @@ export default function PublicDemoPage() {
             <ExplainedAction
               label="+ Manual job"
               help="Shows where a dispatcher would add a job manually when it does not arrive from an integration."
-              onClick={() => setShowCallDemo(true)}
+              onClick={() => void openManualJob()}
             />
             <Link href="/schedule-demo">
               <Button variant="outline" className="shrink-0">Book demo</Button>
@@ -206,8 +280,9 @@ export default function PublicDemoPage() {
                   drivers={drivers}
                   onAssign={assignDriver}
                   onStatusChange={changeStatus}
-                  onCallCustomer={(_scriptType: ManualCallScriptType) => setShowCallDemo(true)}
+                  onCallCustomer={handleDemoCallCustomer}
                   onClose={() => setSelectedJobId('')}
+                  initialScriptType={initialScriptByJobId[selectedJob.id] ?? 'auto_flip'}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center p-6 text-center text-sm text-zinc-500">
@@ -221,7 +296,26 @@ export default function PublicDemoPage() {
         )}
       </div>
 
-      {showCallDemo && <DemoCallModal onClose={() => setShowCallDemo(false)} />}
+      {showCallDemo && demoCallMode === 'checking' && (
+        <DemoCheckingModal onClose={() => setShowCallDemo(false)} />
+      )}
+      {showCallDemo && demoCallMode === 'fallback' && (
+        <DemoCallModal onClose={() => setShowCallDemo(false)} />
+      )}
+      {showCallDemo && demoCallMode === 'test' && (
+        <DemoTestAgentModal onClose={() => setShowCallDemo(false)} />
+      )}
+      {showManualJob && (
+        <DemoManualJobModal
+          onClose={() => setShowManualJob(false)}
+          onCreated={(job, scriptType) => {
+            setShowManualJob(false);
+            setJobs((prev) => [job, ...prev]);
+            setInitialScriptByJobId((prev) => ({ ...prev, [job.id]: scriptType }));
+            setSelectedJobId(job.id);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -946,15 +1040,187 @@ function DemoMap({
   );
 }
 
-function DemoCallModal({ onClose }: { onClose: () => void }) {
-  const [submitted, setSubmitted] = useState(false);
+function DemoCheckingModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/85 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-blue-500/30 bg-zinc-950 p-6 text-center text-zinc-100 shadow-2xl shadow-blue-950/40">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+        <h2 className="text-xl font-black tracking-tight text-white">Checking demo call access</h2>
+        <p className="mt-2 text-sm leading-6 text-zinc-400">
+          Looking at the platform demo-call switch before showing the call tools.
+        </p>
+        <Button variant="outline" className="mt-5 border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-900" onClick={onClose}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
+  const [scenario, setScenario] = useState('competitor_repair');
+  const [toPhone, setToPhone] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [destination, setDestination] = useState('');
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [motorClub, setMotorClub] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setErr(null);
+    setSuccess(false);
+    try {
+      const res = await fetch('/api/v1/public/demo-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenario,
+          toPhone,
+          customerName: customerName || undefined,
+          vehicle: vehicle || undefined,
+          destination: destination || undefined,
+          pickupLocation: pickupLocation || undefined,
+          motorClub: motorClub || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || 'Demo call could not be placed.');
+      }
+      setSuccess(true);
+    } catch (error) {
+      setErr((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950/85 p-4 backdrop-blur-sm">
-      <div className="mx-auto my-6 w-full max-w-5xl rounded-2xl border border-blue-500/30 bg-zinc-950 text-zinc-100 shadow-2xl shadow-blue-950/40">
+      <div className="mx-auto my-6 w-full max-w-xl rounded-2xl border border-blue-500/30 bg-zinc-950 text-zinc-100 shadow-2xl shadow-blue-950/40">
         <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
           <span className="rounded-full border border-blue-500/40 bg-blue-500/15 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-blue-300">
-            Controlled Demo Request
+            Test Agent Call
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-2 py-1 text-sm font-semibold text-zinc-400 hover:bg-zinc-900 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+        {success ? (
+          <div className="px-6 py-12 text-center">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/15 text-2xl font-black text-cyan-300">
+              ✓
+            </div>
+            <h2 className="text-2xl font-black tracking-tight text-white">Call triggered successfully.</h2>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              The demo agent call was queued for the phone number entered.
+            </p>
+            <Button className="mt-6 bg-blue-600 font-bold text-white hover:bg-blue-500" onClick={onClose}>
+              Back to demo
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={(event) => void submit(event)} className="space-y-4 p-6">
+            <p className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm leading-6 text-cyan-100">
+              Demo calls are enabled. This will actually ring the test number you enter.
+            </p>
+            <label className={demoFormLabelClass} htmlFor="demo-test-scenario">
+              Scenario
+            </label>
+            <select id="demo-test-scenario" value={scenario} onChange={(event) => setScenario(event.target.value)} className={demoFormInputClass}>
+              <option value="competitor_repair">Competitor Repair</option>
+              <option value="auto_body">Auto Body</option>
+              <option value="residence">Residence</option>
+              <option value="our_shop">Our Shop</option>
+              <option value="unknown">Unknown</option>
+            </select>
+            <label className={demoFormLabelClass} htmlFor="demo-test-phone">
+              To Phone *
+            </label>
+            <input id="demo-test-phone" value={toPhone} onChange={(event) => setToPhone(event.target.value)} placeholder="+1234567890" className={demoFormInputClass} required />
+            <label className={demoFormLabelClass} htmlFor="demo-test-name">
+              Customer Name
+            </label>
+            <input id="demo-test-name" value={customerName} onChange={(event) => setCustomerName(event.target.value)} className={demoFormInputClass} />
+            <label className={demoFormLabelClass} htmlFor="demo-test-vehicle">
+              Vehicle
+            </label>
+            <input id="demo-test-vehicle" value={vehicle} onChange={(event) => setVehicle(event.target.value)} placeholder="e.g. 2020 Honda Civic" className={demoFormInputClass} />
+            <label className={demoFormLabelClass} htmlFor="demo-test-destination">
+              Destination
+            </label>
+            <input id="demo-test-destination" value={destination} onChange={(event) => setDestination(event.target.value)} className={demoFormInputClass} />
+            <label className={demoFormLabelClass} htmlFor="demo-test-pickup">
+              Pickup Location
+            </label>
+            <input id="demo-test-pickup" value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} placeholder="e.g. 123 Main St" className={demoFormInputClass} />
+            <label className={demoFormLabelClass} htmlFor="demo-test-club">
+              Motor Club
+            </label>
+            <input id="demo-test-club" value={motorClub} onChange={(event) => setMotorClub(event.target.value)} placeholder="e.g. Agero Motor Club" className={demoFormInputClass} />
+            {err && <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">{err}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" className="border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-900" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || !toPhone.trim()} className="bg-blue-600 font-bold text-white hover:bg-blue-500">
+                {busy ? 'Triggering...' : 'Trigger Call'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DemoCallModal({ onClose }: { onClose: () => void }) {
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  async function submitDemoCall(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setSubmitError(null);
+    const form = new FormData(event.currentTarget);
+    try {
+      const res = await fetch('/api/v1/public/demo-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: String(form.get('name') || ''),
+          businessName: String(form.get('businessName') || ''),
+          toPhone: String(form.get('phone') || ''),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || 'Demo calls are currently disabled.');
+      }
+      setSubmitted(true);
+    } catch (err) {
+      setSubmitError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950/85 p-4 backdrop-blur-sm">
+      <div className="mx-auto my-6 w-full max-w-2xl rounded-2xl border border-blue-500/30 bg-zinc-950 text-zinc-100 shadow-2xl shadow-blue-950/40">
+        <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+          <span className="rounded-full border border-blue-500/40 bg-blue-500/15 px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.2em] text-blue-300">
+            Test Agent Call
           </span>
           <button
             type="button"
@@ -971,9 +1237,9 @@ function DemoCallModal({ onClose }: { onClose: () => void }) {
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/15 text-3xl font-black text-cyan-300">
               ✓
             </div>
-            <h2 className="text-3xl font-black tracking-tight text-white">Demo request staged.</h2>
+            <h2 className="text-3xl font-black tracking-tight text-white">Demo call requested.</h2>
             <p className="mt-3 text-sm leading-6 text-zinc-400">
-              The public demo does not submit data from this popup. Open the full booking page to send the request to the team.
+              The agent call has been queued. The public demo still does not write dispatch changes to a real account.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link href="/schedule-demo">
@@ -987,99 +1253,48 @@ function DemoCallModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              setSubmitted(true);
-            }}
-            className="grid gap-8 p-6 lg:grid-cols-12 lg:p-8"
-          >
-            <aside className="lg:col-span-5">
-              <h2 className="text-3xl font-black leading-tight tracking-tight text-white lg:text-4xl">
-                Want to test a real outbound call?
-              </h2>
-              <div className="mt-5 space-y-4 text-sm leading-6 text-zinc-400">
-                <p>
-                  Public demo calls are disabled so visitors cannot misuse the voice system.
-                  In a live walkthrough, a platform admin can temporarily enable a controlled
-                  outbound call using a test number.
-                </p>
-                <p>
-                  This popup mirrors the full schedule-demo form. Submitting here only stages
-                  the request in this browser session.
-                </p>
-              </div>
-              <div className="mt-6 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-4 text-sm text-cyan-100">
-                No real call is placed from this public demo. Use the full booking page to send the request.
-              </div>
-            </aside>
-
-            <div className="lg:col-span-7">
-              <div className="rounded-xl border border-blue-500/30 bg-zinc-900/70 p-5 shadow-xl lg:p-7">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-name">
-                      Name *
-                    </label>
-                    <input id="demo-modal-name" name="name" className={demoFormInputClass} placeholder="Jane Owner" required />
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-business">
-                      Business name *
-                    </label>
-                    <input id="demo-modal-business" name="businessName" className={demoFormInputClass} placeholder="Acme Towing & Recovery" required />
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-phone">
-                      Phone *
-                    </label>
-                    <input id="demo-modal-phone" name="phone" type="tel" className={demoFormInputClass} placeholder="(555) 555-5555" required />
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-email">
-                      Email
-                    </label>
-                    <input id="demo-modal-email" name="email" type="email" className={demoFormInputClass} placeholder="you@yourcompany.com" />
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-city">
-                      City
-                    </label>
-                    <input id="demo-modal-city" name="city" className={demoFormInputClass} placeholder="Columbus" />
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-state">
-                      State
-                    </label>
-                    <input id="demo-modal-state" name="state" className={demoFormInputClass} placeholder="OH" maxLength={2} />
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-revenue">
-                      Annual revenue
-                    </label>
-                    <select id="demo-modal-revenue" name="annualRevenue" className={demoFormInputClass} defaultValue="">
-                      <option value="" disabled>Select a range</option>
-                      {DEMO_REVENUE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={demoFormLabelClass} htmlFor="demo-modal-fleet">
-                      Fleet size
-                    </label>
-                    <select id="demo-modal-fleet" name="fleetSize" className={demoFormInputClass} defaultValue="">
-                      <option value="" disabled>Select fleet size</option>
-                      {DEMO_FLEET_OPTIONS.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  </div>
+          <form onSubmit={(event) => void submitDemoCall(event)} className="p-6 lg:p-8">
+            <h2 className="text-3xl font-black leading-tight tracking-tight text-white">
+              Place a live demo call
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              If the platform admin has enabled demo test calls, Emily will call the number below
+              with a short sample outbound script. If the switch is off, no call is placed.
+            </p>
+            <div className="mt-6 rounded-xl border border-blue-500/30 bg-zinc-900/70 p-5 shadow-xl lg:p-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={demoFormLabelClass} htmlFor="demo-modal-name">
+                    Name *
+                  </label>
+                  <input id="demo-modal-name" name="name" className={demoFormInputClass} placeholder="Jane Owner" required />
                 </div>
+                <div>
+                  <label className={demoFormLabelClass} htmlFor="demo-modal-phone">
+                    Phone *
+                  </label>
+                  <input id="demo-modal-phone" name="phone" type="tel" className={demoFormInputClass} placeholder="(555) 555-5555" required />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={demoFormLabelClass} htmlFor="demo-modal-business">
+                    Business name
+                  </label>
+                  <input id="demo-modal-business" name="businessName" className={demoFormInputClass} placeholder="Acme Towing & Recovery" />
+                </div>
+              </div>
+              {submitError && (
+                <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
+                  {submitError} Book a live demo if you want us to enable a controlled test call.
+                  </div>
+                )}
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Button type="submit" className="h-12 flex-1 bg-blue-600 font-bold text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500">
-                    Stage Demo Request
+                  <Button
+                    type="submit"
+                    disabled={submitting}
+                    className="h-12 flex-1 bg-blue-600 font-bold text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500"
+                  >
+                    {submitting ? 'Requesting call...' : 'Request Demo Call'}
                   </Button>
                   <Link href="/schedule-demo" className="sm:w-auto">
                     <Button type="button" variant="outline" className="h-12 w-full border-zinc-700 bg-transparent text-zinc-100 hover:bg-zinc-800">
@@ -1087,12 +1302,214 @@ function DemoCallModal({ onClose }: { onClose: () => void }) {
                     </Button>
                   </Link>
                 </div>
-              </div>
             </div>
           </form>
         )}
       </div>
     </div>
+  );
+}
+
+function DemoManualJobModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (job: UnifiedJob, scriptType: ManualCallScriptType) => void;
+}) {
+  const [callerName, setCallerName] = useState('');
+  const [callerPhone, setCallerPhone] = useState('');
+  const [vehicleYear, setVehicleYear] = useState('');
+  const [vehicleMake, setVehicleMake] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [dropoffAddress, setDropoffAddress] = useState('');
+  const [serviceType, setServiceType] = useState('Tow');
+  const [priority, setPriority] = useState<'low' | 'normal' | 'urgent'>('normal');
+  const [notes, setNotes] = useState('');
+  const [scriptType, setScriptType] = useState<ManualCallScriptType>('auto_flip');
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const now = new Date().toISOString();
+    const job: UnifiedJob = {
+      id: `demo-manual-${Date.now()}`,
+      tenantId: TENANT_ID,
+      source: 'manual',
+      sourceJobId: `MAN-${Math.floor(1000 + Math.random() * 9000)}`,
+      sourcePayload: { notes, selectedScriptType: scriptType },
+      status: 'new',
+      callerPhone: callerPhone || null,
+      callerName,
+      vehicleYear: vehicleYear || null,
+      vehicleMake: vehicleMake || null,
+      vehicleModel: vehicleModel || null,
+      vehicleColor: vehicleColor || null,
+      pickupAddress: pickupAddress || null,
+      pickupLat: null,
+      pickupLng: null,
+      dropoffAddress: dropoffAddress || null,
+      dropoffLat: null,
+      dropoffLng: null,
+      serviceType: serviceType || null,
+      priority,
+      assignedDriverId: null,
+      assignedTruckId: null,
+      etaMinutes: null,
+      acceptedAt: null,
+      dispatchedAt: null,
+      arrivedAt: null,
+      completedAt: null,
+      autoDecision: null,
+      autoDecisionReason: null,
+      autoDecidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      driver: null,
+      truck: null,
+      events: [],
+      latestCall: null,
+      latestFlip: null,
+    };
+    onCreated(job, scriptType);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={submit}
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900">Create manual job</h2>
+            <p className="text-sm text-zinc-500">
+              Browser-session demo job. It opens in the same drawer with driver, status, and script controls.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </header>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <DemoField label="Caller name" required value={callerName} onChange={setCallerName} />
+          <DemoField label="Caller phone" value={callerPhone} onChange={setCallerPhone} />
+          <DemoField label="Vehicle year" value={vehicleYear} onChange={setVehicleYear} />
+          <DemoField label="Vehicle make" value={vehicleMake} onChange={setVehicleMake} />
+          <DemoField label="Vehicle model" value={vehicleModel} onChange={setVehicleModel} />
+          <DemoField label="Vehicle color" value={vehicleColor} onChange={setVehicleColor} />
+          <label className="block text-sm font-medium text-zinc-900 sm:col-span-2">
+            Pickup address
+            <input
+              value={pickupAddress}
+              onChange={(event) => setPickupAddress(event.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+            />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900 sm:col-span-2">
+            Dropoff address
+            <input
+              value={dropoffAddress}
+              onChange={(event) => setDropoffAddress(event.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+            />
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Service type
+            <select
+              value={serviceType}
+              onChange={(event) => setServiceType(event.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+            >
+              <option value="Tow">Tow</option>
+              <option value="Winch Out">Winch Out</option>
+              <option value="Jump Start">Jump Start</option>
+              <option value="Tire Change">Tire Change</option>
+              <option value="Fuel Delivery">Fuel Delivery</option>
+              <option value="Lockout">Lockout</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-zinc-900">
+            Priority
+            <select
+              value={priority}
+              onChange={(event) => setPriority(event.target.value as 'low' | 'normal' | 'urgent')}
+              className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+            >
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-zinc-900 sm:col-span-2">
+            Call script
+            <select
+              value={scriptType}
+              onChange={(event) => setScriptType(event.target.value as ManualCallScriptType)}
+              className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+            >
+              <option value="auto_flip">Auto: confirm + flip logic</option>
+              <option value="eta_confirmation">ETA confirmation</option>
+              <option value="status_update">Status update</option>
+              <option value="winch_out">Winch-out photo reminder</option>
+              <option value="convini_only">CONVINI only</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-zinc-900 sm:col-span-2">
+            Notes
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="mt-1 min-h-24 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={!callerName.trim()}>
+            Create job
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DemoField({
+  label,
+  value,
+  onChange,
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  return (
+    <label className="block text-sm font-medium text-zinc-900">
+      {label}
+      <input
+        value={value}
+        required={required}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+      />
+    </label>
   );
 }
 

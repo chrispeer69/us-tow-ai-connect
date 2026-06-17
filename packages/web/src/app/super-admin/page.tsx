@@ -34,6 +34,8 @@ interface TenantStats {
   version: string;
   billingStatus: string;
   outboundVoiceEnabled: boolean;
+  demoMode: boolean;
+  demoCallsEnabled: boolean;
   freeTrialCallMinutes: number;
 }
 
@@ -145,18 +147,19 @@ export default function SuperAdminPage() {
               <TableHead className="text-zinc-400 text-right">Minutes Used</TableHead>
               <TableHead className="text-zinc-400 text-right">Minute Allowance</TableHead>
               <TableHead className="text-zinc-400 text-center">Calls</TableHead>
+              <TableHead className="text-zinc-400 text-center">Test Calls</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={9} className="h-32 text-center text-zinc-500">
                   <Spinner className="mx-auto" />
                 </TableCell>
               </TableRow>
             ) : tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={9} className="h-32 text-center text-zinc-500">
                   No tenants found.
                 </TableCell>
               </TableRow>
@@ -236,6 +239,18 @@ export default function SuperAdminPage() {
                       }
                     />
                   </TableCell>
+                  <TableCell className="text-center">
+                    <Switch
+                      checked={t.demoMode && t.demoCallsEnabled}
+                      disabled={savingTenantId === t.id || !t.demoMode}
+                      onCheckedChange={(enabled) =>
+                        void updateTenantCallControls(t.id, { demoCallsEnabled: enabled })
+                      }
+                    />
+                    {!t.demoMode && (
+                      <div className="mt-1 text-[10px] text-zinc-500">demo only</div>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -298,6 +313,7 @@ export default function SuperAdminPage() {
     tenantId: string,
     patch: {
       outboundVoiceEnabled?: boolean;
+      demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
       plan?: string;
     },
@@ -316,6 +332,7 @@ export default function SuperAdminPage() {
                 ...tenant,
                 outboundVoiceEnabled:
                   patch.outboundVoiceEnabled ?? tenant.outboundVoiceEnabled,
+                demoCallsEnabled: patch.demoCallsEnabled ?? tenant.demoCallsEnabled,
                 freeTrialCallMinutes:
                   patch.freeTrialCallMinutes ?? tenant.freeTrialCallMinutes,
                 plan: patch.plan ?? tenant.plan,
