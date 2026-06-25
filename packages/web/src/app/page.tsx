@@ -37,6 +37,7 @@ import {
   ClipboardCheck,
   Gauge,
   Gavel,
+  GraduationCap,
   Hammer,
   Hash,
   Megaphone,
@@ -1325,8 +1326,9 @@ export default function Home() {
                 { name: "Capital Bridge", icon: DollarSign, desc: "Business financing & capital", href: "https://www.capitalbridge.vip" },
                 { name: "MCA Debt Solutions", icon: ClipboardCheck, desc: "Merchant cash advance relief", href: "https://mcaloanproblems.online" },
                 { name: "Iron Horse Tow Trucks", icon: Truck, desc: "Custom built tow trucks", href: "https://indigo-aleda-56.tiiny.site" },
-                { name: "WrenchLink", icon: Wrench, desc: "Mechanic & shop network", href: "https://tomato-gwenora-60.tiiny.site" },
+                { name: "WrenchLink", icon: Wrench, desc: "Mechanic & shop network", href: "https://www.wrenchlink.online" },
                 { name: "Insurance Solutions", icon: ShieldCheck, desc: "Get the best insurance rates in the country", href: "https://insurancesol-prqw5vtw.manus.space" },
+                { name: "AI Survival School", icon: GraduationCap, desc: "Learn to thrive in the AI era", href: "https://www.aisurvivalschool.online" },
                 { name: "Shift Track", icon: Activity, desc: "Driver shift reporting app" },
                 { name: "US Tow Command", icon: Camera, desc: "GPS tracking & dash cameras" },
               ] as Array<{
