@@ -98,6 +98,8 @@ export class SuperAdminService {
       billingStatus: billingByT.get(t.id)?.status ?? 'ACTIVE',
       demoMode: readConfigBool(t.outboundVoiceConfig, 'demo_mode', false),
       demoCallsEnabled: readConfigBool(t.outboundVoiceConfig, 'demo_calls_enabled', false),
+      testModeEnabled: readConfigBool(t.outboundVoiceConfig, 'test_mode_enabled', false),
+      testOverrideNumber: readConfigString(t.outboundVoiceConfig, 'test_override_number', null),
       freeTrialCallMinutes: readConfigNumber(
         t.outboundVoiceConfig,
         'free_trial_call_minutes',
@@ -209,6 +211,8 @@ export class SuperAdminService {
         ...t,
         demoMode: readConfigBool(outboundConfig, 'demo_mode', false),
         demoCallsEnabled: readConfigBool(outboundConfig, 'demo_calls_enabled', false),
+        testModeEnabled: readConfigBool(outboundConfig, 'test_mode_enabled', false),
+        testOverrideNumber: readConfigString(outboundConfig, 'test_override_number', null),
         freeTrialCallMinutes: readConfigNumber(
           outboundConfig,
           'free_trial_call_minutes',
@@ -250,6 +254,8 @@ export class SuperAdminService {
       demoMode?: boolean;
       demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
+      testModeEnabled?: boolean;
+      testOverrideNumber?: string | null;
       plan?: string;
     },
   ) {
@@ -284,6 +290,12 @@ export class SuperAdminService {
         : {}),
       ...(freeTrialCallMinutes !== undefined
         ? { free_trial_call_minutes: freeTrialCallMinutes }
+        : {}),
+      ...(patch.testModeEnabled !== undefined
+        ? { test_mode_enabled: patch.testModeEnabled }
+        : {}),
+      ...(patch.testOverrideNumber !== undefined
+        ? { test_override_number: normalizeOptionalPhone(patch.testOverrideNumber) }
         : {}),
     };
     if (patch.demoMode === false) {
@@ -395,4 +407,20 @@ function readConfigNumber(
   const cfg = config as Record<string, unknown> | null | undefined;
   const value = cfg?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function readConfigString(
+  config: unknown,
+  key: string,
+  fallback: string | null,
+): string | null {
+  const cfg = config as Record<string, unknown> | null | undefined;
+  const value = cfg?.[key];
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeOptionalPhone(value: string | null): string | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }

@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/utils';
 
 interface OutboundCallRow {
@@ -51,6 +52,15 @@ interface OutboundCallRow {
 interface ListResponse {
   status: string;
   data: { items: OutboundCallRow[]; limit: number; offset: number };
+}
+
+interface OutboundVoiceConfigResponse {
+  status: string;
+  data: {
+    enabled: boolean;
+    activeProvider: string;
+    config: Record<string, unknown>;
+  };
 }
 
 const PAGE_SIZE = 50;
@@ -120,6 +130,13 @@ export default function OutboundVoicePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [outboundEnabled, setOutboundEnabled] = useState(false);
+  const [activeProvider, setActiveProvider] = useState('');
+  const [voiceConfig, setVoiceConfig] = useState<Record<string, unknown>>({});
+  const [testModeEnabled, setTestModeEnabled] = useState(false);
+  const [testOverrideNumber, setTestOverrideNumber] = useState('');
 
   const stats = useMemo(() => {
     const last24h = rows.filter((r) => Date.now() - new Date(r.createdAt).getTime() < 24 * 60 * 60 * 1000);
@@ -156,9 +173,31 @@ export default function OutboundVoicePage() {
     }
   }, [offset, purpose, status]);
 
+  const loadConfig = useCallback(async () => {
+    setConfigLoading(true);
+    setError(null);
+    try {
+      const data = await api<OutboundVoiceConfigResponse>('/v1/admin/outbound-voice/config');
+      const cfg = data.data.config ?? {};
+      setOutboundEnabled(data.data.enabled);
+      setActiveProvider(data.data.activeProvider);
+      setVoiceConfig(cfg);
+      setTestModeEnabled(cfg.test_mode_enabled === true);
+      setTestOverrideNumber(typeof cfg.test_override_number === 'string' ? cfg.test_override_number : '');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setConfigLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadConfig();
+  }, [loadConfig]);
 
   const onClearFilters = () => {
     setPurpose('');
@@ -222,6 +261,31 @@ export default function OutboundVoicePage() {
     }
   };
 
+  const saveTestMode = async () => {
+    setConfigSaving(true);
+    setError(null);
+    try {
+      const normalizedNumber = testOverrideNumber.trim();
+      await api('/v1/admin/outbound-voice/config', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          enabled: outboundEnabled,
+          config: {
+            ...voiceConfig,
+            test_mode_enabled: testModeEnabled,
+            test_override_number: normalizedNumber || null,
+          },
+        }),
+      });
+      await loadConfig();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4 p-6">
       <header className="flex items-baseline justify-between">
@@ -244,6 +308,60 @@ export default function OutboundVoicePage() {
         />
         <StatCard label="Queued" value={String(stats.queued)} />
       </div>
+
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Tenant test mode</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Route this tenant's outbound AI calls to a test phone number before Retell places the call.
+              </p>
+              <div className="mt-2 text-xs text-zinc-500">
+                Provider: {activeProvider || '—'} · Outbound voice: {outboundEnabled ? 'enabled' : 'disabled'}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-zinc-300">Route to test number</span>
+              <Switch
+                checked={testModeEnabled}
+                disabled={configLoading || configSaving}
+                onCheckedChange={setTestModeEnabled}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[minmax(240px,360px)_auto] md:items-end">
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Test phone number</div>
+              <Input
+                value={testOverrideNumber}
+                onChange={(event) => setTestOverrideNumber(event.target.value)}
+                placeholder="+16145551234"
+                disabled={configLoading || configSaving}
+              />
+            </div>
+            <Button onClick={() => void saveTestMode()} disabled={configLoading || configSaving}>
+              {configSaving ? <Spinner className="mr-2" /> : null}
+              Save test mode
+            </Button>
+          </div>
+
+          <div className={`rounded border p-3 text-sm ${
+            testModeEnabled
+              ? testOverrideNumber.trim()
+                ? 'border-amber-800 bg-amber-950/30 text-amber-100'
+                : 'border-rose-800 bg-rose-950/30 text-rose-100'
+              : 'border-zinc-800 bg-zinc-950/40 text-zinc-300'
+          }`}>
+            {testModeEnabled
+              ? testOverrideNumber.trim()
+                ? `Test mode is ON. Calls for this tenant will route to ${testOverrideNumber.trim()}.`
+                : 'Test mode is ON but no test number is set. Calls will fail closed instead of calling real customers.'
+              : 'Test mode is OFF. Calls for this tenant route to the customer number unless the global env override is enabled.'}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="space-y-3 p-4">

@@ -22,6 +22,8 @@ interface TenantDetail {
     outboundVoiceEnabled: boolean;
     demoMode: boolean;
     demoCallsEnabled: boolean;
+    testModeEnabled: boolean;
+    testOverrideNumber: string | null;
     freeTrialCallMinutes: number;
   };
   stats: {
@@ -59,6 +61,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   const [err, setErr] = useState<string | null>(null);
   const [savingControls, setSavingControls] = useState(false);
   const [minutesDraft, setMinutesDraft] = useState('15');
+  const [testNumberDraft, setTestNumberDraft] = useState('');
   const email = typeof window !== 'undefined' ? (localStorage.getItem('superAdminEmail') ?? '') : '';
 
   useEffect(() => {
@@ -74,6 +77,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
       .then((fresh: TenantDetail) => {
         setData(fresh);
         setMinutesDraft(String(fresh.tenant.freeTrialCallMinutes ?? 15));
+        setTestNumberDraft(fresh.tenant.testOverrideNumber ?? '');
       })
       .catch((e) => setErr((e as Error).message));
   }, [id, email]);
@@ -89,6 +93,8 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     demoMode?: boolean;
     demoCallsEnabled?: boolean;
     freeTrialCallMinutes?: number;
+    testModeEnabled?: boolean;
+    testOverrideNumber?: string | null;
   }) {
     setSavingControls(true);
     setErr(null);
@@ -102,6 +108,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
       const fresh = (await res.json()) as TenantDetail;
       setData(fresh);
       setMinutesDraft(String(fresh.tenant.freeTrialCallMinutes ?? 15));
+      setTestNumberDraft(fresh.tenant.testOverrideNumber ?? '');
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -180,6 +187,44 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
                 }
               >
                 Save cap
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="font-medium text-zinc-100">Tenant test mode</div>
+                <p className="mt-1 text-zinc-400">
+                  Routes this tenant's outbound AI calls to a test number before the provider places the call.
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  If enabled without a test number, calls fail closed instead of calling real customers.
+                </p>
+              </div>
+              <Switch
+                checked={t.testModeEnabled}
+                disabled={savingControls}
+                onCheckedChange={(v) =>
+                  void updateCallControls({ testModeEnabled: v })
+                }
+              />
+            </div>
+            <div className="mt-3 flex max-w-md gap-2">
+              <input
+                value={testNumberDraft}
+                onChange={(event) => setTestNumberDraft(event.target.value)}
+                placeholder="+16145551234"
+                className="h-10 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+              />
+              <Button
+                disabled={savingControls}
+                onClick={() =>
+                  void updateCallControls({
+                    testOverrideNumber: testNumberDraft.trim() || null,
+                  })
+                }
+              >
+                Save number
               </Button>
             </div>
           </div>

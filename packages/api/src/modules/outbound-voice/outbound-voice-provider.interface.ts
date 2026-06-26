@@ -34,6 +34,8 @@ export interface PlaceCallParams {
   tenantId: string;
   agentId?: string | null;
   callbackUrl?: string;
+  testModeEnabled?: boolean;
+  testOverrideNumber?: string | null;
 }
 
 export interface PlaceCallResult {

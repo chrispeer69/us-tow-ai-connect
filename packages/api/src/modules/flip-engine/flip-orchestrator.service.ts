@@ -270,6 +270,7 @@ export class FlipOrchestratorService {
       motorClub: job.motorClub ?? '',
       callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+      diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 89),
       customerFirstName: firstNameOf(job.customerName),
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
@@ -438,6 +439,7 @@ export class FlipOrchestratorService {
       motorClub: job.motorClub ?? '',
       callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+      diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 89),
       customerFirstName: firstNameOf(job.customerName),
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
@@ -594,6 +596,7 @@ export class FlipOrchestratorService {
           etaMinutes: job.etaMinutes,
           callbackNumber,
           conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+          diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 89),
         }),
       },
       relatedJobId: job.id,
@@ -764,6 +767,7 @@ export class FlipOrchestratorService {
         motorClub: '',
         callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
         conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+        diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 89),
         customerFirstName: firstNameOf(job.callerName),
         vehicle:
           [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
@@ -930,6 +934,7 @@ export class FlipOrchestratorService {
       motorClub: input.motorClub || '',
       callbackNumber: (cfg.callback_number as string) || (globalCfg.callback_number as string) || '',
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
+      diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 89),
       customerFirstName: firstNameOf(input.customerName),
       vehicle: input.vehicle || 'your vehicle',
       pickupLocation: input.pickupLocation || 'your location',
@@ -1130,6 +1135,7 @@ function renderManualScript(
     etaMinutes: number | null;
     callbackNumber: string;
     conviniLink: string;
+    diagnosticValue?: number | null;
   },
 ): string {
   const eta = vars.etaMinutes != null ? `${vars.etaMinutes} minutes` : 'as soon as possible';
@@ -1143,7 +1149,7 @@ function renderManualScript(
   switch (scriptType) {
     case 'eta_confirmation':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName} calling from ${vars.companyName}.`,
+        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
         `I am calling to confirm your roadside service. I have the pickup as ${vars.pickupLocation}.`,
         destinationLine,
         `Your driver should arrive in about ${eta}. Please stay in a safe location while you wait.`,
@@ -1151,7 +1157,7 @@ function renderManualScript(
       ].join('\n');
     case 'status_update':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName} from ${vars.companyName}.`,
+        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
         `I am calling with an update on your service request for ${vars.vehicle}.`,
         `We have the issue listed as ${vars.issue}, and the pickup as ${vars.pickupLocation}.`,
         `Your request is active and our team is working on it now.`,
@@ -1159,7 +1165,7 @@ function renderManualScript(
       ].join('\n');
     case 'winch_out':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName} calling from ${vars.companyName}.`,
+        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
         `I am calling about your winch-out or recovery request at ${vars.pickupLocation}.`,
         'A winch-out usually means we come to get the vehicle back onto solid ground.',
         'Please have a few photos of the situation ready. When the driver calls, they may ask you to text those photos so they can see the depth of the problem before they arrive.',
@@ -1168,10 +1174,9 @@ function renderManualScript(
       ].join('\n');
     case 'convini_only':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName} from ${vars.companyName}.`,
+        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
         `I am calling to quickly confirm your service request at ${vars.pickupLocation}.`,
-        `One quick thing before I let you go. We have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and member deals in one place.`,
-        'Can I text you the download link? It is free and takes about 30 seconds to set up.',
+        `I'm texting you the free CONVINIcar app link now so you can track this service live and request help faster next time.`,
         callbackLine,
       ].join('\n');
     default:

@@ -327,6 +327,22 @@ export class OutboundVoiceService {
     const agentId = this.provider.providerName === 'retell'
       ? readConfigString(tenant, 'retell_outbound_agent_id', null) ?? undefined
       : readConfigString(tenant, 'thinkrr_outbound_agent_id', null) ?? undefined;
+    const tenantTestModeEnabled = readConfigBool(tenant, 'test_mode_enabled', false);
+    const tenantTestOverrideNumber = readConfigString(tenant, 'test_override_number', null);
+    if (tenantTestModeEnabled && !tenantTestOverrideNumber?.trim()) {
+      const updated = await this.db
+        .update(outboundCalls)
+        .set({
+          status: 'failed',
+          attempts: call.attempts + 1,
+          error: 'tenant_test_mode_enabled_without_test_override_number',
+          updatedAt: new Date(),
+          endedAt: new Date(),
+        })
+        .where(eq(outboundCalls.id, call.id))
+        .returning();
+      return updated[0];
+    }
 
     const result = await this.provider.placeCall({
       toPhone: call.toPhone,
@@ -338,6 +354,8 @@ export class OutboundVoiceService {
       tenantId: call.tenantId,
       agentId,
       callbackUrl,
+      testModeEnabled: tenantTestModeEnabled,
+      testOverrideNumber: tenantTestOverrideNumber,
     });
 
     const requireConsent = readConfigBool(tenant, 'require_consent', true);
@@ -383,7 +401,11 @@ export class OutboundVoiceService {
               provider = ${this.provider.providerName},
               attempts = ${call.attempts + 1},
               started_at = now(),
-              outcome = ${JSON.stringify({ consent_check_skipped: consentSkipped })}::jsonb,
+              outcome = ${JSON.stringify({
+                consent_check_skipped: consentSkipped,
+                tenant_test_mode: tenantTestModeEnabled,
+                tenant_test_override_number: tenantTestModeEnabled ? tenantTestOverrideNumber : null,
+              })}::jsonb,
               updated_at = now()
           where id = ${call.id}`,
     );
@@ -1070,6 +1092,11 @@ export class OutboundVoiceService {
       throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
     const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) || {};
+    const tenantTestModeEnabled = readConfigBool(tenant, 'test_mode_enabled', false);
+    const tenantTestOverrideNumber = readConfigString(tenant, 'test_override_number', null);
+    if (tenantTestModeEnabled && !tenantTestOverrideNumber?.trim()) {
+      throw new Error('Tenant test mode is enabled but no test override number is set.');
+    }
 
     const activeShops = await this.db
       .select()
@@ -1085,6 +1112,7 @@ export class OutboundVoiceService {
       motorClub: input.motorClub || 'Agero Motor Club',
       callbackNumber: (cfg.callback_number as string) || '+18447011345',
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
+      diagnosticValue: Number(cfg.diagnostic_value ?? 89),
       customerFirstName: input.customerName?.split(' ')[0] || 'John',
       vehicle: input.vehicle || '2019 Honda Civic',
       pickupLocation: input.pickupLocation || '123 Main Street',
@@ -1122,6 +1150,8 @@ export class OutboundVoiceService {
       tenantId,
       agentId: undefined,
       callbackUrl: buildCallbackUrl(this.provider.providerName),
+      testModeEnabled: tenantTestModeEnabled,
+      testOverrideNumber: tenantTestOverrideNumber,
     });
 
     if (!result?.providerCallId) {

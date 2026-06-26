@@ -32,7 +32,7 @@ export interface FlipWinTextInput {
 const OFFER_LABELS: Record<1 | 2 | 3, string> = {
   1: 'Offer 1 (free diagnostic + 10% off)',
   2: 'Offer 2 (same-day priority + 1hr estimate)',
-  3: 'Offer 3 ($50 credit + Google review)',
+  3: 'Offer 3 ($50 credit on this repair)',
 };
 
 export function renderFlipWinSms(i: FlipWinTextInput): string {

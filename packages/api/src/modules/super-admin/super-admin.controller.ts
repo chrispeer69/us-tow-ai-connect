@@ -57,6 +57,8 @@ export class SuperAdminController {
       demoMode?: boolean;
       demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
+      testModeEnabled?: boolean;
+      testOverrideNumber?: string | null;
       plan?: string;
     },
   ) {
@@ -73,6 +75,14 @@ export class SuperAdminController {
       freeTrialCallMinutes:
         typeof body.freeTrialCallMinutes === 'number'
           ? body.freeTrialCallMinutes
+          : undefined,
+      testModeEnabled:
+        typeof body.testModeEnabled === 'boolean'
+          ? body.testModeEnabled
+          : undefined,
+      testOverrideNumber:
+        typeof body.testOverrideNumber === 'string' || body.testOverrideNumber === null
+          ? body.testOverrideNumber
           : undefined,
       plan: typeof body.plan === 'string' ? body.plan : undefined,
     });

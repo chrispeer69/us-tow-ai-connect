@@ -42,6 +42,7 @@ export interface ScriptContext {
   motorClub: string; // e.g. "AAA"; empty -> omit "on behalf of"
   callbackNumber: string; // the ONLY number the agent may give out
   conviniLink: string; // CONVINI app link (texted, not spoken char-by-char)
+  diagnosticValue?: number | null; // spoken dollar anchor for the free diagnostic
 
   // Customer + job
   customerFirstName: string;
@@ -147,6 +148,8 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
     motor_club: ctx.motorClub,
     callback_number: ctx.callbackNumber,
     convini_link: ctx.conviniLink,
+    diagnostic_value:
+      ctx.diagnosticValue != null ? String(ctx.diagnosticValue) : '89',
     customer_first_name: ctx.customerFirstName,
     vehicle: ctx.vehicle,
     pickup_location: ctx.pickupLocation,
@@ -167,12 +170,12 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
 function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
   const onBehalf = ctx.motorClub ? ' on behalf of {{motor_club}}' : '';
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi, this is {{rep_name}} calling from {{company_name}}${onBehalf}. Am I speaking with {{customer_first_name}}?"
+AI: "Hi {{customer_first_name}}, this is {{rep_name}}, {{company_name}}'s AI towing assistant${onBehalf}. I'll keep this quick — I'm here to confirm your exact location, make sure we send the right help, and get your driver moving as fast as possible."
 [AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
-AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"
-[AGENT: If they say it's a bad time, offer to be quick or to text the details; respect their answer.]`;
+AI: "I'll start with your pickup details."
+[AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
   const opening = ctx.scriptBlocks?.opening ?? ctx.globalScriptBlocks?.opening ?? defaultOpening;
   const purpose = ctx.scriptBlocks?.purpose ?? ctx.globalScriptBlocks?.purpose ?? defaultPurpose;
@@ -182,7 +185,13 @@ AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your 
 
 /** Steps 3-6: confirm pickup, vehicle, issue, destination. Shared by A/B/C/D.
  *  `clarifyIssueLine` lets each scenario tailor the issue question. */
-function confirmBlock(ctx: ScriptContext, vars: Record<string, string>, clarifyIssueLine: string): string {
+function confirmBlock(
+  ctx: ScriptContext,
+  vars: Record<string, string>,
+  clarifyIssueLine: string,
+  options: { includeDestination?: boolean } = {},
+): string {
+  const includeDestination = options.includeDestination ?? true;
   const isWinchOut = ctx.issueSubcategory === 'winch_out';
   const separateDestination = hasSeparateDestination(ctx);
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
@@ -213,15 +222,17 @@ AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd
   const issue = ctx.scriptBlocks?.clarify_issue ?? ctx.globalScriptBlocks?.clarify_issue ?? defaultIssue;
   const destination = ctx.scriptBlocks?.confirm_destination ?? ctx.globalScriptBlocks?.confirm_destination ?? defaultDestination;
 
-  return [
+  const blocks = [
     interpolate(pickup, vars),
     ``,
     interpolate(vehicle, vars),
     ``,
     interpolate(issue, vars),
-    ``,
-    interpolate(destination, vars),
-  ].join('\n');
+  ];
+  if (includeDestination) {
+    blocks.push(``, interpolate(destination, vars));
+  }
+  return blocks.join('\n');
 }
 
 function issueGuidanceBlock(ctx: ScriptContext): string {
@@ -236,9 +247,9 @@ function issueGuidanceBlock(ctx: ScriptContext): string {
 /** Warm close, shared by all scenarios. */
 function warmCloseBlock(ctx: ScriptContext, vars: Record<string, string>): string {
   const defaultClose = `=== WARM CLOSE (all scenarios) ===
-[AGENT: If you offered to text the link and they accepted, the system sends the CONVINI link to their phone after the call — tell them it's on the way.]
-AI: "Done — you'll get that text in just a moment. Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
-AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."
+[AGENT: Do not ask whether the CONVINI text came through.]
+AI: "Anything else before you go?"
+AI: "Drive safe."
 [AGENT: End the call.]`;
 
   const close = ctx.scriptBlocks?.warm_close ?? ctx.globalScriptBlocks?.warm_close ?? defaultClose;
@@ -247,31 +258,30 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."
 
 /** Global rules prepended to every body. */
 function globalRules(ctx: ScriptContext): string {
-  if (ctx.customAgentRules) {
-    const lines = [ctx.customAgentRules];
-    if (ctx.motorClub.toUpperCase() === 'AAA') {
-      lines.push(
-        `- AAA HARD RULE: never flip a AAA call whose destination is a AAA-branded facility — confirm details and go straight to the CONVINI close.`,
-      );
-    }
-    return lines.join('\n');
-  }
-
   const lines = [
     `=== GLOBAL RULES (follow on every call; [AGENT:...] and [STEP...] lines are context, NEVER read aloud) ===`,
     `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.`,
+    `- Disclose that you are CONVINIcar's AI towing assistant at the start of the call. Do not deny being an AI if asked.`,
     `- Confirm details first. If the customer corrects something, acknowledge it and move on.`,
-    `- Make any flip offers strictly in order (1 -> 2 -> 3) and STOP the moment one is accepted. Never pressure.`,
-    `- ALWAYS end by offering the free CONVINIcar app, unless the customer hung up or asked you to stop.`,
+    `- Do not ask "is now a good time?" The customer already requested service; keep the call brief and useful.`,
+    `- Only pitch a repair-shop flip when the call is repairable and the destination is not already our shop or a protected destination.`,
+    `- Do not pitch repair-shop offers for lockout, fuel delivery, single flat tire, jump-start-only, or winch-out-only calls.`,
+    `- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.`,
+    `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
+    `- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.`,
     `- Never invent prices, times, names, or addresses — use only what's provided here.`,
     `- The ONLY phone number you may give the customer is {{callback_number}}. Never read out the caller ID or any other number.`,
-    `- When you offer the app, say "I'll text you the link" — do not read the link aloud.`,
+    `- When you offer the app, say "I'm texting you the link now" — do not ask permission, do not read the link aloud, and do not ask whether it came through.`,
+    `- Never mention Google reviews, review incentives, or gift cards during the call.`,
     `- If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`,
   ];
   if (ctx.motorClub.toUpperCase() === 'AAA') {
     lines.push(
       `- AAA HARD RULE: never flip a AAA call whose destination is a AAA-branded facility — confirm details and go straight to the CONVINI close.`,
     );
+  }
+  if (ctx.customAgentRules) {
+    lines.push(``, `=== TENANT CUSTOM RULES ===`, ctx.customAgentRules);
   }
   return lines.join('\n');
 }
@@ -283,34 +293,39 @@ function globalRules(ctx: ScriptContext): string {
 function scenarioA(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened? For example, is the engine light on, is it overheating, or did it just not start?"`;
   const vars = baseVars(ctx);
-  const distancePhrase = ctx.nearestShopDistanceMiles != null ? `just {{nearest_shop_distance}} miles away ` : ``;
-  const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility ${distancePhrase}called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
-  const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
-  const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
-  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const shopDistancePhrase = ctx.nearestShopDistanceMiles != null
+    ? `, a certified shop just {{nearest_shop_distance}} miles away`
+    : `, a certified shop`;
+  const destinationIntent = `[STEP 6 — ASK INTENDED DESTINATION WITHOUT LOCKING IT]
+AI: "Where were you planning to have the vehicle taken?"
+[AGENT: Capture the intended destination, but do not verbally lock it yet. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`;
+  const defaultOffer1 = `Before I lock that in — since this sounds like it may need repair, I can route you to {{nearest_shop}}${shopDistancePhrase}. You'll get a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair, and they can prioritize the vehicle when it arrives. I'll coordinate the drop-off directly with the driver so you don't have to do anything. I'll send it there — sound good?`;
+  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
+  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   const flipBlock = !!ctx.nearestShop ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_1 ?? ctx.globalScriptBlocks?.offer_1 ?? defaultOffer1, vars),
         ``,
-        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI soft close.]`,
-        `[AGENT: If they say NO -> make the next offer.]`,
+        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
+        `[AGENT: If they give a soft objection like "I already have a shop" -> make Offer 2. If they give a hard decline -> stop pitching, keep the original destination, and jump to the CONVINI close.]`,
       ] : [];
 
   const offer2Block = !!ctx.nearestShop ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
-        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI soft close.]`,
-        `[AGENT: If they say NO -> make the next offer.]`,
+        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
+        `[AGENT: If they hesitate or remain unsure -> make Offer 3. If they give a hard decline -> stop pitching, keep the original destination, and jump to the CONVINI close.]`,
       ] : [];
 
   const offer3Block = !!ctx.nearestShop ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_3 ?? ctx.globalScriptBlocks?.offer_3 ?? defaultOffer3, vars),
         ``,
-        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Then jump to the CONVINI soft close.]`,
-        `[AGENT: If they say NO -> acknowledge gracefully and jump to the CONVINI soft close.]`,
+        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Then jump to the CONVINI close.]`,
+        `[AGENT: If they say NO or hard decline -> say "Understood. I'll keep your original destination and focus on getting the driver routed." Then jump to the CONVINI close.]`,
       ] : [];
 
   const conviniBlock = [
@@ -321,14 +336,16 @@ function scenarioA(ctx: ScriptContext): string {
 
   return [
     `# SCENARIO A — COMPETITOR REPAIR (3-TIER FLIP)`,
-    `[AGENT: The destination is a competitor repair shop. You will confirm details and then attempt to flip the tow to our shop.]`,
+    `[AGENT: The destination appears to be a competitor repair shop. Confirm details, ask intended destination without locking it, then attempt one repair-shop flip flow unless the customer hard-declines.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
     openingBlock(ctx, vars),
     ``,
-    confirmBlock(ctx, vars, clarify),
+    confirmBlock(ctx, vars, clarify, { includeDestination: false }),
     ``,
     issueGuidanceBlock(ctx),
+    ``,
+    destinationIntent,
     ``,
     `=== PHASE 2: THE 3-TIER FLIP ===`,
     ...flipBlock,
@@ -353,7 +370,7 @@ function scenarioB(ctx: ScriptContext): string {
     ? `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area, like ${bodyShops.join(' and ')}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`
     : `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`;
 
-  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -399,7 +416,7 @@ function scenarioC(ctx: ScriptContext): string {
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
   
   const vars = baseVars(ctx);
-  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -430,7 +447,7 @@ function scenarioC(ctx: ScriptContext): string {
 function scenarioD(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -464,7 +481,7 @@ function scenarioD(ctx: ScriptContext): string {
 function scenarioAaaBranded(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `Absolutely, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free.`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   return [
     `# SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE)`,
@@ -558,16 +575,16 @@ export interface FlipOfferInput {
 }
 
 export function renderOffer1(i: FlipOfferInput): string {
-  const dist = i.distanceMilesSaved != null ? `just ${i.distanceMilesSaved} miles away ` : '';
-  return `As a thank-you for using our service, we have a certified repair facility ${dist}called ${i.ourShopName}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
+  const dist = i.distanceMilesSaved != null ? ` just ${i.distanceMilesSaved} miles away` : '';
+  return `Before I lock that in, I can route you to ${i.ourShopName}, a certified shop${dist}. You'll get a free diagnostic, plus 10 percent off today's repair, and we'll coordinate the drop-off with the driver. I'll send it there — sound good?`;
 }
 
 export function renderOffer2(i: FlipOfferInput): string {
-  return `I completely understand loyalty to a good mechanic. Just so you know — at ${i.ourShopName} we offer same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
+  return `Totally fair. Here's the difference though — for today's tow, ${i.ourShopName} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair.`;
 }
 
 export function renderOffer3(i: FlipOfferInput): string {
-  return `No problem at all. Last thing I'll mention — tow customers who use ${i.ourShopName} receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. Would you like me to switch it over?`;
+  return `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot at ${i.ourShopName}. I'll route the driver there now — good?`;
 }
 
 export interface ConviniPitchInput {
@@ -578,15 +595,15 @@ export interface ConviniPitchInput {
 
 export function renderConviniPitch(i: ConviniPitchInput): string {
   if (i.intensity === 'soft') {
-    return `One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free.`;
+    return `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   }
   if (i.intensity === 'medium') {
     const body = i.ourBodyShopMention
       ? ` By the way, we also own two body shops — ${i.ourBodyShopMention.shop1} and ${i.ourBodyShopMention.shop2} — if you ever need collision work down the road.`
       : '';
-    return `One last thing — we have a free app called CONVINIcar. It puts roadside assistance, repair scheduling, car rentals, and member deals all in one place on your phone.${body} Can I text you the download link? Completely free.`;
+    return `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.${body}`;
   }
-  return `Before you go, I want to tell you about CONVINIcar — a free app that puts everything you need for your vehicle in one place: roadside assistance anytime, repair scheduling, rental cars, even member deals. It's like a VIP concierge for your car, and it's completely free. Can I text you the download link right now?`;
+  return `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 }
 
 export function renderClosing(_i: { customerName: string }): string {

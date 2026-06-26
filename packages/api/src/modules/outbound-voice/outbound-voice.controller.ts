@@ -52,8 +52,11 @@ const ConfigPatchSchema = z.object({
       dispatch_cron_enabled: z.boolean().optional(),
       dispatch_interval_seconds: z.number().int().min(5).max(3600).optional(),
       require_consent: z.boolean().optional(),
+      test_mode_enabled: z.boolean().optional(),
+      test_override_number: z.string().max(20).optional().nullable(),
       enabled_purposes: z.array(PurposeEnum).optional(),
       thinkrr_outbound_agent_id: z.string().min(1).max(120).optional().nullable(),
+      retell_outbound_agent_id: z.string().min(1).max(120).optional().nullable(),
     })
     .partial()
     .optional(),

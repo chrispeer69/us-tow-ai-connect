@@ -25,7 +25,7 @@ describe('flip-scripts', () => {
     expect(body).not.toMatch(/\{\{[a-z_]+\}\}/);
   });
 
-  it('Offer 1 mentions free diagnostic + 10% off + rentals when enabled', () => {
+  it('Offer 1 mentions free diagnostic + 10% off and action-framed routing', () => {
     const body = renderOffer1({
       ourShopName: "Wayne's Westerville",
       distanceMilesSaved: 2.3,
@@ -34,6 +34,8 @@ describe('flip-scripts', () => {
     expect(body).toContain("Wayne's Westerville");
     expect(body).toContain('10 percent');
     expect(body).toContain('2.3 miles');
+    expect(body).toContain("I'll send it there");
+    expect(body).not.toContain('Would you like me to make that switch');
   });
 
   it('Offer 1 omits rental line when rentalsAvailable=false', () => {
@@ -45,29 +47,34 @@ describe('flip-scripts', () => {
     expect(body).not.toMatch(/rental/i);
   });
 
-  it('Offer 2 mentions same-day priority + 1-hour estimate', () => {
+  it('Offer 2 stacks speed, written estimate, and original discount', () => {
     const body = renderOffer2({
       ourShopName: 'Hilliard Auto',
       distanceMilesSaved: null,
       rentalsAvailable: true,
     });
-    expect(body).toContain('same-day priority');
-    expect(body).toContain('one hour');
+    expect(body).toContain('look at your car quickly');
+    expect(body).toContain('written estimate');
+    expect(body).toContain('10 percent');
   });
 
-  it('Offer 3 mentions $50 + Google review', () => {
+  it('Offer 3 applies the $50 credit to this repair and does not mention reviews', () => {
     const body = renderOffer3({
       ourShopName: 'Petty\u2019s Auto',
       distanceMilesSaved: null,
       rentalsAvailable: true,
     });
     expect(body).toContain('50 dollar');
-    expect(body.toLowerCase()).toContain('google review');
+    expect(body).toContain('this repair');
+    expect(body.toLowerCase()).not.toContain('google review');
+    expect(body.toLowerCase()).not.toContain('gift card');
   });
 
-  it('CONVINI soft pitch is short and includes app name', () => {
+  it('CONVINI soft pitch is send-first and does not ask permission', () => {
     const body = renderConviniPitch({ intensity: 'soft', rentalsAvailable: true });
     expect(body).toContain('CONVINI');
+    expect(body).toContain("I'm texting you");
+    expect(body).not.toContain('Can I text you');
     expect(body.length).toBeLessThan(250);
   });
 
@@ -81,12 +88,14 @@ describe('flip-scripts', () => {
     expect(body).toContain('T&C Body');
   });
 
-  it('CONVINI hard pitch is the longest of the three', () => {
+  it('CONVINI hard pitch stays send-first', () => {
     const soft = renderConviniPitch({ intensity: 'soft', rentalsAvailable: true });
     const medium = renderConviniPitch({ intensity: 'medium', rentalsAvailable: true });
     const hard = renderConviniPitch({ intensity: 'hard', rentalsAvailable: true });
-    expect(hard.length).toBeGreaterThan(soft.length);
-    expect(hard.length).toBeGreaterThan(medium.length);
+    expect(soft).toContain("I'm texting you");
+    expect(medium).toContain("I'm texting you");
+    expect(hard).toContain("I'm texting you");
+    expect(hard).not.toContain('Did it come through');
   });
 
   it('adds winch-out recovery and photo guidance to the call body', () => {

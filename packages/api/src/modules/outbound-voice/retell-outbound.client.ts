@@ -85,13 +85,24 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
       dynamicVariables.user_name = params.toName;
     }
 
-    const testModeEnabled = process.env.OUTBOUND_TEST_MODE_ENABLED === 'true';
-    const testNumber = process.env.RETELL_TEST_OVERRIDE_NUMBER?.trim();
+    const tenantTestModeEnabled = params.testModeEnabled === true;
+    const tenantTestNumber = params.testOverrideNumber?.trim();
+    const globalTestModeEnabled = process.env.OUTBOUND_TEST_MODE_ENABLED === 'true';
+    const globalTestNumber = process.env.RETELL_TEST_OVERRIDE_NUMBER?.trim();
     let finalToNumber = params.toPhone;
 
-    if (testModeEnabled && testNumber) {
-      this.logger.warn(`[outbound-voice] ⚠️ TEST OVERRIDE ACTIVE: Redirecting call from ${params.toPhone} to ${testNumber}`);
-      finalToNumber = testNumber;
+    if (tenantTestModeEnabled) {
+      if (!tenantTestNumber) {
+        this.logger.warn(
+          `[outbound-voice] tenant test mode enabled but no test_override_number set; refusing call ${params.callId} (tenant ${params.tenantId})`,
+        );
+        return null;
+      }
+      this.logger.warn(`[outbound-voice] tenant test override active: redirecting call from ${params.toPhone} to ${tenantTestNumber}`);
+      finalToNumber = tenantTestNumber;
+    } else if (globalTestModeEnabled && globalTestNumber) {
+      this.logger.warn(`[outbound-voice] global test override active: redirecting call from ${params.toPhone} to ${globalTestNumber}`);
+      finalToNumber = globalTestNumber;
     }
 
     // Ensure the phone number is strictly E.164 formatted for Retell, otherwise it rejects with 400

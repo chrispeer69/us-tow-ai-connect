@@ -26,6 +26,8 @@ interface TenantRow {
   outboundVoiceEnabled: boolean;
   demoMode: boolean;
   demoCallsEnabled: boolean;
+  testModeEnabled: boolean;
+  testOverrideNumber: string | null;
   freeTrialCallMinutes: number;
 }
 
@@ -74,27 +76,23 @@ export default function TenantsPage() {
       <Card>
         <CardHeader><CardTitle>Tenants ({rows.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <div className="grid grid-cols-10 gap-2 text-xs font-medium text-zinc-400">
+          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-zinc-400">
             <div className="col-span-2">Company</div>
             <div>Owner</div>
-            <div>Version</div>
             <div>Active jobs</div>
             <div>AI calls</div>
             <div>24h</div>
             <div>Outbound</div>
+            <div>Test mode</div>
+            <div className="col-span-2">Test number</div>
             <div>Demo calls</div>
             <div>Demo</div>
             <div>Actions</div>
           </div>
           {rows.map((t) => (
-            <div key={t.id} className="grid grid-cols-10 gap-2 items-center border-t border-zinc-800 py-2 text-sm">
+            <div key={t.id} className="grid grid-cols-12 gap-2 items-center border-t border-zinc-800 py-2 text-sm">
               <div className="col-span-2 text-zinc-100">{t.companyName}{t.partnerAccountId ? <span className="ml-2 rounded bg-zinc-800 px-1 text-xs text-zinc-400">{t.partnerAccountId}</span> : null}</div>
               <div className="text-zinc-300 text-xs truncate">{t.ownerEmail}</div>
-              <div>
-                <span className="rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-200">
-                  {t.version || 'Free'}
-                </span>
-              </div>
               <div>{t.activeJobs}</div>
               <div>{t.callsTotal}</div>
               <div>{t.callsLast24h}</div>
@@ -106,6 +104,18 @@ export default function TenantsPage() {
                     void updateCallControls(t.id, { outboundVoiceEnabled: v })
                   }
                 />
+              </div>
+              <div>
+                <Switch
+                  checked={t.testModeEnabled}
+                  disabled={savingTenantId === t.id}
+                  onCheckedChange={(v) =>
+                    void updateCallControls(t.id, { testModeEnabled: v })
+                  }
+                />
+              </div>
+              <div className="col-span-2 font-mono text-xs text-zinc-300 truncate">
+                {t.testOverrideNumber || '—'}
               </div>
               <div>
                 <Switch
@@ -143,6 +153,8 @@ export default function TenantsPage() {
       demoMode?: boolean;
       demoCallsEnabled?: boolean;
       freeTrialCallMinutes?: number;
+      testModeEnabled?: boolean;
+      testOverrideNumber?: string | null;
     },
   ) {
     setSavingTenantId(tenantId);
@@ -167,6 +179,11 @@ export default function TenantsPage() {
                 demoCallsEnabled: patch.demoCallsEnabled ?? row.demoCallsEnabled,
                 freeTrialCallMinutes:
                   patch.freeTrialCallMinutes ?? row.freeTrialCallMinutes,
+                testModeEnabled: patch.testModeEnabled ?? row.testModeEnabled,
+                testOverrideNumber:
+                  patch.testOverrideNumber !== undefined
+                    ? patch.testOverrideNumber
+                    : row.testOverrideNumber,
               }
             : row,
         ),

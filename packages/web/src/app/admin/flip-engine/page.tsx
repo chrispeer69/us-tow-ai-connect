@@ -1331,21 +1331,31 @@ function SettingsTab({
   const [maxDistanceMiles, setMaxDistanceMiles] = useState<number>(
     Number(config.config?.max_shop_distance_miles ?? 100),
   );
+  const [diagnosticValue, setDiagnosticValue] = useState<number>(
+    Number(config.config?.diagnostic_value ?? 89),
+  );
   const DEFAULT_AGENT_RULES = `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.
+- Disclose that you are CONVINIcar's AI towing assistant at the start of the call. Do not deny being an AI if asked.
 - Confirm details first. If the customer corrects something, acknowledge it and move on.
-- Make any flip offers strictly in order (1 -> 2 -> 3) and STOP the moment one is accepted. Never pressure.
-- ALWAYS end by offering the free CONVINIcar app, unless the customer hung up or asked you to stop.
+- Do not ask "is now a good time?" The customer already requested service; keep the call brief and useful.
+- Only pitch a repair-shop flip when the call is repairable and the destination is not already our shop or a protected destination.
+- Do not pitch repair-shop offers for lockout, fuel delivery, single flat tire, jump-start-only, or winch-out-only calls.
+- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.
+- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.
+- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.
 - Never invent prices, times, names, or addresses — use only what's provided here.
 - The ONLY phone number you may give the customer is {{callback_number}}.
-- When you offer the app, say "I'll text you the link" — do not read the link aloud.
+- When you offer the app, say "I'm texting you the link now" — do not ask permission, do not read the link aloud, and do not ask whether it came through.
+- Never mention Google reviews, review incentives, or gift cards during the call.
 - If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`;
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi, this is {{rep_name}} calling from {{company_name}}. Am I speaking with {{customer_first_name}}?"
+AI: "Hi {{customer_first_name}}, this is {{rep_name}}, {{company_name}}'s AI towing assistant. I'll keep this quick — I'm here to confirm your exact location, make sure we send the right help, and get your driver moving as fast as possible."
 [AGENT: Wait for confirmation.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
-AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"`;
+AI: "I'll start with your pickup details."
+[AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
 AI: "I have your pickup location as {{pickup_location}}. Is that correct?"`;
@@ -1357,11 +1367,12 @@ AI: "And I have a {{vehicle}}. Is that right?"`;
 AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
 
   const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
-AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
+AI: "Where were you planning to have the vehicle taken?"
+[AGENT: Capture the intended destination, but do not verbally lock it before the shop offer on repairable competitor-shop calls.]`;
 
   const defaultClose = `=== WARM CLOSE (all scenarios) ===
-AI: "Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
-AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`;
+AI: "Anything else before you go?"
+AI: "Drive safe."`;
 
   const [mentionRentals, setMentionRentals] = useState<boolean>(
     config.config?.mention_rentals !== false,
@@ -1370,10 +1381,10 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
     (config.config?.custom_agent_rules as string) || DEFAULT_AGENT_RULES,
   );
 
-  const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility just {{nearest_shop_distance}} miles away called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
-  const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
-  const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultOffer1 = `Before I lock that in — since this sounds like it may need repair, I can route you to {{nearest_shop}}, a certified shop just {{nearest_shop_distance}} miles away. You'll get a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair, and they can prioritize the vehicle when it arrives. I'll coordinate the drop-off directly with the driver so you don't have to do anything. I'll send it there — sound good?`;
+  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
+  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   const scriptBlocksObj = (config.config?.script_blocks as Record<string, string>) || {};
 
@@ -1411,6 +1422,7 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
             mention_rentals: mentionRentals,
             custom_agent_rules: customAgentRules,
             max_shop_distance_miles: maxDistanceMiles,
+            diagnostic_value: diagnosticValue,
             script_blocks: {
               opening: openingBlock,
               purpose: purposeBlock,
@@ -1520,6 +1532,19 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
         </SettingsField>
 
         <SettingsField
+          label="Diagnostic value"
+          help="Dollar amount used as the anchor for the free diagnostic offer."
+        >
+          <Input
+            type="number"
+            min="0"
+            value={diagnosticValue}
+            onChange={(e) => setDiagnosticValue(Number(e.target.value))}
+            className="max-w-[120px]"
+          />
+        </SettingsField>
+
+        <SettingsField
           label="Poll interval (seconds)"
           help="How often the engine scans Towbook + AAA for new motor club jobs. Default 60. Min 15."
         >
@@ -1577,7 +1602,7 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
           <h3 className="text-lg font-semibold text-zinc-800">Script Builder</h3>
           <p className="text-sm text-zinc-500 mb-4">
             Customize the exact spoken dialogue for each phase of the pitch. Leave a box empty to automatically skip that step.
-            Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{vehicle}}'}</span>, <span className="font-mono text-xs">{'{{pickup_location}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>, <span className="font-mono text-xs">{'{{issue}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>.
+            Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{vehicle}}'}</span>, <span className="font-mono text-xs">{'{{pickup_location}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>, <span className="font-mono text-xs">{'{{issue}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>, <span className="font-mono text-xs">{'{{diagnostic_value}}'}</span>.
           </p>
 
           <div className="space-y-6">
@@ -1699,13 +1724,13 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
         <div className="pt-6">
           <h3 className="text-lg font-semibold text-zinc-800">Advanced Prompt Overrides</h3>
           <p className="text-sm text-zinc-500 mb-4">
-            Only modify these if you want to completely replace the underlying AI system prompt logic.
+            Optional tenant-specific rules appended after the protected default guardrails.
           </p>
         </div>
 
         <SettingsField
           label="Custom Agent Rules"
-          help="Global instructions appended to the system prompt. Overrides the default AI agent instructions."
+          help="Global instructions appended to the protected default AI agent instructions."
         >
           <textarea
             className="h-32 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
