@@ -13,7 +13,6 @@ interface GlobalConfig {
   rep_name?: string;
   company_name?: string;
   callback_number?: string;
-  convini_link?: string;
   mention_rentals?: boolean;
   custom_agent_rules?: string;
   max_shop_distance_miles?: number;
@@ -47,11 +46,16 @@ export default function GlobalFlipDefaultsPage() {
 
   const DEFAULT_AGENT_RULES = `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.
 - Confirm details first. If the customer corrects something, acknowledge it and move on.
-- Make any flip offers strictly in order (1 -> 2 -> 3) and STOP the moment one is accepted. Never pressure.
-- ALWAYS end by offering the free CONVINIcar app, unless the customer hung up or asked you to stop.
+- Do not ask "is now a good time?" The customer already requested service; keep the call brief and useful.
+- Only pitch a repair-shop flip when the call is repairable and the destination is not already our shop or a protected destination.
+- Do not pitch repair-shop offers for lockout, fuel delivery, single flat tire, jump-start-only, or winch-out-only calls.
+- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.
+- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.
+- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.
 - Never invent prices, times, names, or addresses — use only what's provided here.
 - The ONLY phone number you may give the customer is {{callback_number}}.
-- When you offer the app, say "I'll text you the link" — do not read the link aloud.
+- When you offer the app, say "I'm texting you the link now" — do not ask permission, do not read the link aloud, and do not ask whether it came through.
+- Never mention Google reviews, review incentives, or gift cards during the call.
 - If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`;
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
@@ -76,13 +80,13 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
 [AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate.]`;
 
   const defaultClose = `=== WARM CLOSE (all scenarios) ===
-AI: "Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
-AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`;
+AI: "Anything else before you go?"
+AI: "Drive safe."`;
 
-  const defaultOffer1 = `I appreciate that, {{customer_first_name}}. I want to let you know — as a thank-you for using our service, we have a certified repair facility just {{nearest_shop_distance}} miles away called {{nearest_shop}}. If you'd like, we can redirect your tow there at no extra charge, and you'd receive a completely free diagnostic and 10 percent off your repair. Would you like me to make that switch?`;
-  const defaultOffer2 = `I completely understand loyalty to a good mechanic. Just so you know — our shop offers same-day priority service for tow customers. Your car would be looked at within one hour of arrival, and you'd have a written estimate before any work begins. No appointment needed. Would that change your mind?`;
-  const defaultOffer3 = `No problem at all. Last thing I'll mention — we're running a program right now where tow customers who use our shop receive a 50 dollar credit toward their next service. Plus, if you leave a Google review after your visit, that earns you an additional 25 dollar gift card. I just wanted to make sure you had that option. Would you like me to switch it over?`;
-  const defaultConvini = `Absolutely, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. One quick thing before I let you go — we have a free app called CONVINIcar that gives you roadside assistance, repair scheduling, car rentals, and exclusive member deals all in one place. Can I text you the download link? It's completely free and takes about 30 seconds to set up.`;
+  const defaultOffer1 = `Before I lock that in — since this sounds like it may need repair, I can route you to {{nearest_shop}}, a certified shop just {{nearest_shop_distance}} miles away. You'll get a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair, and they can prioritize the vehicle when it arrives. I'll coordinate the drop-off directly with the driver so you don't have to do anything. I'll send it there — sound good?`;
+  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
+  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
+  const defaultConvini = `You're all set, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -121,38 +125,84 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
     void loadConfig();
   }, [loadConfig]);
 
+  const latestScriptBlocks = () => ({
+    opening: defaultOpening,
+    purpose: defaultPurpose,
+    confirm_pickup: defaultPickup,
+    confirm_vehicle: defaultVehicle,
+    clarify_issue: defaultIssue,
+    confirm_destination: defaultDestination,
+    warm_close: defaultClose,
+    offer_1: defaultOffer1,
+    offer_2: defaultOffer2,
+    offer_3: defaultOffer3,
+    convini_pitch: defaultConvini,
+  });
+
+  const buildConfigPayload = (scriptBlocks = {
+    opening: openingBlock,
+    purpose: purposeBlock,
+    confirm_pickup: pickupBlock,
+    confirm_vehicle: vehicleBlock,
+    clarify_issue: issueBlock,
+    confirm_destination: destinationBlock,
+    warm_close: closeBlock,
+    offer_1: offer1,
+    offer_2: offer2,
+    offer_3: offer3,
+    convini_pitch: conviniPitch,
+  }) => ({
+    rep_name: repName,
+    company_name: companyName,
+    callback_number: callbackNumber,
+    mention_rentals: mentionRentals,
+    custom_agent_rules: customAgentRules,
+    max_shop_distance_miles: maxDistanceMiles,
+    script_blocks: scriptBlocks,
+  });
+
+  const saveConfig = async (config: Record<string, unknown>) => {
+    await api('/v1/admin/flip-engine/global-config', {
+      method: 'PATCH',
+      body: JSON.stringify({ config }),
+      headers: { 'content-type': 'application/json' },
+    });
+    await loadConfig();
+  };
+
   const save = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      await api('/v1/admin/flip-engine/global-config', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          config: {
-            rep_name: repName,
-            company_name: companyName,
-            callback_number: callbackNumber,
-            mention_rentals: mentionRentals,
-            custom_agent_rules: customAgentRules,
-            max_shop_distance_miles: maxDistanceMiles,
-            script_blocks: {
-              opening: openingBlock,
-              purpose: purposeBlock,
-              confirm_pickup: pickupBlock,
-              confirm_vehicle: vehicleBlock,
-              clarify_issue: issueBlock,
-              confirm_destination: destinationBlock,
-              warm_close: closeBlock,
-              offer_1: offer1,
-              offer_2: offer2,
-              offer_3: offer3,
-              convini_pitch: conviniPitch,
-            },
-          },
-        }),
-        headers: { 'content-type': 'application/json' },
+      await saveConfig(buildConfigPayload());
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const pushLatestDefaults = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const scriptBlocks = latestScriptBlocks();
+      setCustomAgentRules(DEFAULT_AGENT_RULES);
+      setOpeningBlock(scriptBlocks.opening);
+      setPurposeBlock(scriptBlocks.purpose);
+      setPickupBlock(scriptBlocks.confirm_pickup);
+      setVehicleBlock(scriptBlocks.confirm_vehicle);
+      setIssueBlock(scriptBlocks.clarify_issue);
+      setDestinationBlock(scriptBlocks.confirm_destination);
+      setCloseBlock(scriptBlocks.warm_close);
+      setOffer1(scriptBlocks.offer_1);
+      setOffer2(scriptBlocks.offer_2);
+      setOffer3(scriptBlocks.offer_3);
+      setConviniPitch(scriptBlocks.convini_pitch);
+      await saveConfig({
+        ...buildConfigPayload(scriptBlocks),
+        custom_agent_rules: DEFAULT_AGENT_RULES,
       });
-      await loadConfig();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -278,6 +328,10 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => void pushLatestDefaults()} disabled={submitting}>
+              {submitting ? <Spinner className="mr-2" /> : null}
+              Push Latest Defaults
+            </Button>
             <Button onClick={() => void save()} disabled={submitting}>
               {submitting ? <Spinner className="mr-2" /> : null}
               Save Global Defaults
