@@ -94,8 +94,8 @@ export class SuperAdminAuthGuard extends AuthGuard('jwt') {
     // ── Step 3: Verify super-admin role ────────────────────────────────
 
     // 3a. Check environment variable whitelist (comma-separated)
-    if (envEmails.includes(email)) {
-      req.superAdminEmail = email;
+    if (envEmails.includes(candidate)) {
+      req.superAdminEmail = candidate;
       return true;
     }
 
@@ -104,7 +104,7 @@ export class SuperAdminAuthGuard extends AuthGuard('jwt') {
       await this.db
         .select({ email: users.email, role: users.platformRole })
         .from(users)
-        .where(sql`lower(${users.email}) = ${email}`)
+        .where(sql`lower(${users.email}) = ${candidate}`)
         .limit(1)
     )[0];
     if (!user || user.role !== 'super_admin') {

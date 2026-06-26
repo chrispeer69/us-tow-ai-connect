@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -961,7 +961,7 @@ export class OutboundVoiceService {
     const tenant = rows[0];
     if (!tenant) throw new Error('Tenant not found');
     if (!tenant.outboundVoiceEnabled) {
-      throw new Error('Outbound voice is disabled for this tenant');
+      throw new BadRequestException('Outbound voice is disabled for this tenant');
     }
     if (await this.freeTrialLimitReached(tenant)) {
       throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
@@ -1096,7 +1096,7 @@ export class OutboundVoiceService {
     const tenant = rows[0];
     if (!tenant) throw new Error('Tenant not found');
     if (!tenant.outboundVoiceEnabled && !input.ignoreTenantOutboundDisabled) {
-      throw new Error('Outbound voice is disabled for this tenant');
+      throw new BadRequestException('Outbound voice is disabled for this tenant');
     }
     if (!input.ignoreTrialLimit && await this.freeTrialLimitReached(tenant)) {
       throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
