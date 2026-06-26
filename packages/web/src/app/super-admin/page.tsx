@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -170,18 +171,19 @@ export default function SuperAdminPage() {
               <TableHead className="text-zinc-400 text-right">Minutes Used</TableHead>
               <TableHead className="text-zinc-400 text-right">Minute Allowance</TableHead>
               <TableHead className="text-zinc-400 text-center">Calls</TableHead>
+              <TableHead className="text-zinc-400 text-right">Profile</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={9} className="h-32 text-center text-zinc-500">
                   <Spinner className="mx-auto" />
                 </TableCell>
               </TableRow>
             ) : tenants.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={8} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={9} className="h-32 text-center text-zinc-500">
                   No tenants found.
                 </TableCell>
               </TableRow>
@@ -260,6 +262,18 @@ export default function SuperAdminPage() {
                         void updateTenantCallControls(t.id, { outboundVoiceEnabled: enabled })
                       }
                     />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Link href={`/admin/tenants/${t.id}`}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-800"
+                      >
+                        Profile
+                        <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))

@@ -7,6 +7,16 @@ import { Switch } from '@/components/ui/switch';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
+/** Build headers that include both the JWT token and the super-admin email. */
+function authedHeaders(email: string, extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { 'x-super-admin-email': email, ...extra };
+  if (typeof window !== 'undefined') {
+    const token = window.localStorage.getItem('access_token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 interface TenantDetail {
   tenant: {
     id: string;
@@ -69,7 +79,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
       setErr('Set your super-admin email at /admin/tenants first.');
       return;
     }
-    fetch(`${API_BASE}/v1/super-admin/tenants/${id}`, { headers: { 'x-super-admin-email': email } })
+    fetch(`${API_BASE}/v1/super-admin/tenants/${id}`, { headers: authedHeaders(email) })
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).message ?? `HTTP ${r.status}`);
         return r.json();
@@ -101,7 +111,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     try {
       const res = await fetch(`${API_BASE}/v1/super-admin/tenants/${id}/call-controls`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-super-admin-email': email },
+        headers: authedHeaders(email, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
@@ -297,7 +307,7 @@ async function impersonate(targetTenantId: string, email: string) {
   try {
     const res = await fetch(`${API_BASE}/v1/super-admin/impersonate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-super-admin-email': email },
+      headers: authedHeaders(email, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ targetTenantId }),
     });
     if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);

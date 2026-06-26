@@ -1149,7 +1149,7 @@ function renderManualScript(
   switch (scriptType) {
     case 'eta_confirmation':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
+        `Hi, this is ${vars.repName} calling from ${vars.companyName} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with ${vars.customerFirstName}?`,
         `I am calling to confirm your roadside service. I have the pickup as ${vars.pickupLocation}.`,
         destinationLine,
         `Your driver should arrive in about ${eta}. Please stay in a safe location while you wait.`,
@@ -1157,7 +1157,7 @@ function renderManualScript(
       ].join('\n');
     case 'status_update':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
+        `Hi, this is ${vars.repName} calling from ${vars.companyName} about the service request. I'm the AI assistant helping confirm the details. Am I speaking with ${vars.customerFirstName}?`,
         `I am calling with an update on your service request for ${vars.vehicle}.`,
         `We have the issue listed as ${vars.issue}, and the pickup as ${vars.pickupLocation}.`,
         `Your request is active and our team is working on it now.`,
@@ -1165,7 +1165,7 @@ function renderManualScript(
       ].join('\n');
     case 'winch_out':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
+        `Hi, this is ${vars.repName} calling from ${vars.companyName} about the recovery request. I'm the AI assistant helping confirm the details. Am I speaking with ${vars.customerFirstName}?`,
         `I am calling about your winch-out or recovery request at ${vars.pickupLocation}.`,
         'A winch-out usually means we come to get the vehicle back onto solid ground.',
         'Please have a few photos of the situation ready. When the driver calls, they may ask you to text those photos so they can see the depth of the problem before they arrive.',
@@ -1174,7 +1174,7 @@ function renderManualScript(
       ].join('\n');
     case 'convini_only':
       return [
-        `Hi ${vars.customerFirstName}, this is ${vars.repName}, ${vars.companyName}'s AI towing assistant.`,
+        `Hi, this is ${vars.repName} calling from ${vars.companyName} about the service request. I'm the AI assistant helping confirm the details. Am I speaking with ${vars.customerFirstName}?`,
         `I am calling to quickly confirm your service request at ${vars.pickupLocation}.`,
         `I'm texting you the free CONVINIcar app link now so you can track this service live and request help faster next time.`,
         callbackLine,

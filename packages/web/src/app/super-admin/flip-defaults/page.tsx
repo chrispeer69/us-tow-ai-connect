@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { api } from '@/lib/utils';
+import { ArrowLeft } from 'lucide-react';
 
 interface GlobalConfig {
   rep_name?: string;
@@ -53,11 +55,12 @@ export default function GlobalFlipDefaultsPage() {
 - If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`;
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi, this is {{rep_name}} calling from {{company_name}}. Am I speaking with {{customer_first_name}}?"
+AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"
 [AGENT: Wait for confirmation.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
-AI: "Great, {{customer_first_name}}. I'm calling to confirm the details of your tow request so we can get a driver to you as quickly as possible. This will only take about a minute — is now a good time?"`;
+AI: "Thanks. I'll keep this quick and start with your pickup details."
+[AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
 AI: "I have your pickup location as {{pickup_location}}. Is that correct?"`;
@@ -69,7 +72,8 @@ AI: "And I have a {{vehicle}}. Is that right?"`;
 AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
 
   const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
-AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
+AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
+[AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate.]`;
 
   const defaultClose = `=== WARM CLOSE (all scenarios) ===
 AI: "Your driver is on the way and should be there shortly. Is there anything else I can help you with?"
@@ -173,6 +177,12 @@ AI: "You're welcome, {{customer_first_name}}. Have a great day and drive safe."`
             These are the platform-wide fallback prompts. If a tenant doesn't define their own prompt, the AI will use what is defined here.
           </p>
         </div>
+        <Link href="/super-admin">
+          <Button variant="outline" className="border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-800">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Platform Monitor
+          </Button>
+        </Link>
       </header>
 
       {error && (

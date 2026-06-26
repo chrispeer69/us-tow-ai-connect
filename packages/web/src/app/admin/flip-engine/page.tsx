@@ -1350,11 +1350,11 @@ function SettingsTab({
 - If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`;
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi {{customer_first_name}}, this is {{rep_name}}, {{company_name}}'s AI towing assistant. I'll keep this quick — I'm here to confirm your exact location, make sure we send the right help, and get your driver moving as fast as possible."
+AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"
 [AGENT: Wait for confirmation.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
-AI: "I'll start with your pickup details."
+AI: "Thanks. I'll keep this quick and start with your pickup details."
 [AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
@@ -1367,8 +1367,8 @@ AI: "And I have a {{vehicle}}. Is that right?"`;
 AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
 
   const defaultDestination = `[STEP 6 — CONFIRM DELIVERY DESTINATION]
-AI: "Where were you planning to have the vehicle taken?"
-[AGENT: Capture the intended destination, but do not verbally lock it before the shop offer on repairable competitor-shop calls.]`;
+AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
+[AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate. On repairable competitor-shop calls, do not verbally lock the destination before the shop offer.]`;
 
   const defaultClose = `=== WARM CLOSE (all scenarios) ===
 AI: "Anything else before you go?"

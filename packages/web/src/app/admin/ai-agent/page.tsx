@@ -173,11 +173,11 @@ export default function AiAgentPage() {
                 calls for this account.
               </p>
 
-              <div className="mt-5 rounded-md border border-zinc-800 bg-zinc-950/40 p-4">
+              <div className="mt-5 rounded-lg border border-zinc-200 bg-white p-4 text-zinc-900 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <div className="font-medium">Test mode</div>
-                    <p className="mt-1 text-sm text-zinc-400">
+                    <div className="font-semibold text-zinc-900">Test mode</div>
+                    <p className="mt-1 text-sm text-zinc-600">
                       Route this tenant's outbound AI calls to a test phone before calling real customers.
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
@@ -190,29 +190,57 @@ export default function AiAgentPage() {
                   />
                 </div>
 
-                <div className="mt-3 max-w-sm">
-                  <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">
+                <div className="mt-3">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
                     Test phone number
                   </div>
-                  <Input
-                    value={testOverrideNumber}
-                    onChange={(event) => mutate(setTestOverrideNumber, event.target.value)}
-                    placeholder="Enter test phone"
-                  />
+                  <div className="grid gap-2 sm:grid-cols-[minmax(220px,360px)_auto]">
+                    <Input
+                      value={testOverrideNumber}
+                      onChange={(event) => mutate(setTestOverrideNumber, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && hasChanges && !saving) {
+                          event.preventDefault();
+                          void save();
+                        }
+                      }}
+                      placeholder="Enter test phone"
+                      className="border-zinc-300 bg-white text-zinc-900 placeholder:text-zinc-400"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void save()}
+                      disabled={!hasChanges || saving}
+                      className="border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-50"
+                    >
+                      {saving ? <Spinner className="mr-2" /> : null}
+                      Save test number
+                    </Button>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Press Enter or use Save test number after editing.
+                  </p>
                 </div>
 
-                <div className={`mt-3 rounded border p-3 text-sm ${
-                  testModeEnabled
-                    ? testOverrideNumber.trim()
-                      ? 'border-amber-800 bg-amber-950/30 text-amber-100'
-                      : 'border-rose-800 bg-rose-950/30 text-rose-100'
-                    : 'border-zinc-800 bg-zinc-900/40 text-zinc-300'
-                }`}>
-                  {testModeEnabled
-                    ? testOverrideNumber.trim()
-                      ? 'Test mode is ON. Calls will route to this tenant test number.'
-                      : 'Test mode is ON but no number is set. Calls will be blocked.'
-                    : 'Test mode is OFF. Calls route normally unless the global emergency override is enabled.'}
+                <div className="mt-3 flex items-start gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+                  <span
+                    className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                      testModeEnabled ? 'bg-blue-600' : 'bg-zinc-400'
+                    }`}
+                  />
+                  <div>
+                    <span className="font-medium text-zinc-900">
+                      {testModeEnabled ? 'Test mode on' : 'Test mode off'}
+                    </span>
+                    <span className="ml-2">
+                      {testModeEnabled
+                        ? testOverrideNumber.trim()
+                          ? 'Calls route to this tenant test number.'
+                          : 'Add a test number before placing test calls.'
+                        : 'Calls route normally unless the global emergency override is enabled.'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </CardContent>

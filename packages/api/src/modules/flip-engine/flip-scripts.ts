@@ -170,11 +170,11 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
 function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
   const onBehalf = ctx.motorClub ? ' on behalf of {{motor_club}}' : '';
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi {{customer_first_name}}, this is {{rep_name}}, {{company_name}}'s AI towing assistant${onBehalf}. I'll keep this quick — I'm here to confirm your exact location, make sure we send the right help, and get your driver moving as fast as possible."
+AI: "Hi, this is {{rep_name}} calling from {{company_name}}${onBehalf} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"
 [AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
-AI: "I'll start with your pickup details."
+AI: "Thanks. I'll keep this quick and start with your pickup details."
 [AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
   const opening = ctx.scriptBlocks?.opening ?? ctx.globalScriptBlocks?.opening ?? defaultOpening;
@@ -215,7 +215,8 @@ AI: "For this winch-out, I have the service location as {{pickup_location}}. Is 
 AI: "I do not have a separate tow destination listed, so I have this as service at {{pickup_location}}. Is that correct?"
 [AGENT: Do not ask for a delivery destination unless the customer says the vehicle also needs to be towed somewhere after the service.]`
     : `[STEP 6 — CONFIRM DELIVERY DESTINATION]
-AI: "And I have your vehicle being towed to {{destination}}. Is that where you'd like it to go?"`;
+AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
+[AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate.]`;
 
   const pickup = ctx.scriptBlocks?.confirm_pickup ?? ctx.globalScriptBlocks?.confirm_pickup ?? defaultPickup;
   const vehicle = ctx.scriptBlocks?.confirm_vehicle ?? ctx.globalScriptBlocks?.confirm_vehicle ?? defaultVehicle;
@@ -296,10 +297,10 @@ function scenarioA(ctx: ScriptContext): string {
   const shopDistancePhrase = ctx.nearestShopDistanceMiles != null
     ? `, a certified shop just {{nearest_shop_distance}} miles away`
     : `, a certified shop`;
-  const destinationIntent = `[STEP 6 — ASK INTENDED DESTINATION WITHOUT LOCKING IT]
-AI: "Where were you planning to have the vehicle taken?"
-[AGENT: Capture the intended destination, but do not verbally lock it yet. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`;
-  const defaultOffer1 = `Before I lock that in — since this sounds like it may need repair, I can route you to {{nearest_shop}}${shopDistancePhrase}. You'll get a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair, and they can prioritize the vehicle when it arrives. I'll coordinate the drop-off directly with the driver so you don't have to do anything. I'll send it there — sound good?`;
+  const destinationIntent = `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
+AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
+[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`;
+  const defaultOffer1 = `Before I confirm the drop-off — just so you know, {{nearest_shop}}${shopDistancePhrase}, they're certified, and I could get you a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair. I'd handle everything with the driver. Is that something you'd want to explore?`;
   const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
   const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
@@ -576,7 +577,7 @@ export interface FlipOfferInput {
 
 export function renderOffer1(i: FlipOfferInput): string {
   const dist = i.distanceMilesSaved != null ? ` just ${i.distanceMilesSaved} miles away` : '';
-  return `Before I lock that in, I can route you to ${i.ourShopName}, a certified shop${dist}. You'll get a free diagnostic, plus 10 percent off today's repair, and we'll coordinate the drop-off with the driver. I'll send it there — sound good?`;
+  return `Before I confirm the drop-off — just so you know, ${i.ourShopName} is a certified shop${dist}, and I could get you a free diagnostic plus 10 percent off today's repair. I'd handle everything with the driver. Is that something you'd want to explore?`;
 }
 
 export function renderOffer2(i: FlipOfferInput): string {
