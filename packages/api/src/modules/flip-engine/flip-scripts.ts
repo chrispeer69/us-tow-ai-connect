@@ -299,9 +299,9 @@ function scenarioA(ctx: ScriptContext): string {
   const destinationIntent = `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
 AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
 [AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`;
-  const defaultOffer1 = `Before I confirm the drop-off — just so you know, {{nearest_shop}}${shopDistancePhrase}, they're certified, and I could get you a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair. I'd handle everything with the driver. Is that something you'd want to explore?`;
-  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
-  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
+  const defaultOffer1 = `Before I confirm the drop-off — just so you know, {{nearest_shop}}${shopDistancePhrase}, they're certified, and I could get you a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to {{nearest_shop}}?`;
+  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
+  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
   const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   const flipBlock = !!ctx.nearestShop ? [
@@ -576,15 +576,15 @@ export interface FlipOfferInput {
 
 export function renderOffer1(i: FlipOfferInput): string {
   const dist = i.distanceMilesSaved != null ? ` just ${i.distanceMilesSaved} miles away` : '';
-  return `Before I confirm the drop-off — just so you know, ${i.ourShopName} is a certified shop${dist}, and I could get you a free diagnostic plus 10 percent off today's repair. I'd handle everything with the driver. Is that something you'd want to explore?`;
+  return `Before I confirm the drop-off — just so you know, ${i.ourShopName} is a certified shop${dist}, and I could get you a free diagnostic plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${i.ourShopName}?`;
 }
 
 export function renderOffer2(i: FlipOfferInput): string {
-  return `Totally fair. Here's the difference though — for today's tow, ${i.ourShopName} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair.`;
+  return `Totally fair. Here's the difference though — for today's tow, ${i.ourShopName} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
 }
 
 export function renderOffer3(i: FlipOfferInput): string {
-  return `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot at ${i.ourShopName}. I'll route the driver there now — good?`;
+  return `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at ${i.ourShopName}. Would you like me to switch the drop-off there?`;
 }
 
 export interface ConviniPitchInput {

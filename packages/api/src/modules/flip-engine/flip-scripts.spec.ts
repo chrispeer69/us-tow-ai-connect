@@ -34,7 +34,8 @@ describe('flip-scripts', () => {
     expect(body).toContain("Wayne's Westerville");
     expect(body).toContain('10 percent');
     expect(body).toContain('2.3 miles');
-    expect(body).toContain("I'll send it there");
+    expect(body).toContain("Would you like me to switch the drop-off to Wayne's Westerville?");
+    expect(body).not.toContain("I'll send it there");
     expect(body).not.toContain('Would you like me to make that switch');
   });
 

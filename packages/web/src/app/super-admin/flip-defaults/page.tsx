@@ -83,9 +83,9 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
 AI: "Anything else before you go?"
 AI: "Drive safe."`;
 
-  const defaultOffer1 = `Before I lock that in — since this sounds like it may need repair, I can route you to {{nearest_shop}}, a certified shop just {{nearest_shop_distance}} miles away. You'll get a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair, and they can prioritize the vehicle when it arrives. I'll coordinate the drop-off directly with the driver so you don't have to do anything. I'll send it there — sound good?`;
-  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
-  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
+  const defaultOffer1 = `Before I confirm the drop-off — just so you know, {{nearest_shop}}, a certified shop just {{nearest_shop_distance}} miles away, can provide a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to {{nearest_shop}}?`;
+  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
+  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
   const defaultConvini = `You're all set, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   const loadConfig = useCallback(async () => {

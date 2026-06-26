@@ -1381,9 +1381,9 @@ AI: "Drive safe."`;
     (config.config?.custom_agent_rules as string) || DEFAULT_AGENT_RULES,
   );
 
-  const defaultOffer1 = `Before I lock that in — since this sounds like it may need repair, I can route you to {{nearest_shop}}, a certified shop just {{nearest_shop_distance}} miles away. You'll get a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair, and they can prioritize the vehicle when it arrives. I'll coordinate the drop-off directly with the driver so you don't have to do anything. I'll send it there — sound good?`;
-  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. I'll handle the drop-off with the driver. Let's route it there and keep this moving, okay?`;
-  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and lock in the priority slot. I'll route the driver there now — good?`;
+  const defaultOffer1 = `Before I confirm the drop-off — just so you know, {{nearest_shop}}, a certified shop just {{nearest_shop_distance}} miles away, can provide a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to {{nearest_shop}}?`;
+  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
+  const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
   const defaultConvini = `You're all set, {{customer_first_name}}. Your driver is headed to {{destination}} as planned. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   const scriptBlocksObj = (config.config?.script_blocks as Record<string, string>) || {};
@@ -1402,6 +1402,7 @@ AI: "Drive safe."`;
   const [conviniPitch, setConviniPitch] = useState<string>(scriptBlocksObj.convini_pitch ?? defaultConvini);
 
   const [submitting, setSubmitting] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const save = async () => {
     setSubmitting(true);
@@ -1440,6 +1441,20 @@ AI: "Drive safe."`;
         }),
         headers: { 'content-type': 'application/json' },
       });
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetToDefaults = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await api('/v1/admin/flip-engine/config/reset', { method: 'POST' });
+      setResetConfirmOpen(false);
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -1754,19 +1769,7 @@ AI: "Drive safe."`;
         <div className="flex justify-end pt-2 gap-4">
           <Button
             variant="outline"
-            onClick={async () => {
-              if (confirm("Are you sure you want to reset all configurations to their defaults? This cannot be undone.")) {
-                setSubmitting(true);
-                try {
-                  await api('/v1/admin/flip-engine/config/reset', { method: 'POST' });
-                  await reload();
-                } catch (err) {
-                  setError((err as Error).message);
-                } finally {
-                  setSubmitting(false);
-                }
-              }
-            }}
+            onClick={() => setResetConfirmOpen(true)}
             disabled={submitting}
           >
             Reset to defaults
@@ -1776,6 +1779,39 @@ AI: "Drive safe."`;
             Save settings
           </Button>
         </div>
+
+        {resetConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <Card className="w-full max-w-md bg-white">
+              <CardContent className="space-y-4 p-5">
+                <div>
+                  <h3 className="text-lg font-semibold text-zinc-900">Reset tenant settings?</h3>
+                  <p className="mt-2 text-sm text-zinc-600">
+                    This will remove this tenant&apos;s Flip Engine overrides and fall back to the
+                    current global defaults. This cannot be undone.
+                  </p>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setResetConfirmOpen(false)}
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => void resetToDefaults()}
+                    disabled={submitting}
+                  >
+                    {submitting ? <Spinner className="mr-2" /> : null}
+                    Reset tenant settings
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
