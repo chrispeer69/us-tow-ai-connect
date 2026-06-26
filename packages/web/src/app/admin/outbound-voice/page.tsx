@@ -337,7 +337,7 @@ export default function OutboundVoicePage() {
               <Input
                 value={testOverrideNumber}
                 onChange={(event) => setTestOverrideNumber(event.target.value)}
-                placeholder="+16145551234"
+                placeholder="Enter test phone"
                 disabled={configLoading || configSaving}
               />
             </div>

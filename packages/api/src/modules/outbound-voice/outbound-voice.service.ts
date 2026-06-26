@@ -911,7 +911,17 @@ export class OutboundVoiceService {
   ) {
     const set: Partial<typeof tenants.$inferInsert> = { updatedAt: new Date() };
     if (patch.enabled !== undefined) set.outboundVoiceEnabled = patch.enabled;
-    if (patch.config !== undefined) set.outboundVoiceConfig = patch.config as never;
+    if (patch.config !== undefined) {
+      const nextConfig = { ...patch.config };
+      if ('test_override_number' in nextConfig) {
+        nextConfig.test_override_number = normalizeOptionalPhone(
+          typeof nextConfig.test_override_number === 'string'
+            ? nextConfig.test_override_number
+            : null,
+        );
+      }
+      set.outboundVoiceConfig = nextConfig as never;
+    }
     await this.db.update(tenants).set(set).where(eq(tenants.id, tenantId));
     return this.getConfig(tenantId);
   }
@@ -1382,6 +1392,17 @@ function formatOutboundPhone(value: string): string {
     throw new Error('Please enter a valid phone number.');
   }
   return `+${formatted}`;
+}
+
+function normalizeOptionalPhone(value: string | null): string | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (trimmed.startsWith('+')) return trimmed;
+  return `+${digits}`;
 }
 
 function firstName(value: string): string {

@@ -593,6 +593,8 @@ export class AdminService {
         ...existing,
         serviceToggles: stripAgentSettings(existing.serviceToggles),
         outboundCallMode: mode,
+        testModeEnabled: readConfigBool(tenant?.outboundVoiceConfig, 'test_mode_enabled', false),
+        testOverrideNumber: readConfigString(tenant?.outboundVoiceConfig, 'test_override_number', null),
       };
     }
 
@@ -603,6 +605,8 @@ export class AdminService {
       defaultEtaMins: 45,
       impoundEnabled: false,
       outboundCallMode: defaultMode,
+      testModeEnabled: readConfigBool(tenant?.outboundVoiceConfig, 'test_mode_enabled', false),
+      testOverrideNumber: readConfigString(tenant?.outboundVoiceConfig, 'test_override_number', null),
     };
   }
 
@@ -620,10 +624,54 @@ export class AdminService {
       outboundCallMode: body.outboundCallMode ?? readOutboundCallMode(existing?.serviceToggles),
     });
     if (body.outboundCallMode) {
+      const tenantRows = await this.db
+        .select({ outboundVoiceConfig: tenants.outboundVoiceConfig })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const currentConfig =
+        (tenantRows[0]?.outboundVoiceConfig as Record<string, unknown> | null | undefined) ?? {};
+      const nextConfig = {
+        ...currentConfig,
+        ...(typeof body.testModeEnabled === 'boolean'
+          ? { test_mode_enabled: body.testModeEnabled }
+          : {}),
+        ...(body.testOverrideNumber !== undefined
+          ? { test_override_number: normalizeOptionalPhone(body.testOverrideNumber) }
+          : {}),
+      };
       await this.db
         .update(tenants)
         .set({
           outboundVoiceEnabled: body.outboundCallMode !== 'OFF',
+          outboundVoiceConfig: nextConfig as never,
+          updatedAt: now,
+        })
+        .where(eq(tenants.id, tenantId));
+    } else if (
+      typeof body.testModeEnabled === 'boolean' ||
+      body.testOverrideNumber !== undefined
+    ) {
+      const tenantRows = await this.db
+        .select({ outboundVoiceConfig: tenants.outboundVoiceConfig })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const currentConfig =
+        (tenantRows[0]?.outboundVoiceConfig as Record<string, unknown> | null | undefined) ?? {};
+      const nextConfig = {
+        ...currentConfig,
+        ...(typeof body.testModeEnabled === 'boolean'
+          ? { test_mode_enabled: body.testModeEnabled }
+          : {}),
+        ...(body.testOverrideNumber !== undefined
+          ? { test_override_number: normalizeOptionalPhone(body.testOverrideNumber) }
+          : {}),
+      };
+      await this.db
+        .update(tenants)
+        .set({
+          outboundVoiceConfig: nextConfig as never,
           updatedAt: now,
         })
         .where(eq(tenants.id, tenantId));
@@ -935,4 +983,35 @@ function withAgentSettings(
     ...serviceToggles,
     [AGENT_SETTINGS_KEY]: settings,
   };
+}
+
+function readConfigBool(
+  config: unknown,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const cfg = config as Record<string, unknown> | null | undefined;
+  const value = cfg?.[key];
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function readConfigString(
+  config: unknown,
+  key: string,
+  fallback: string | null,
+): string | null {
+  const cfg = config as Record<string, unknown> | null | undefined;
+  const value = cfg?.[key];
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeOptionalPhone(value: string | null): string | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (trimmed.startsWith('+')) return trimmed;
+  return `+${digits}`;
 }

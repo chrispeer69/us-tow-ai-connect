@@ -213,7 +213,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
               <input
                 value={testNumberDraft}
                 onChange={(event) => setTestNumberDraft(event.target.value)}
-                placeholder="+16145551234"
+                placeholder="Enter test phone"
                 className="h-10 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
               />
               <Button

@@ -422,5 +422,10 @@ function readConfigString(
 function normalizeOptionalPhone(value: string | null): string | null {
   if (value === null) return null;
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (!trimmed) return null;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (trimmed.startsWith('+')) return trimmed;
+  return `+${digits}`;
 }

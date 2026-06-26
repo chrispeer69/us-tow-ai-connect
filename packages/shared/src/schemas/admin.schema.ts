@@ -82,6 +82,8 @@ export const AgentConfigUpdateSchema = z.object({
   defaultEtaMins: z.number().int().min(0).max(600),
   impoundEnabled: z.boolean().optional(),
   outboundCallMode: OutboundCallMode.optional(),
+  testModeEnabled: z.boolean().optional(),
+  testOverrideNumber: z.string().max(20).optional().nullable(),
   serviceToggles: z.record(
     z.object({
       enabled: z.boolean(),

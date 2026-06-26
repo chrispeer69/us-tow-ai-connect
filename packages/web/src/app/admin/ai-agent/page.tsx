@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -43,6 +44,8 @@ interface AgentConfig {
   defaultEtaMins: number;
   impoundEnabled: boolean;
   outboundCallMode?: OutboundCallMode;
+  testModeEnabled?: boolean;
+  testOverrideNumber?: string | null;
   serviceToggles: Record<string, Service>;
 }
 
@@ -52,6 +55,8 @@ export default function AiAgentPage() {
   const [defaultEta, setDefaultEta] = useState(45);
   const [impoundEnabled, setImpoundEnabled] = useState(false);
   const [outboundCallMode, setOutboundCallMode] = useState<OutboundCallMode>('AUTO');
+  const [testModeEnabled, setTestModeEnabled] = useState(false);
+  const [testOverrideNumber, setTestOverrideNumber] = useState('');
   const [serviceToggles, setServiceToggles] = useState<Record<string, Service>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,6 +76,8 @@ export default function AiAgentPage() {
       setDefaultEta(data.defaultEtaMins ?? 45);
       setImpoundEnabled(Boolean(data.impoundEnabled));
       setOutboundCallMode(data.outboundCallMode ?? 'AUTO');
+      setTestModeEnabled(data.testModeEnabled === true);
+      setTestOverrideNumber(data.testOverrideNumber ?? '');
       setServiceToggles(normalizeToggles(data.serviceToggles ?? {}));
       setHasChanges(false);
     } catch (err) {
@@ -97,6 +104,8 @@ export default function AiAgentPage() {
           defaultEtaMins: defaultEta,
           impoundEnabled,
           outboundCallMode,
+          testModeEnabled,
+          testOverrideNumber: testOverrideNumber.trim() || null,
           serviceToggles,
         },
       });
@@ -163,6 +172,49 @@ export default function AiAgentPage() {
                 calls but keeps the Command Center call button available. Off disables outbound AI
                 calls for this account.
               </p>
+
+              <div className="mt-5 rounded-md border border-zinc-800 bg-zinc-950/40 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-medium">Test mode</div>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      Route this tenant's outbound AI calls to a test phone before calling real customers.
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      If this is on without a number, calls fail closed. US 10-digit numbers are saved with +1 automatically.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={testModeEnabled}
+                    onCheckedChange={(v) => mutate(setTestModeEnabled, v)}
+                  />
+                </div>
+
+                <div className="mt-3 max-w-sm">
+                  <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">
+                    Test phone number
+                  </div>
+                  <Input
+                    value={testOverrideNumber}
+                    onChange={(event) => mutate(setTestOverrideNumber, event.target.value)}
+                    placeholder="Enter test phone"
+                  />
+                </div>
+
+                <div className={`mt-3 rounded border p-3 text-sm ${
+                  testModeEnabled
+                    ? testOverrideNumber.trim()
+                      ? 'border-amber-800 bg-amber-950/30 text-amber-100'
+                      : 'border-rose-800 bg-rose-950/30 text-rose-100'
+                    : 'border-zinc-800 bg-zinc-900/40 text-zinc-300'
+                }`}>
+                  {testModeEnabled
+                    ? testOverrideNumber.trim()
+                      ? 'Test mode is ON. Calls will route to this tenant test number.'
+                      : 'Test mode is ON but no number is set. Calls will be blocked.'
+                    : 'Test mode is OFF. Calls route normally unless the global emergency override is enabled.'}
+                </div>
+              </div>
             </CardContent>
           </Card>
 
