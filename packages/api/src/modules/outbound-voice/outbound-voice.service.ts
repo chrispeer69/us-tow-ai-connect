@@ -964,7 +964,7 @@ export class OutboundVoiceService {
       throw new BadRequestException('Outbound voice is disabled for this tenant');
     }
     if (await this.freeTrialLimitReached(tenant)) {
-      throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
+      throw new BadRequestException('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
     const allowed = readConfigArray(tenant, 'enabled_purposes');
     if (allowed && allowed.length > 0 && !allowed.includes(purpose)) {
@@ -1099,13 +1099,13 @@ export class OutboundVoiceService {
       throw new BadRequestException('Outbound voice is disabled for this tenant');
     }
     if (!input.ignoreTrialLimit && await this.freeTrialLimitReached(tenant)) {
-      throw new Error('Outbound trial call limit reached. Please contact support to enable more calls.');
+      throw new BadRequestException('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
     const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) || {};
     const tenantTestModeEnabled = readConfigBool(tenant, 'test_mode_enabled', false);
     const tenantTestOverrideNumber = readConfigString(tenant, 'test_override_number', null);
     if (tenantTestModeEnabled && !tenantTestOverrideNumber?.trim()) {
-      throw new Error('Tenant test mode is enabled but no test override number is set.');
+      throw new BadRequestException('Tenant test mode is enabled but no test override number is set.');
     }
 
     const activeShops = await this.db
@@ -1150,19 +1150,24 @@ export class OutboundVoiceService {
       })
       .returning();
 
-    const result = await this.provider.placeCall({
-      toPhone: formattedPhone,
-      toName: input.customerName || 'Test Customer',
-      scriptBody: fullBody,
-      scriptTemplate: 'custom',
-      scriptVariables: { body: fullBody },
-      callId: call.id,
-      tenantId,
-      agentId: undefined,
-      callbackUrl: buildCallbackUrl(this.provider.providerName),
-      testModeEnabled: tenantTestModeEnabled,
-      testOverrideNumber: tenantTestOverrideNumber,
-    });
+    let result: any;
+    try {
+      result = await this.provider.placeCall({
+        toPhone: formattedPhone,
+        toName: input.customerName || 'Test Customer',
+        scriptBody: fullBody,
+        scriptTemplate: 'custom',
+        scriptVariables: { body: fullBody },
+        callId: call.id,
+        tenantId,
+        agentId: undefined,
+        callbackUrl: buildCallbackUrl(this.provider.providerName),
+        testModeEnabled: tenantTestModeEnabled,
+        testOverrideNumber: tenantTestOverrideNumber,
+      });
+    } catch (e: any) {
+      throw new BadRequestException(e.message || String(e));
+    }
 
     if (!result?.providerCallId) {
       await this.db
