@@ -168,9 +168,8 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
 /** Opening + purpose, shared verbatim by all scenarios.
  *  "on behalf of {{motor_club}}" is dropped when no motor club is present. */
 function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
-  const onBehalf = ctx.motorClub ? ' on behalf of {{motor_club}}' : '';
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi, this is {{rep_name}} calling from {{company_name}}${onBehalf} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"
+AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"
 [AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
