@@ -81,6 +81,7 @@ interface FlipActivityRow {
   destinationBusinessName: string | null;
   destinationType: string | null;
   flipEligible: boolean;
+  noFlipReason: string | null;
   nearestOurShop: string | null;
   offer1Result: string | null;
   offer2Result: string | null;
@@ -1846,6 +1847,28 @@ const OUTCOME_COLOR: Record<string, string> = {
   SKIPPED: 'bg-zinc-800 text-zinc-300',
 };
 
+const NO_FLIP_REASON_LABELS: Record<string, string> = {
+  destination_unknown: 'No business identified',
+  destination_residence: 'Residential address',
+  destination_auto_body: 'Auto body shop',
+  destination_is_our_shop: 'Already our shop',
+  aaa_branded_hard_block: 'AAA-branded (blocked)',
+  regex_address_no_business_name: 'Address only, no name',
+  no_signals_matched: 'No signals matched',
+  flip_suppressed_no_nearby_shop_within_max_distance: 'No nearby shop in range',
+};
+
+function formatNoFlipReason(reason: string | null): string | null {
+  if (!reason) return null;
+  if (reason.startsWith('no_flip_category_')) {
+    const parts = reason.replace('no_flip_category_', '').split('_conf_');
+    const category = (parts[0] ?? '').replace(/_/g, ' ');
+    const conf = parts[1] ? ` (${(parseFloat(parts[1]) * 100).toFixed(0)}% conf)` : '';
+    return `Non-flip type: ${category}${conf}`;
+  }
+  return NO_FLIP_REASON_LABELS[reason] ?? reason;
+}
+
 function bucketOutcome(r: FlipActivityRow): 'WIN' | 'LOSS' | 'SKIPPED' {
   if (r.flipOutcome && /WIN|ACCEPTED/i.test(r.flipOutcome)) return 'WIN';
   if (!r.flipEligible) return 'SKIPPED';
@@ -1970,9 +1993,21 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge className={OUTCOME_COLOR[bucket] ?? 'bg-zinc-700 text-zinc-200'}>
-                      {bucket}
-                    </Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge className={OUTCOME_COLOR[bucket] ?? 'bg-zinc-700 text-zinc-200'}>
+                        {bucket}
+                      </Badge>
+                      {bucket === 'SKIPPED' && r.noFlipReason && (
+                        <span className="text-[10px] text-zinc-500 leading-tight">
+                          {formatNoFlipReason(r.noFlipReason)}
+                        </span>
+                      )}
+                      {bucket === 'LOSS' && r.flipOutcome && r.flipOutcome !== 'LOSS' && r.flipOutcome !== 'NOT_ATTEMPTED' && r.flipOutcome !== 'DECLINED' && (
+                        <span className="text-[10px] text-zinc-500 leading-tight break-all">
+                          AI output: {r.flipOutcome}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs">{r.conviniLinkSent ? 'sent' : '—'}</TableCell>
                 </TableRow>
