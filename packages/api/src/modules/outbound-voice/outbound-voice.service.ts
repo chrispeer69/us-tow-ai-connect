@@ -533,6 +533,19 @@ export class OutboundVoiceService {
       return { matched: true, previousStatus: existing.status, newStatus: null };
     }
     if (TERMINAL_STATUSES.has(existing.status) && existing.status === newStatus) {
+      // Even if status hasn't changed (e.g. call_analyzed after call_ended),
+      // we must still process any new analysis data (flip_outcome, offers, etc.)
+      const analysisData = event.analysisData ?? {};
+      if (Object.keys(analysisData).some((k) => (analysisData as Record<string, unknown>)[k] != null)) {
+        if (event.analysisData != null) {
+          await this.db.update(outboundCalls).set({ analysisData: event.analysisData }).where(eq(outboundCalls.id, existing.id));
+        }
+        await this.syncFlipActivityFromAnalysis(existing, {}, analysisData).catch((err) => {
+          this.logger.warn(
+            `[outbound-voice] flip activity sync failed for call ${existing.id}: ${(err as Error).message}`,
+          );
+        });
+      }
       return { matched: true, previousStatus: existing.status, newStatus: existing.status };
     }
 
@@ -1120,7 +1133,7 @@ export class OutboundVoiceService {
       repName: (cfg.rep_name as string) || '',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
       motorClub: input.motorClub || 'Agero Motor Club',
-      callbackNumber: (cfg.callback_number as string) || '+18447011345',
+      callbackNumber: (cfg.callback_number as string) || process.env.RETELL_CALLBACK_NUMBER || '',
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? 89),
       customerFirstName: input.customerName?.split(' ')[0] || 'John',

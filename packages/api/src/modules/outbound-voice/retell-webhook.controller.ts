@@ -93,22 +93,34 @@ export class RetellWebhookController {
       return { matched: false };
     }
 
-    const analysis = body.call.call_analysis || {};
+    const analysis = body.call?.call_analysis || {};
+    const custom = (analysis as any).custom_analysis_data || {};
 
+    this.logger.log({
+      message: '[outbound-voice] Retell webhook received',
+      event: body.event,
+      callId,
+      analysisKeys: Object.keys(analysis),
+      customKeys: Object.keys(custom),
+      rawFlipOutcome: analysis.flip_outcome ?? custom.flip_outcome ?? null,
+      rawOffer1: analysis.offer_1_result ?? custom.offer_1_result ?? null,
+    });
+
+    // Extract everything, checking both root and custom_analysis_data
     const analysisData = {
       call_summary: analysis.call_summary as string | null,
       call_successful: analysis.call_successful as boolean | null,
       user_sentiment: analysis.user_sentiment as string | null,
-      flip_eligible: analysis.flip_eligible as boolean | null,
-      flip_outcome: analysis.flip_outcome as string | null,
-      offer_1_result: analysis.offer_1_result as string | null,
-      offer_2_result: analysis.offer_2_result as string | null,
-      offer_3_result: analysis.offer_3_result as string | null,
-      convini_link_sent: analysis.convini_link_sent as boolean | null,
-      convini_sell_type: analysis.convini_sell_type as string | null,
-      corrections_made: analysis.corrections_made as string | null,
-      nearest_our_shop: analysis.nearest_our_shop as string | null,
-      destination_type: analysis.destination_type as string | null,
+      flip_eligible: (analysis.flip_eligible ?? custom.flip_eligible) as boolean | null,
+      flip_outcome: (analysis.flip_outcome ?? custom.flip_outcome) as string | null,
+      offer_1_result: (analysis.offer_1_result ?? custom.offer_1_result) as string | null,
+      offer_2_result: (analysis.offer_2_result ?? custom.offer_2_result) as string | null,
+      offer_3_result: (analysis.offer_3_result ?? custom.offer_3_result) as string | null,
+      convini_link_sent: (analysis.convini_link_sent ?? custom.convini_link_sent) as boolean | null,
+      convini_sell_type: (analysis.convini_sell_type ?? custom.convini_sell_type) as string | null,
+      corrections_made: (analysis.corrections_made ?? custom.corrections_made) as string | null,
+      nearest_our_shop: (analysis.nearest_our_shop ?? custom.nearest_our_shop) as string | null,
+      destination_type: (analysis.destination_type ?? custom.destination_type) as string | null,
     };
 
     const result = await this.outboundVoice.handleProviderWebhookEvent({
