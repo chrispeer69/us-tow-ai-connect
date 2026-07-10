@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { LiveCallDemo } from "@/components/LiveCallDemo";
 import { ROICalculator } from "@/components/ROICalculator";
-import { AnimatedCounter } from "@/components/AnimatedCounter";
 import { StickyComparisonBar } from "@/components/StickyComparisonBar";
 import { LiveDispatchPreview } from "@/components/LiveDispatchPreview";
 import {
@@ -17,8 +16,6 @@ import {
   Zap,
   ShieldCheck,
   Network,
-  TrendingUp,
-  Clock,
   DollarSign,
   Check,
   X,
@@ -35,17 +32,14 @@ import {
   Camera,
   Car,
   ClipboardCheck,
-  Gauge,
   Gavel,
   GraduationCap,
   Hammer,
   Hash,
   Megaphone,
   Newspaper,
-  Package,
   PenTool,
   Star,
-  Terminal,
   Truck,
   Wrench,
 } from "lucide-react";
@@ -239,30 +233,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Animated Stats */}
-      <section className="border-b border-border bg-background">
-        <div className="container py-14">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              { label: "Calls Handled / Month", end: 100000, suffix: "+", icon: Phone },
-              { label: "Avg Response Time", end: 2.4, suffix: "s", decimals: 1, icon: Clock },
-              { label: "Shareholder Savings vs TowPilot", end: 33, suffix: "%", icon: DollarSign },
-              { label: "Towing Software Supported", end: 6, suffix: "+", icon: Network },
-            ].map((stat, i) => (
-              <div key={i} className="text-center lg:text-left">
-                <div className="flex items-center justify-center lg:justify-start gap-2 mb-2 text-blue-400">
-                  <stat.icon className="w-4 h-4" />
-                  <span className="text-[10px] uppercase tracking-[0.2em] font-bold">{stat.label}</span>
-                </div>
-                <div className="text-4xl lg:text-5xl font-black tracking-tight">
-                  <AnimatedCounter end={stat.end} suffix={stat.suffix} decimals={stat.decimals || 0} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Two Engines */}
       <section id="features" className="py-24 lg:py-32 relative">
         <div className="container">
@@ -341,152 +311,6 @@ export default function Home() {
                 </div>
               </CardContent>
             </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Industry First — Outbound Sales AI */}
-      <section id="industry-first" className="py-24 lg:py-32 relative overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-background to-blue-500/10"></div>
-          <div className="absolute inset-0 bg-grid opacity-20"></div>
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-cyan-500/15 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="container relative z-10">
-          <div className="max-w-4xl mx-auto text-center mb-16">
-            <Badge className="mb-6 bg-cyan-500/15 text-cyan-300 border-cyan-500/40 px-4 py-2 text-[10px] font-black tracking-[0.25em] uppercase">
-              <Award className="w-3.5 h-3.5 mr-2" />
-              Industry First · Category Creator
-            </Badge>
-            <h2 className="text-4xl lg:text-6xl xl:text-7xl font-black tracking-tight mb-6 leading-[1.05]">
-              The towing industry's
-              <br />
-              <span className="text-gradient-cyan">first &amp; only</span>
-              <br />
-              <span className="whitespace-nowrap text-yellow-300">OUTBOUND SALES</span>
-              <br />
-              <span className="whitespace-nowrap">AI attendant.</span>
-            </h2>
-            <p className="text-lg lg:text-xl text-muted-foreground leading-relaxed max-w-3xl mx-auto">
-              AI-Connect doesn't just answer calls — it makes them. Outbound sales calls
-              for <span className="text-foreground font-semibold">customer retention</span>{" "}
-              and <span className="text-foreground font-semibold">new customer development</span>.
-              Plus a one-of-a-kind referral engine that sends every tow to your preferred
-              auto repair shops.
-            </p>
-          </div>
-
-          {/* Flow diagram */}
-          <Card className="bg-gradient-to-br from-cyan-500/5 via-card to-blue-500/5 border-cyan-500/30 max-w-5xl mx-auto mb-12 overflow-hidden glow-blue">
-            <CardContent className="p-8 lg:p-12">
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-6 items-center">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center mb-3 mx-auto">
-                    <Truck className="w-8 h-8 text-cyan-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">Step 01</div>
-                  <div className="text-sm font-bold">New tow detected</div>
-                </div>
-                <div className="hidden md:flex justify-center">
-                  <ArrowRight className="w-6 h-6 text-cyan-400/60" />
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center mb-3 mx-auto animate-pulse-glow">
-                    <PhoneOutgoing className="w-8 h-8 text-cyan-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">Step 02</div>
-                  <div className="text-sm font-bold">AI sales call placed</div>
-                </div>
-                <div className="hidden md:flex justify-center">
-                  <ArrowRight className="w-6 h-6 text-cyan-400/60" />
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-500/15 border border-blue-500/40 flex items-center justify-center mb-3 mx-auto">
-                    <Wrench className="w-8 h-8 text-blue-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold mb-1">Step 03</div>
-                  <div className="text-sm font-bold">Referred to your shop</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Pillars */}
-          <div className="max-w-7xl mx-auto">
-            <div className="flex justify-center mb-6">
-              <div className="inline-flex items-center gap-2 bg-cyan-400 text-blue-950 text-xs font-black uppercase tracking-[0.2em] px-5 py-2 rounded-full shadow-xl shadow-cyan-500/40">
-                <Sparkles className="w-3.5 h-3.5" />
-                Category-Defining
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-card/60 border-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 group">
-                <CardContent className="p-7">
-                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <Users className="w-6 h-6 text-cyan-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 01</div>
-                  <h3 className="text-xl font-black mb-2 tracking-tight">Customer Retention</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    AI calls past customers with status updates, follow-ups, and loyalty
-                    offers. They come back to you instead of shopping competitors.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/60 border-cyan-500/40 hover:border-cyan-500/70 transition-all duration-300 group relative shadow-xl shadow-cyan-500/10">
-                <CardContent className="p-7">
-                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <Sparkles className="w-6 h-6 text-cyan-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 02</div>
-                  <h3 className="text-xl font-black mb-2 tracking-tight">New Customer Development</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    AI prospects leads in your service area, qualifies them, and books tows.
-                    The first true outbound sales engine in towing — nothing else like it
-                    exists.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/60 border-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 group">
-                <CardContent className="p-7">
-                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <Wrench className="w-6 h-6 text-cyan-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 03</div>
-                  <h3 className="text-xl font-black mb-2 tracking-tight">Preferred Shop Referrals</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    AI confirms each tow's destination, then offers your preferred auto
-                    repair shops with incentives. A one-of-a-kind referral engine — recurring
-                    revenue on every call.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card/60 border-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 group">
-                <CardContent className="p-7">
-                  <div className="w-12 h-12 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <Terminal className="w-6 h-6 text-cyan-400" />
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400 font-bold mb-2">Pillar 04</div>
-                  <h3 className="text-xl font-black mb-2 tracking-tight">Engineered. Not Scripted.</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    We don't paste prompts into website chat boxes. Every conversation,
-                    workflow, and integration is written in hard code — production-grade
-                    software, not a no-code sandbox.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          <div className="text-center mt-12">
-            <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Zap className="w-4 h-4 text-cyan-400" />
-              <span>No competitor in the towing space offers outbound sales AI. We built it first.</span>
-            </div>
           </div>
         </div>
       </section>
