@@ -239,6 +239,20 @@
       "when": 1780956904279,
       "tag": "0035_mushy_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1783033960301,
+      "tag": "0036_uneven_hellcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1784065017848,
+      "tag": "0037_dear_vertigo",
+      "breakpoints": true
     }
   ]
 }

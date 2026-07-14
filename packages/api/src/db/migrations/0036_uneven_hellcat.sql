@@ -1,0 +1,1 @@
+ALTER TABLE "outbound_call_logs" ADD COLUMN "no_flip_reason" varchar(120);

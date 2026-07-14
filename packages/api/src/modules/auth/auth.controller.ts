@@ -31,4 +31,22 @@ export class AuthController {
     const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_BASE_URL || 'http://localhost:3000';
     res.redirect(`${frontendUrl}/auth-callback?token=${access_token}`);
   }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() body: { email: string }) {
+    if (!body.email) {
+      throw new Error('Email is required');
+    }
+    await this.authService.sendPasswordResetOtp(body.email);
+    return { success: true };
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() body: { email: string; otp: string; newPassword: string }) {
+    if (!body.email || !body.otp || !body.newPassword) {
+      throw new Error('Email, OTP, and new password are required');
+    }
+    await this.authService.resetPasswordWithOtp(body.email, body.otp, body.newPassword);
+    return { success: true };
+  }
 }

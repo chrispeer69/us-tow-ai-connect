@@ -327,6 +327,7 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
   destinationBusinessName: varchar('destination_business_name', { length: 255 }),
   destinationType: varchar('destination_type', { length: 50 }),
   flipEligible: boolean('flip_eligible').notNull().default(false),
+  noFlipReason: varchar('no_flip_reason', { length: 120 }),
   nearestOurShop: varchar('nearest_our_shop', { length: 255 }),
   offer1Result: varchar('offer_1_result', { length: 20 }).default('NOT_ATTEMPTED'),
   offer2Result: varchar('offer_2_result', { length: 20 }).default('NOT_ATTEMPTED'),
@@ -1104,3 +1105,23 @@ export const platformSettings = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   }
 );
+
+// ============ PASSWORD RESET OTPS ============
+export const passwordResetOtps = pgTable(
+  'password_reset_otps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    otp: varchar('otp', { length: 6 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdIdx: index('password_reset_otps_user_idx').on(t.userId),
+  }),
+);
+
+export type PasswordResetOtpRow = typeof passwordResetOtps.$inferSelect;
+export type PasswordResetOtpInsert = typeof passwordResetOtps.$inferInsert;

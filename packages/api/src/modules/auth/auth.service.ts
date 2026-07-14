@@ -2,9 +2,10 @@ import { Injectable, UnauthorizedException, BadRequestException, Inject, Logger 
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
-import { eq, or } from 'drizzle-orm';
-import { users, tenantMembers, tenants, UserRow } from '../../db/schema';
+import { eq, or, desc } from 'drizzle-orm';
+import { users, tenantMembers, tenants, passwordResetOtps, UserRow } from '../../db/schema';
 import { DB_CLIENT, DbClient } from '../../db/db.module';
+import { AuthEmailService } from './auth-email.service';
 
 export interface JwtPayload {
   userId: string;
@@ -21,6 +22,7 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     @Inject(DB_CLIENT) private readonly db: DbClient,
+    private readonly emailService: AuthEmailService,
   ) {}
 
   async validateUser(email: string, pass: string): Promise<UserRow | null> {
@@ -162,6 +164,65 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async sendPasswordResetOtp(email: string): Promise<void> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const [user] = await this.db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+    
+    // We do not throw if the user doesn't exist, to prevent email enumeration.
+    if (!user) {
+      this.logger.log(`Password reset requested for unknown email: ${normalizedEmail}`);
+      return;
+    }
+
+    // Generate a 6-digit numeric OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins from now
+
+    await this.db.insert(passwordResetOtps).values({
+      userId: user.id,
+      otp,
+      expiresAt,
+    });
+
+    await this.emailService.sendPasswordResetOtp(normalizedEmail, otp);
+  }
+
+  async resetPasswordWithOtp(email: string, otp: string, newPassword: string): Promise<void> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const [user] = await this.db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+
+    if (!user) {
+      throw new BadRequestException('Invalid email or OTP code.');
+    }
+
+    // Find the most recent unexpired OTP for this user
+    const [otpRecord] = await this.db
+      .select()
+      .from(passwordResetOtps)
+      .where(eq(passwordResetOtps.userId, user.id))
+      .orderBy(desc(passwordResetOtps.createdAt))
+      .limit(1);
+
+    if (!otpRecord) {
+      throw new BadRequestException('No reset code found. Please request a new one.');
+    }
+
+    if (otpRecord.otp !== otp.trim()) {
+      throw new BadRequestException('Invalid OTP code.');
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      throw new BadRequestException('OTP code has expired. Please request a new one.');
+    }
+
+    // Hash the new password and update
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+
+    // Delete all OTPs for this user so they can't be reused
+    await this.db.delete(passwordResetOtps).where(eq(passwordResetOtps.userId, user.id));
   }
 }
 
