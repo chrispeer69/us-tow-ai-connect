@@ -14,13 +14,6 @@ function isUuidShaped(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value.trim());
 }
 
-function readEnvDefault(): string | null {
-  const raw = process.env.DEFAULT_ADMIN_TENANT_ID;
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  return isUuidShaped(trimmed) ? trimmed : null;
-}
-
 export interface AdminRequest extends Request {
   tenantId: string;
   requestId?: string;
@@ -36,31 +29,36 @@ export class AdminAuthGuard extends AuthGuard('jwt') {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AdminRequest>();
 
-    const headerTenant = req.headers['x-tenant-id'];
-    const tenantFromHeader = Array.isArray(headerTenant) ? headerTenant[0] : headerTenant;
-    const tenantFromEnv = readEnvDefault();
-    let devTenantId = (tenantFromHeader || tenantFromEnv || '').trim();
-
+    // SECURITY: A valid JWT is ALWAYS required. No env-var fallbacks, no header overrides.
     let isJwtValid = false;
     try {
       isJwtValid = (await super.canActivate(context)) as boolean;
     } catch (e) {
-      // Ignore exception if JWT is missing or invalid; we'll fallback to dev if allowed
+      void this.recordAuthFailure(req, 'invalid_or_missing_jwt');
+      throw new UnauthorizedException({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Valid authentication is required. Please sign in.',
+      });
     }
 
-    let candidate = '';
-    if (isJwtValid && req.user && (req.user as any).tenantId) {
-       candidate = (req.user as any).tenantId;
-    } else if (devTenantId && process.env.NODE_ENV !== 'production') {
-       candidate = devTenantId;
+    if (!isJwtValid || !req.user) {
+      void this.recordAuthFailure(req, 'jwt_validation_failed');
+      throw new UnauthorizedException({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Valid authentication is required. Please sign in.',
+      });
     }
+
+    const candidate = (req.user as any).tenantId;
 
     if (!candidate) {
       void this.recordAuthFailure(req, 'missing_tenant_context');
       throw new UnauthorizedException({
         status: 'error',
-        code: 'UNAUTHORIZED',
-        message: 'Missing tenant context',
+        code: 'NO_TENANT',
+        message: 'Your account is not associated with any company. Please ask your admin to invite you.',
       });
     }
     if (!isUuidShaped(candidate)) {
