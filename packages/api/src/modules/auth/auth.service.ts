@@ -34,20 +34,37 @@ export class AuthService {
   }
 
   async login(user: UserRow) {
-    // Find their default tenant member profile
-    const [member] = await this.db
+    // Find their default tenant member profile — first by userId, then by email
+    let [member] = await this.db
       .select()
       .from(tenantMembers)
       .where(eq(tenantMembers.userId, user.id))
       .limit(1);
+
+    // DATA MIGRATION: If no membership found by userId, try by email and auto-link.
+    // This handles existing tenants whose rows were created before userId was populated.
+    if (!member) {
+      const normalizedEmail = user.email.trim().toLowerCase();
+      [member] = await this.db
+        .select()
+        .from(tenantMembers)
+        .where(eq(tenantMembers.email, normalizedEmail))
+        .limit(1);
+
+      if (member) {
+        // Auto-link this membership to the user's ID for future logins
+        await this.db.update(tenantMembers).set({ userId: user.id }).where(eq(tenantMembers.email, normalizedEmail));
+        await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, normalizedEmail));
+        this.logger.log(`Auto-linked tenant membership for ${normalizedEmail} to userId ${user.id}`);
+      }
+    }
 
     const platformRole = isConfiguredSuperAdminEmail(user.email)
       ? 'super_admin'
       : user.platformRole;
 
     // SECURITY: If the user has no tenant membership AND is not a super admin,
-    // they should not be granted access. This prevents random Google sign-ins
-    // from falling through to the DEFAULT_ADMIN_TENANT_ID env var.
+    // they should not be granted access.
     if (!member && platformRole !== 'super_admin') {
       this.logger.warn(`Login rejected: user ${user.email} has no tenant membership`);
       throw new UnauthorizedException(
