@@ -279,12 +279,27 @@ export class AdminService {
       });
     }
 
-    const decoded = this.encryption.decrypt(
-      cred.usernameEncrypted,
-      cred.passwordEncrypted,
-      cred.encryptionIv,
-      cred.authTag,
-    );
+    let decoded: { username: string; password: string };
+    try {
+      decoded = this.encryption.decrypt(
+        cred.usernameEncrypted,
+        cred.passwordEncrypted,
+        cred.encryptionIv,
+        cred.authTag,
+      );
+    } catch (err) {
+      this.logger.error(`Decryption failed for tenant ${tenantId} (${softwareType}): ${(err as Error).message}`);
+      await this.db
+        .update(tenantCredentials)
+        .set({
+          sessionStatus: 'FAILED',
+          updatedAt: new Date(),
+          failureReason: 'Credentials could not be decrypted. Please disconnect and reconnect this integration.',
+          failureKind: 'INVALID_CREDENTIALS',
+        })
+        .where(eq(tenantCredentials.id, cred.id));
+      return { success: false, message: 'Credentials could not be decrypted.' };
+    }
     const adapter = this.adapters.getAdapter(softwareType);
     const result = await adapter.testConnection(decoded);
     const next = result.success ? 'ACTIVE' : 'FAILED';
