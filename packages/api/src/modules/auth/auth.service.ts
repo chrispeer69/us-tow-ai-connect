@@ -63,15 +63,6 @@ export class AuthService {
       ? 'super_admin'
       : user.platformRole;
 
-    // SECURITY: If the user has no tenant membership AND is not a super admin,
-    // they should not be granted access.
-    if (!member && platformRole !== 'super_admin') {
-      this.logger.warn(`Login rejected: user ${user.email} has no tenant membership`);
-      throw new UnauthorizedException(
-        'Your account is not associated with any company. Please ask your company admin to invite you first.',
-      );
-    }
-
     const payload: JwtPayload = {
       userId: user.id,
       email: user.email,
@@ -168,21 +159,7 @@ export class AuthService {
     let [user] = await this.db.select().from(users).where(or(eq(users.googleId, profile.id), eq(users.email, email))).limit(1);
 
     if (!user) {
-      // SECURITY: Before creating a user, check if they were invited (have a
-      // tenantMembers row) or own a tenant. If neither, they are a stranger
-      // and should NOT be auto-provisioned into the system.
-      const [existingMember] = await this.db.select().from(tenantMembers).where(eq(tenantMembers.email, email)).limit(1);
-      const [existingTenant] = await this.db.select().from(tenants).where(eq(tenants.ownerEmail, email)).limit(1);
-      const isSuperAdmin = isConfiguredSuperAdminEmail(email);
-
-      if (!existingMember && !existingTenant && !isSuperAdmin) {
-        this.logger.warn(`Google OAuth rejected for unknown email: ${email}`);
-        throw new UnauthorizedException(
-          'No account found for this email. Please ask your company admin to invite you, or sign up with a company name first.',
-        );
-      }
-
-      // Create user from Google Profile (they are a known/invited user)
+      // Create user from Google Profile
       const [u] = await this.db.insert(users).values({
         email,
         googleId: profile.id,
@@ -190,7 +167,7 @@ export class AuthService {
       }).returning();
       user = u;
       
-      // Link to existing tenants
+      // Auto-link to any existing tenant memberships or ownership by email
       await this.db.update(tenantMembers).set({ userId: u.id }).where(eq(tenantMembers.email, email));
       await this.db.update(tenants).set({ ownerId: u.id }).where(eq(tenants.ownerEmail, email));
     } else {
