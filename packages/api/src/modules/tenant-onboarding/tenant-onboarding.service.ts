@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { and, eq, gt } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
 import { randomBytes, createHash } from 'crypto';
@@ -52,6 +53,7 @@ export class TenantOnboardingService {
     private readonly adapters: AdapterFactory,
     private readonly notifications: NotificationService,
     private readonly captcha: CaptchaService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async startDraft(body: OnboardingStartBody, clientIp: string) {
@@ -403,6 +405,19 @@ export class TenantOnboardingService {
       apiKeyPlaintext,
     });
 
+    // Fetch the user to get their ID for the JWT
+    const [user] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, form.step2.adminEmail.trim().toLowerCase())).limit(1);
+
+    // 3. Issue a fresh JWT so the frontend doesn't get stuck in an onboarding loop
+    const payload = {
+      userId: user?.id || 'anonymous',
+      email: form.step2.adminEmail.trim().toLowerCase(),
+      tenantId,
+      role: 'OWNER',
+      platformRole: 'tenant_admin',
+    };
+    const access_token = this.jwtService.sign(payload);
+
     return {
       tenantId,
       apiKey: apiKeyPlaintext,
@@ -410,6 +425,7 @@ export class TenantOnboardingService {
       knowledgePackUrl: this.buildKnowledgePackUrl(tenantId, 'md'),
       knowledgePackJsonUrl: this.buildKnowledgePackUrl(tenantId, 'json'),
       adminUrl: `${process.env.WEB_PUBLIC_URL ?? 'http://localhost:3000'}/admin/integrations?tenant=${tenantId}`,
+      access_token,
     };
   }
 

@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -96,6 +97,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function OnboardingClient() {
+  const { setToken } = useAuth();
   const [step, setStep] = useState<StepNumber>(1);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [captchaRequired, setCaptchaRequired] = useState(false);
@@ -198,10 +200,14 @@ export function OnboardingClient() {
         apiKey: string;
         knowledgePackUrl: string;
         adminUrl: string;
+        access_token?: string;
       }>(`/v1/onboarding/complete`, {
         method: 'POST',
         body: JSON.stringify({ draftId: id, captchaToken: captchaToken || undefined }),
       });
+      if (out.access_token) {
+        setToken(out.access_token);
+      }
       setResult(out);
     } catch (err) {
       setError((err as Error).message);

@@ -33,6 +33,6 @@ function resolveJwtSecret(): string {
   ],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy, GoogleStrategy, AuthEmailService],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
