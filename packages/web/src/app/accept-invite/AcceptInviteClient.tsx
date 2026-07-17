@@ -28,16 +28,15 @@ interface ApiError {
   message?: string;
 }
 
-async function postAcceptInvite(token: string, email: string, name: string) {
+async function postAcceptInvite(token: string, email: string, name: string, password?: string) {
   const res = await fetch(`${API_BASE}/v1/auth/accept-invite`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       token,
       ...(email ? { email } : {}),
-      // `name` is forwarded for forward-compat; today's API schema strips it.
-      // See docs/sessions/S64_BLOCKERS.md.
       ...(name ? { name } : {}),
+      ...(password ? { password } : {}),
     }),
   });
   let body: ApiError = {};
@@ -64,6 +63,8 @@ export function AcceptInviteClient({ token, email }: { token: string; email: str
   const [phase, setPhase] = useState<Phase>(initial);
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const isSubmitting = phase.kind === 'submitting';
 
@@ -88,10 +89,15 @@ export function AcceptInviteClient({ token, email }: { token: string; email: str
       setNameError('Name must be 255 characters or fewer.');
       return;
     }
+    if (password.length < 8) {
+      setPasswordError('Password must be at least 8 characters.');
+      return;
+    }
     setNameError(null);
+    setPasswordError(null);
     setPhase({ kind: 'submitting' });
     try {
-      const { status, body } = await postAcceptInvite(token, email, trimmed);
+      const { status, body } = await postAcceptInvite(token, email, trimmed, password);
       const fallback =
         body.message ?? `We couldn't accept your invitation (status ${status}). Try again.`;
       setPhase(phaseFromResponse(status, body.code, fallback));
@@ -235,10 +241,17 @@ export function AcceptInviteClient({ token, email }: { token: string; email: str
               />
             </Field>
 
-            <div className="rounded-[12px] border border-[var(--border-color)] bg-[var(--surface-low)] p-3 text-xs text-[var(--text-secondary)]">
-              Sign-in credentials aren't set up here yet — your administrator will follow up with
-              how to access the dashboard after you accept.
-            </div>
+            <Field label="Create a password" htmlError={passwordError}>
+              <Input
+                type="password"
+                data-testid="accept-invite-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                aria-invalid={passwordError ? 'true' : 'false'}
+              />
+            </Field>
 
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
               <Button

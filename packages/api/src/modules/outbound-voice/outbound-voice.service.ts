@@ -644,6 +644,13 @@ export class OutboundVoiceService {
           to: phone,
           body,
           tenantId: input.tenantId,
+          ghlData: {
+            customer_name: input.customerName,
+            customer_phone: input.customerPhone,
+            reason: input.reason,
+            job_id: input.jobId,
+            error: input.error,
+          },
         })
         .catch((err) =>
           this.logger.warn(
@@ -714,6 +721,31 @@ export class OutboundVoiceService {
 
     await this.db.update(outboundCallLogs).set(update).where(eq(outboundCallLogs.id, log.id));
 
+    // Send CONVINI SMS to customer if the AI promised it
+    if (update.conviniLinkSent && log.customerPhone) {
+      const tenantRows = await this.db.select().from(tenants).where(eq(tenants.id, log.tenantId)).limit(1);
+      const tenant = tenantRows[0];
+      if (tenant) {
+        const cfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
+        if (cfg.sms_convini !== false) {
+          const conviniLink = (cfg.convini_link as string) || 'https://convini.live';
+          const body = `Hi from ${tenant.companyName}! Here is the free CONVINI app we mentioned to track your tow and get help faster next time: ${conviniLink}`;
+          
+          await this.sms.sendSms({
+            to: log.customerPhone,
+            body,
+            tenantId: log.tenantId,
+            ghlData: {
+              customer_name: log.customerName,
+              convini_link: conviniLink,
+            }
+          }).catch((err) =>
+            this.logger.warn(`[outbound-voice] Convini SMS to customer failed phone=${log.customerPhone}: ${(err as Error).message}`),
+          );
+        }
+      }
+    }
+
     if (shouldNotifyManagers) {
       await this.notifyManagersOfFlipWin(log, {
         ...update,
@@ -767,7 +799,23 @@ export class OutboundVoiceService {
 
     for (const phone of recipients) {
       await this.sms
-        .sendSms({ to: phone, body, tenantId: log.tenantId })
+        .sendSms({
+          to: phone,
+          body,
+          tenantId: log.tenantId,
+          ghlData: {
+            customer_name: log.customerName,
+            customer_phone: log.customerPhone,
+            vehicle: log.vehicle,
+            issue: log.issueType,
+            original_destination: log.originalDestination,
+            nearest_our_shop: merged.nearestOurShop ?? log.nearestOurShop,
+            accepted_offer: pickAcceptedOfferForSms(merged),
+            call_duration_seconds: merged.callDurationSeconds ?? log.callDurationSeconds,
+            transcript_url: merged.callRecordingUrl ?? log.callRecordingUrl,
+            job_number: log.id.slice(0, 8),
+          },
+        })
         .catch((err) =>
           this.logger.warn(
             `[outbound-voice] flip win SMS failed phone=${phone} log=${log.id}: ${(err as Error).message}`,

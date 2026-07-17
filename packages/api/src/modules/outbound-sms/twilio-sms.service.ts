@@ -8,6 +8,7 @@ export interface SendSmsParams {
   to: string;
   body: string;
   tenantId: string;
+  ghlData?: Record<string, unknown>; // Optional structured data for GHL webhook templates
   related?: {
     trackingLinkId?: string | null;
     flipRequestId?: string | null;
@@ -39,17 +40,26 @@ export class TwilioSmsService {
   private readonly client: Twilio | null;
   private readonly fromNumber: string;
   private readonly baseUrl: string;
+  private readonly ghlWebhookUrl: string | undefined;
+  private readonly ghlWebhookSecret: string | undefined;
 
   constructor(@Inject(DB_CLIENT) private readonly db: DbClient) {
     const sid = process.env.TWILIO_ACCOUNT_SID;
     const token = process.env.TWILIO_AUTH_TOKEN;
     this.fromNumber = process.env.TWILIO_PHONE_NUMBER ?? '';
     this.baseUrl = process.env.PUBLIC_BASE_URL ?? 'http://localhost:3001';
+    
+    this.ghlWebhookUrl = process.env.GHL_SMS_WEBHOOK_URL;
+    this.ghlWebhookSecret = process.env.GHL_SMS_SECRET;
 
     if (!sid || sid.startsWith('REPLACE_ME') || !token || token.startsWith('REPLACE_ME')) {
-      this.logger.warn(
-        'TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured — outbound SMS will be logged only',
-      );
+      if (this.ghlWebhookUrl) {
+        this.logger.log('Twilio unconfigured, but GHL_SMS_WEBHOOK_URL is set. Using GHL for outbound SMS.');
+      } else {
+        this.logger.warn(
+          'TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not configured and GHL webhook not set — outbound SMS will be logged only',
+        );
+      }
       this.client = null;
       return;
     }
@@ -57,6 +67,7 @@ export class TwilioSmsService {
   }
 
   isConfigured(): boolean {
+    if (this.ghlWebhookUrl) return true;
     return this.client !== null && !!this.fromNumber;
   }
 
@@ -76,9 +87,9 @@ export class TwilioSmsService {
       };
     }
 
-    if (!this.client || !this.fromNumber) {
+    if (!this.isConfigured()) {
       this.logger.warn(
-        `[twilio-fallback] SMS not sent (Twilio unconfigured) to=${to} body="${body.slice(0, 80)}"`,
+        `[sms-fallback] SMS not sent (Unconfigured) to=${to} body="${body.slice(0, 80)}"`,
       );
       const inserted = await this.db
         .insert(smsMessages)
@@ -103,7 +114,7 @@ export class TwilioSmsService {
         tenantId,
         direction: 'outbound',
         toPhone: to,
-        fromPhone: this.fromNumber,
+        fromPhone: this.ghlWebhookUrl ? 'GHL_WEBHOOK' : this.fromNumber,
         body,
         status: 'queued',
         relatedTrackingLinkId: related?.trackingLinkId ?? null,
@@ -113,25 +124,63 @@ export class TwilioSmsService {
     const row = inserted[0];
 
     try {
-      const message = await this.client.messages.create({
-        to,
-        from: this.fromNumber,
-        body,
-        statusCallback: `${this.baseUrl}/webhooks/twilio/sms-status-callback`,
-      });
-      await this.db
-        .update(smsMessages)
-        .set({ twilioSid: message.sid, status: message.status ?? 'sent' })
-        .where(eq(smsMessages.id, row.id));
-      return {
-        id: row.id,
-        twilioSid: message.sid,
-        status: message.status ?? 'sent',
-        deduped: false,
-      };
+      if (this.ghlWebhookUrl) {
+        // Send via GHL Webhook
+        const payload: Record<string, unknown> = {
+          phone: to,
+          message_body: body,
+          secret_token: this.ghlWebhookSecret,
+        };
+        if (params.ghlData) {
+          payload.raw_data = params.ghlData;
+        }
+
+        const res = await fetch(this.ghlWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        
+        if (!res.ok) {
+          throw new Error(`GHL Webhook returned status ${res.status}`);
+        }
+        
+        const pseudoSid = `ghl_${row.id}`;
+        await this.db
+          .update(smsMessages)
+          .set({ twilioSid: pseudoSid, status: 'sent' })
+          .where(eq(smsMessages.id, row.id));
+          
+        return {
+          id: row.id,
+          twilioSid: pseudoSid,
+          status: 'sent',
+          deduped: false,
+        };
+      } else if (this.client) {
+        // Send via Twilio
+        const message = await this.client.messages.create({
+          to,
+          from: this.fromNumber,
+          body,
+          statusCallback: `${this.baseUrl}/webhooks/twilio/sms-status-callback`,
+        });
+        await this.db
+          .update(smsMessages)
+          .set({ twilioSid: message.sid, status: message.status ?? 'sent' })
+          .where(eq(smsMessages.id, row.id));
+        return {
+          id: row.id,
+          twilioSid: message.sid,
+          status: message.status ?? 'sent',
+          deduped: false,
+        };
+      } else {
+        throw new Error("No configured SMS provider");
+      }
     } catch (err) {
       const msg = (err as Error).message;
-      this.logger.warn(`Twilio SMS send failed to=${to}: ${msg}`);
+      this.logger.warn(`SMS send failed to=${to}: ${msg}`);
       await this.db
         .update(smsMessages)
         .set({ status: 'failed', error: msg })

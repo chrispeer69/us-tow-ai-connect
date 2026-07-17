@@ -31,6 +31,7 @@ const ROLES: Role[] = ['OWNER', 'DISPATCHER', 'DRIVER', 'ACCOUNTING', 'VIEWER'];
 
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
+  const [me, setMe] = useState<{ role: Role } | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -45,8 +46,12 @@ export default function MembersPage() {
   async function fetchMembers() {
     setLoading(true);
     try {
-      const data = await api<Member[]>('/v1/admin/members');
+      const [data, meData] = await Promise.all([
+        api<Member[]>('/v1/admin/members'),
+        api<{ role: Role }>('/v1/admin/members/me')
+      ]);
       setMembers(data);
+      setMe(meData);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -185,28 +190,33 @@ export default function MembersPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={m.status} />
-                    <Select
-                      value={m.role}
-                      onValueChange={(v) => changeRole(m.id, v as Role)}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ROLES.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {r}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => remove(m.id)}
-                    >
-                      Remove
-                    </Button>
+                    
+                    {me?.role === 'OWNER' && (
+                      <>
+                        <Select
+                          value={m.role}
+                          onValueChange={(v) => changeRole(m.id, v as Role)}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLES.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {r}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => remove(m.id)}
+                        >
+                          Remove
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </li>
               ))}

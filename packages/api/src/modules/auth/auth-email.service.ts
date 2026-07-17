@@ -48,4 +48,39 @@ export class AuthEmailService {
       this.logger.log(`[DRY RUN] Would send OTP ${otpCode} to ${toEmail}`);
     }
   }
+
+  async sendInviteEmail(toEmail: string, inviteUrl: string, companyName: string): Promise<void> {
+    const subject = `You've been invited to join ${companyName} on AI-Connect`;
+    const text = `You've been invited to join ${companyName}'s workspace on US Tow AI-Connect.\n\nClick the link below to accept your invitation and set up your account:\n\n${inviteUrl}\n\nThis link will expire in 7 days.\nIf you are not expecting this invitation, you can safely ignore this email.`;
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>You've been invited!</h2>
+        <p>You've been invited to join <strong>${companyName}</strong>'s workspace on US Tow AI-Connect.</p>
+        <p style="margin: 30px 0;">
+          <a href="${inviteUrl}" style="background-color: #0066cc; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Accept Invitation
+          </a>
+        </p>
+        <p style="color: #666; font-size: 14px;">This link will expire in 7 days.</p>
+      </div>
+    `;
+
+    if (this.transporter) {
+      try {
+        await this.transporter.sendMail({
+          from: this.fromAddress,
+          to: toEmail,
+          subject,
+          text,
+          html,
+        });
+        this.logger.log(`Sent invite email to ${toEmail}`);
+      } catch (err) {
+        this.logger.error(`Failed to send invite email: ${(err as Error).message}`);
+        // don't throw, just log so we don't crash the invite flow
+      }
+    } else {
+      this.logger.log(`[DRY RUN] Would send invite email to ${toEmail} for ${companyName}`);
+    }
+  }
 }

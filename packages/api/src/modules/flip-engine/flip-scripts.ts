@@ -60,10 +60,11 @@ export interface ScriptContext {
   bodyShop1?: string | null;
   bodyShop2?: string | null;
 
-  // Toggles
-  rentalsAvailable: boolean;
+  // Add-ons
+  rentalsAvailable: boolean; // if true, AI can mention rental cars
+  pitchConvini: boolean; // if true, AI will pitch CONVINI app
 
-  // Customization
+  // Script overrides
   customAgentRules?: string | null;
   scriptBlocks?: {
     opening?: string | null;
@@ -268,10 +269,14 @@ function globalRules(ctx: ScriptContext): string {
     `- Do not pitch repair-shop offers for lockout, fuel delivery, single flat tire, jump-start-only, or winch-out-only calls.`,
     `- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.`,
     `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
-    `- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.`,
+    ...(ctx.pitchConvini ? [
+      `- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.`,
+    ] : []),
     `- Never invent prices, times, names, or addresses — use only what's provided here.`,
     `- The ONLY phone number you may give the customer is {{callback_number}}. Never read out the caller ID or any other number.`,
-    `- When you offer the app, say "I'm texting you the link now" — do not ask permission, do not read the link aloud, and do not ask whether it came through.`,
+    ...(ctx.pitchConvini ? [
+      `- When you offer the app, say "I'm texting you the link now" — do not ask permission, do not read the link aloud, and do not ask whether it came through.`,
+    ] : []),
     `- Never mention Google reviews, review incentives, or gift cards during the call.`,
     `- If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`,
   ];
@@ -417,11 +422,11 @@ function scenarioC(ctx: ScriptContext): string {
   
   const vars = baseVars(ctx);
   const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
-  const conviniBlock = [
+  const conviniBlock = ctx.pitchConvini ? [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
-  ];
+  ] : [];
 
   return [
     `# SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI)`,

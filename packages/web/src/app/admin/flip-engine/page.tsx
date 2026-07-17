@@ -1378,6 +1378,21 @@ AI: "Drive safe."`;
   const [mentionRentals, setMentionRentals] = useState<boolean>(
     config.config?.mention_rentals !== false,
   );
+  const [smsFlipSuccess, setSmsFlipSuccess] = useState<boolean>(
+    config.config?.sms_flip_success !== false,
+  );
+  const [smsFlipFailure, setSmsFlipFailure] = useState<boolean>(
+    config.config?.sms_flip_failure !== false,
+  );
+  const [smsReport, setSmsReport] = useState<boolean>(
+    config.config?.sms_report !== false,
+  );
+  const [smsConvini, setSmsConvini] = useState<boolean>(
+    config.config?.sms_convini !== false,
+  );
+  const [pitchConvini, setPitchConvini] = useState<boolean>(
+    config.config?.pitch_convini !== false,
+  );
   const [customAgentRules, setCustomAgentRules] = useState<string>(
     (config.config?.custom_agent_rules as string) || DEFAULT_AGENT_RULES,
   );
@@ -1422,6 +1437,11 @@ AI: "Drive safe."`;
             batch_summary_size: batchSize,
             daily_report_hour_local: reportHour,
             mention_rentals: mentionRentals,
+            sms_flip_success: smsFlipSuccess,
+            sms_flip_failure: smsFlipFailure,
+            sms_report: smsReport,
+            sms_convini: smsConvini,
+            pitch_convini: pitchConvini,
             custom_agent_rules: customAgentRules,
             max_shop_distance_miles: maxDistanceMiles,
             diagnostic_value: diagnosticValue,
@@ -1611,6 +1631,66 @@ AI: "Drive safe."`;
               className="h-4 w-4"
             />
             <span className="text-sm">Mention CONVINI rental fleet (35 vehicles)</span>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={smsFlipSuccess}
+              onChange={(e) => setSmsFlipSuccess(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm">Send SMS on Flip Success</span>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={smsFlipFailure}
+              onChange={(e) => setSmsFlipFailure(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm">Send SMS on Flip Failure (Attention Needed)</span>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={smsReport}
+              onChange={(e) => setSmsReport(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm">Send SMS for Batch/Daily Reports</span>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={smsConvini}
+              onChange={(e) => setSmsConvini(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm">Send CONVINI App Link SMS to Customer</span>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={pitchConvini}
+              onChange={(e) => setPitchConvini(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-sm">Pitch CONVINI App on Calls</span>
           </label>
         </div>
 

@@ -140,7 +140,7 @@ export class AuthService {
           email: email,
           name: `${firstName} ${lastName}`.trim(),
           role: 'OWNER',
-          status: 'ACCEPTED',
+          status: 'ACTIVE',
         });
       }
     }).catch(err => {

@@ -22,10 +22,20 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(window.atob(base64));
       
-      if (!payload.tenantId && payload.platformRole !== 'super_admin') {
-        setIsReady(false);
-        router.push('/onboarding');
-        return;
+      if (!payload.tenantId) {
+        if (payload.platformRole === 'super_admin') {
+          // Super admins without a tenant should go to the tenants list to impersonate
+          if (!window.location.pathname.startsWith('/admin/tenants')) {
+            setIsReady(false);
+            router.push('/admin/tenants');
+            return;
+          }
+        } else {
+          // Normal users without a tenant go to onboarding
+          setIsReady(false);
+          router.push('/onboarding');
+          return;
+        }
       }
     } catch (e) {
       // If token parsing fails, force sign in

@@ -25,5 +25,7 @@ export type UpdateMemberBody = z.infer<typeof UpdateMemberSchema>;
 export const AcceptInviteSchema = z.object({
   token: z.string().min(1).max(255),
   email: z.string().email().max(255).optional(),
+  name: z.string().max(255).optional(),
+  password: z.string().min(8).max(255).optional(), // optional for backwards compatibility, but required by new UI
 });
 export type AcceptInviteBody = z.infer<typeof AcceptInviteSchema>;

@@ -1,4 +1,3 @@
-import { randomBytes } from 'crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -8,10 +7,12 @@ import {
   NotFoundException,
   Inject,
 } from '@nestjs/common';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql, asc } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { rolePermissions, tenantMembers } from '../../db/schema';
-import { SendGridEmailService } from '../admin-digest/sendgrid-email.service';
+import * as bcrypt from 'bcryptjs';
+import { tenantMembers, tenants, users, rolePermissions } from '../../db/schema';
+import { AuthEmailService } from '../auth/auth-email.service';
 import {
   PERMISSION_MATRIX,
   grantsSatisfy,
@@ -27,12 +28,12 @@ export interface InviteInput {
 }
 
 export interface UpdateInput {
+  name?: string;
   role?: Role;
   status?: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
-  name?: string;
 }
 
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class MembersService {
@@ -40,7 +41,7 @@ export class MembersService {
 
   constructor(
     @Inject(DB_CLIENT) private readonly db: DbClient,
-    private readonly email: SendGridEmailService,
+    private readonly authEmail: AuthEmailService,
   ) {}
 
   // ─── queries ────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ export class MembersService {
     return { status: 'success' as const };
   }
 
-  async acceptInvite(token: string, email?: string) {
+  async acceptInvite(token: string, email?: string, name?: string, password?: string) {
     const trimmed = token.trim();
     if (!trimmed) {
       throw new BadRequestException({
@@ -230,12 +231,38 @@ export class MembersService {
         message: 'This invitation belongs to a different email address',
       });
     }
+    const userEmail = member.email.trim().toLowerCase();
+    
+    // Create the user record if they don't exist yet
+    let userRow = (await this.db.select().from(users).where(eq(users.email, userEmail)).limit(1))[0];
+    
+    if (!userRow) {
+      if (!password) {
+        throw new BadRequestException({
+          status: 'error',
+          code: 'MISSING_PASSWORD',
+          message: 'A password is required to create your account',
+        });
+      }
+      
+      const passwordHash = await bcrypt.hash(password, 10);
+      
+      const insertedUser = await this.db.insert(users).values({
+        email: userEmail,
+        passwordHash,
+        name: name || member.name || userEmail.split('@')[0],
+      }).returning();
+      userRow = insertedUser[0];
+    }
+
     const now = new Date();
     const updated = (
       await this.db
         .update(tenantMembers)
         .set({
+          userId: userRow.id,
           status: 'ACTIVE',
+          name: name || member.name,
           acceptedAt: now,
           lastLoginAt: now,
           inviteToken: null,
@@ -299,29 +326,21 @@ export class MembersService {
   ) {
     const base = (process.env.WEB_PUBLIC_URL ?? 'http://localhost:3000').replace(/\/$/, '');
     const acceptUrl = `${base}/accept-invite?token=${token}&email=${encodeURIComponent(to)}`;
-    const subject = "You've been invited to US Tow Dispatch";
-    const html = `
-      <p>You've been invited to join a US Tow Dispatch workspace as <strong>${role}</strong>.</p>
-      <p><a href="${acceptUrl}">Accept your invitation</a></p>
-      <p>This link expires in 7 days. If you weren't expecting this, you can ignore it.</p>
-    `.trim();
+    
     try {
-      const result = await this.email.sendEmail({
-        tenantId,
-        to,
-        subject,
-        html,
-        text: `Accept your invitation: ${acceptUrl} (expires in 7 days)`,
-        related: { kind: 'member_invite' },
-      });
-      if (result.status === 'logged_only') {
-        // SendGrid not configured — surface the link for the operator.
-        this.logger.warn(`Invite (logged_only) for ${to}: ${acceptUrl}`);
-      }
+      const tenantRows = await this.db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const companyName = tenantRows[0]?.companyName ?? 'US Tow Dispatch';
+
+      await this.authEmail.sendInviteEmail(to, acceptUrl, companyName);
     } catch (err) {
       // Email is best-effort; the invite row already exists and can be re-sent.
       this.logger.error(
-        `Failed to send invite email to ${to}: ${(err as Error).message}`,
+        `Failed to send invite email to ${to} for tenant=${tenantId}: ${(err as Error).message}`,
+        (err as Error).stack,
       );
     }
   }

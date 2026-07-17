@@ -15,6 +15,6 @@ export class AcceptInviteController {
 
   @Post('accept-invite')
   accept(@Body(new ZodValidationPipe(AcceptInviteSchema)) body: AcceptInviteBody) {
-    return this.members.acceptInvite(body.token, body.email);
+    return this.members.acceptInvite(body.token, body.email, body.name, body.password);
   }
 }

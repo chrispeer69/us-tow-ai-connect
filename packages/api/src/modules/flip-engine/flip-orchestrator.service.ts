@@ -283,6 +283,7 @@ export class FlipOrchestratorService {
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
+      pitchConvini: (cfg.pitch_convini ?? globalCfg.pitch_convini ?? true) !== false,
       customAgentRules:
         (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
       scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
@@ -452,6 +453,7 @@ export class FlipOrchestratorService {
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
+      pitchConvini: (cfg.pitch_convini ?? globalCfg.pitch_convini ?? true) !== false,
       customAgentRules:
         (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
       scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
@@ -783,6 +785,7 @@ export class FlipOrchestratorService {
         bodyShop1: null,
         bodyShop2: null,
         rentalsAvailable: mentionRentals,
+        pitchConvini: (cfg.pitch_convini ?? globalCfg.pitch_convini ?? true) !== false,
         customAgentRules: (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
         scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
         globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
@@ -946,6 +949,7 @@ export class FlipOrchestratorService {
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
+      pitchConvini: (cfg.pitch_convini ?? globalCfg.pitch_convini ?? true) !== false,
       customAgentRules:
         (cfg.custom_agent_rules as string) || (globalCfg.custom_agent_rules as string) || null,
       scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,

@@ -42,6 +42,8 @@ export class FlipNotifierService {
   async notifyFlipWin(tenantId: string, win: FlipWinTextInput): Promise<{ sent: number }> {
     const tenant = await this.fetchTenant(tenantId);
     if (!tenant) return { sent: 0 };
+    const cfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
+    if (cfg.sms_flip_success === false) return { sent: 0 };
     const recipients = readManagerPhones(tenant);
     if (recipients.length === 0) return { sent: 0 };
 
@@ -60,13 +62,40 @@ export class FlipNotifierService {
     return { sent };
   }
 
+  // ---------- stream 1.5: real-time FAILURE ----------
+
+  async notifyFlipFailure(tenantId: string, loss: { customerName: string; issue: string; reason: string }): Promise<{ sent: number }> {
+    const tenant = await this.fetchTenant(tenantId);
+    if (!tenant) return { sent: 0 };
+    const cfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
+    if (cfg.sms_flip_failure === false) return { sent: 0 };
+
+    const recipients = readManagerPhones(tenant);
+    if (recipients.length === 0) return { sent: 0 };
+
+    const body = `🚨 AI Dispatch Alert (${tenant.companyName}): We just lost a flip for ${loss.customerName} (${loss.issue}). Reason: ${loss.reason}. Attention may be needed.`;
+    
+    let sent = 0;
+    for (const phone of recipients) {
+      try {
+        await this.sms.sendSms({ to: phone, body, tenantId });
+        sent += 1;
+      } catch (err) {
+        this.logger.warn(
+          `[flip-notifier] FAILURE SMS to ${phone} threw: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { sent };
+  }
+
   // ---------- stream 2: every-N batch summary ----------
 
   async maybeSendBatchSummary(tenantId: string): Promise<{ sent: number; thresholdHit: boolean }> {
     const tenant = await this.fetchTenant(tenantId);
     if (!tenant) return { sent: 0, thresholdHit: false };
     const cfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
-    if (cfg.send_batch_summaries === false) return { sent: 0, thresholdHit: false };
+    if (cfg.send_batch_summaries === false || cfg.sms_report === false) return { sent: 0, thresholdHit: false };
 
     const windowSize = Number(cfg.batch_summary_size ?? 10);
 
@@ -172,7 +201,7 @@ export class FlipNotifierService {
     const tenant = await this.fetchTenant(tenantId);
     if (!tenant) return { sent: 0, due: false };
     const cfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
-    if (cfg.send_daily_report === false) return { sent: 0, due: false };
+    if (cfg.send_daily_report === false || cfg.sms_report === false) return { sent: 0, due: false };
 
     const targetHour = Number(cfg.daily_report_hour_local ?? 21);
     const localNow = getTenantLocalNow(tenant.timezone);

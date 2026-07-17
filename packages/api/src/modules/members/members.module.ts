@@ -5,14 +5,14 @@
 // from AdminDigestModule (soft dependency — logs only if unconfigured).
 
 import { Module } from '@nestjs/common';
-import { AdminDigestModule } from '../admin-digest/admin-digest.module';
+import { AuthModule } from '../auth/auth.module';
 import { AcceptInviteController } from './accept-invite.controller';
 import { MembersController } from './members.controller';
 import { MembersService } from './members.service';
 import { PermissionGuard } from './permission.guard';
 
 @Module({
-  imports: [AdminDigestModule],
+  imports: [AuthModule],
   controllers: [MembersController, AcceptInviteController],
   providers: [MembersService, PermissionGuard],
   exports: [MembersService, PermissionGuard],
