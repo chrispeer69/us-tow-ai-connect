@@ -53,9 +53,17 @@ export class AuthService {
 
       if (member) {
         // Auto-link this membership to the user's ID for future logins
-        await this.db.update(tenantMembers).set({ userId: user.id }).where(eq(tenantMembers.email, normalizedEmail));
+        const now = new Date();
+        await this.db.update(tenantMembers).set({ 
+          userId: user.id,
+          status: 'ACTIVE',
+          acceptedAt: now,
+          lastLoginAt: now,
+          inviteToken: null,
+          inviteTokenExpiresAt: null,
+        }).where(eq(tenantMembers.email, normalizedEmail));
         await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, normalizedEmail));
-        this.logger.log(`Auto-linked tenant membership for ${normalizedEmail} to userId ${user.id}`);
+        this.logger.log(`Auto-linked and activated tenant membership for ${normalizedEmail} to userId ${user.id}`);
       }
     }
 
@@ -117,7 +125,15 @@ export class AuthService {
       const existingTenants = await tx.select().from(tenants).where(eq(tenants.ownerEmail, email));
       
       if (existingMembers.length > 0 || existingTenants.length > 0) {
-        await tx.update(tenantMembers).set({ userId: u.id }).where(eq(tenantMembers.email, email));
+        const now = new Date();
+        await tx.update(tenantMembers).set({ 
+          userId: u.id,
+          status: 'ACTIVE',
+          acceptedAt: now,
+          lastLoginAt: now,
+          inviteToken: null,
+          inviteTokenExpiresAt: null,
+        }).where(eq(tenantMembers.email, email));
         await tx.update(tenants).set({ ownerId: u.id }).where(eq(tenants.ownerEmail, email));
       } else if (companyName) {
         // Generate a proper API key (matches the pattern in tenant-onboarding.service.ts)

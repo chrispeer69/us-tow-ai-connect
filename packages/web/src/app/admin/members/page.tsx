@@ -48,10 +48,10 @@ export default function MembersPage() {
     try {
       const [data, meData] = await Promise.all([
         api<Member[]>('/v1/admin/members'),
-        api<{ role: Role }>('/v1/admin/members/me')
+        api<{ member: { role: Role } }>('/v1/admin/members/me')
       ]);
       setMembers(data);
-      setMe(meData);
+      setMe(meData.member);
     } catch (err) {
       setError((err as Error).message);
     } finally {
