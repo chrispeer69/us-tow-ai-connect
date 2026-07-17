@@ -31,7 +31,7 @@ const ROLES: Role[] = ['OWNER', 'DISPATCHER', 'DRIVER', 'ACCOUNTING', 'VIEWER'];
 
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
-  const [me, setMe] = useState<{ role: Role } | null>(null);
+  const [me, setMe] = useState<{ id: string; role: Role } | null>(null);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -48,7 +48,7 @@ export default function MembersPage() {
     try {
       const [data, meData] = await Promise.all([
         api<Member[]>('/v1/admin/members'),
-        api<{ member: { role: Role } }>('/v1/admin/members/me')
+        api<{ member: { id: string; role: Role } }>('/v1/admin/members/me')
       ]);
       setMembers(data);
       setMe(meData.member);
@@ -191,7 +191,7 @@ export default function MembersPage() {
                   <div className="flex items-center gap-2">
                     <StatusBadge status={m.status} />
                     
-                    {me?.role === 'OWNER' && (
+                    {me?.role === 'OWNER' && m.id !== me?.id && (
                       <>
                         <Select
                           value={m.role}
