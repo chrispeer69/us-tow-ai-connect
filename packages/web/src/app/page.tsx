@@ -224,11 +224,11 @@ export default function Home() {
       <StickyComparisonBar />
 
       {/* Navigation */}
-      <nav className="sticky top-0 z-40 backdrop-blur-xl bg-background/70 border-b border-border">
+      <nav aria-label="Primary" className="sticky top-0 z-40 backdrop-blur-xl bg-background/70 border-b border-border">
         <div className="container flex items-center justify-between h-16 lg:h-20">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30">
-              <Phone className="w-5 h-5 text-white" />
+              <Phone className="w-5 h-5 text-white" aria-hidden="true" />
             </div>
             <div>
               <div className="font-bold text-base leading-tight tracking-tight">US Tow AI-Connect</div>
@@ -243,6 +243,13 @@ export default function Home() {
             <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
+            <a
+              href="tel:+16146337935"
+              className="hidden lg:inline-flex items-center gap-1.5 text-sm font-bold text-blue-200 transition-colors hover:text-white"
+              aria-label="Call US Tow AI-Connect at 614-633-7935"
+            >
+              <Phone className="w-4 h-4" aria-hidden="true" /> 614-633-7935
+            </a>
             <Link
               href="/demo"
               className="hidden sm:inline-flex items-center rounded-full border border-cyan-400/50 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.16)] transition-colors hover:border-cyan-300 hover:bg-cyan-400/20 hover:text-white"
@@ -263,7 +270,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative pt-16 lg:pt-24 pb-20 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src={HERO_IMAGE} alt="Heavy-duty tow truck on a highway at night representing the AI-powered towing dispatch service" width={1920} height={1080} className="w-full h-full object-cover opacity-35" />
+          <img src={HERO_IMAGE} alt="Heavy-duty tow truck on a highway at night representing the AI-powered towing dispatch service" width={1920} height={1080} fetchPriority="high" decoding="async" className="w-full h-full object-cover opacity-35" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background"></div>
           <div className="absolute inset-0 bg-grid opacity-30"></div>
         </div>
@@ -489,7 +496,7 @@ export default function Home() {
       {/* Live Demo */}
       <section id="demo" className="py-24 lg:py-32 relative">
         <div className="absolute inset-0 z-0 opacity-30">
-          <img src={NETWORK_IMAGE} alt="Abstract network connectivity graphic illustrating the AI-Connect dispatch automation platform" width={1920} height={1080} className="w-full h-full object-cover" />
+          <img src={NETWORK_IMAGE} alt="Abstract network connectivity graphic illustrating the AI-Connect dispatch automation platform" width={1920} height={1080} loading="lazy" decoding="async" className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background/60 to-background"></div>
         </div>
         <div className="container relative z-10">
@@ -763,7 +770,7 @@ export default function Home() {
 
           <Card className="bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-card border-cyan-500/30 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-1/2 h-full opacity-25">
-              <img src={DASHBOARD_IMAGE} alt="US Tow Dispatch native dashboard showing zero-latency AI integration with real-time tow job data" width={1200} height={800} className="w-full h-full object-cover" />
+              <img src={DASHBOARD_IMAGE} alt="US Tow Dispatch native dashboard showing zero-latency AI integration with real-time tow job data" width={1200} height={800} loading="lazy" decoding="async" className="w-full h-full object-cover" />
             </div>
             <CardContent className="p-10 lg:p-14 relative z-10">
               <div className="max-w-2xl">
@@ -1369,6 +1376,8 @@ export default function Home() {
             alt="ConViniCar vendor network — auto repair, tow, body shops, and rental services connected through one intelligent system"
             width={1920}
             height={1080}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover opacity-40"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/85 to-background"></div>
@@ -1453,7 +1462,7 @@ export default function Home() {
       {/* Final CTA */}
       <section className="py-24 lg:py-32 relative overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src={NETWORK_IMAGE} alt="Blue Collar AI network background graphic for the US Tow AI-Connect call to action" width={1920} height={1080} className="w-full h-full object-cover opacity-30" />
+          <img src={NETWORK_IMAGE} alt="Blue Collar AI network background graphic for the US Tow AI-Connect call to action" width={1920} height={1080} loading="lazy" decoding="async" className="w-full h-full object-cover opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background"></div>
         </div>
         <div className="container relative z-10">

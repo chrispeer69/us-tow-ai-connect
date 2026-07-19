@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Manrope, Work_Sans } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
@@ -30,10 +30,10 @@ const OG_IMAGE =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: {
-    default: "US Tow AI-Connect | 24/7 AI Dispatcher for Towing Companies",
-    template: "%s | US Tow AI-Connect",
-  },
+  // Plain string default (no title.template): every sub-page already
+  // self-brands with "· US Tow AI-Connect", so a template here would
+  // double-brand them ("Privacy · US Tow AI-Connect | US Tow AI-Connect").
+  title: "US Tow AI-Connect | 24/7 AI Dispatcher for Towing Companies",
   description:
     "AI-Connect answers every inbound towing call 24/7 and makes outbound sales calls that confirm jobs, refer repair shops, and grow your dispatch revenue.",
   applicationName: "US Tow AI-Connect",
@@ -78,6 +78,14 @@ export const metadata: Metadata = {
       "AI-Connect answers every inbound towing call 24/7 and makes outbound sales calls that confirm jobs, refer repair shops, and grow your dispatch revenue.",
     images: [OG_IMAGE],
   },
+  manifest: "/manifest.webmanifest",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0e1a",
+  colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -91,6 +99,13 @@ export default function RootLayout({
       className={`${inter.variable} ${manrope.variable} ${workSans.variable}`}
     >
       <body className="antialiased">
+        {/* Accessibility: keyboard/screen-reader users can jump past the nav */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-md focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        >
+          Skip to main content
+        </a>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
