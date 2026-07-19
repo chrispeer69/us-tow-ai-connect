@@ -93,12 +93,53 @@ const LOCAL_BUSINESS_SCHEMA = {
   },
 };
 
+const FAQS: Array<{ q: string; a: string }> = [
+  {
+    q: "How is US Tow AI-Connect different from TowPilot AI?",
+    a: "AI-Connect answers every inbound call like TowPilot does — but it also makes outbound calls. It confirms new tow details, refers customers to your preferred auto repair shops, and promotes the CONVINI app, generating revenue TowPilot's inbound-only service can't.",
+  },
+  {
+    q: "How much does US Tow AI-Connect cost?",
+    a: "You pay per minute of usage: Alliance Profile is $0.30/min ($499 one-time setup), Alliance Elite is $0.25/min ($399 setup), and AI-Connect Shareholders pay $0.20/min with the setup fee waived. No contracts and no surprise overages.",
+  },
+  {
+    q: "Which dispatch software does it work with?",
+    a: "Towbook and the AAA Portal are live today. TOPS, Omadi, Dispatch Anywhere, and InTow integrations are coming soon. You connect your dispatch credentials and the AI scans your board every 60 seconds.",
+  },
+  {
+    q: "How long does setup take?",
+    a: "Most companies are live in hours. You plug in your dispatch software credentials, test the connection in about 30 seconds, and the AI begins handling inbound calls and placing outbound confirmation calls right away.",
+  },
+  {
+    q: "Is there a free trial?",
+    a: "Yes. AI-Connect includes a 14-day free trial with no credit card required. Setup takes minutes and you can cancel anytime.",
+  },
+  {
+    q: "Does the AI support languages other than English?",
+    a: "Yes. AI-Connect offers multi-language support, including English and Spanish, on both inbound and outbound calls.",
+  },
+];
+
+const FAQ_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQS.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+};
+
 export default function Home() {
   return (
     <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(LOCAL_BUSINESS_SCHEMA) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_SCHEMA) }}
       />
       <StickyComparisonBar />
 
@@ -138,6 +179,7 @@ export default function Home() {
         </div>
       </nav>
 
+      <main id="main-content">
       {/* Hero Section */}
       <section className="relative pt-16 lg:pt-24 pb-20 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 z-0">
@@ -1362,6 +1404,32 @@ export default function Home() {
         </div>
       </section>
 
+      {/* FAQ */}
+      <section id="faq" className="py-24 lg:py-32">
+        <div className="container">
+          <div className="max-w-2xl mb-16 mx-auto text-center">
+            <Badge className="mb-4 bg-blue-500/10 text-blue-400 border-blue-500/30 px-3 py-1 text-xs font-semibold tracking-wider uppercase">
+              FAQ
+            </Badge>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4">
+              Questions?
+              <br />
+              <span className="text-gradient-blue">We've got answers.</span>
+            </h2>
+          </div>
+          <div className="max-w-3xl mx-auto space-y-4">
+            {FAQS.map((item, i) => (
+              <Card key={i} className="bg-card/60 border-border/50">
+                <CardContent className="p-6">
+                  <h3 className="text-lg font-bold tracking-tight mb-2">{item.q}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.a}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Location / Map */}
       <section id="location" className="py-20 lg:py-28 bg-card/30 border-t border-border">
         <div className="container">
@@ -1413,6 +1481,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-border py-12 bg-card/30">
