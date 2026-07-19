@@ -118,6 +118,18 @@ const FAQS: Array<{ q: string; a: string }> = [
     q: "Does the AI support languages other than English?",
     a: "Yes. AI-Connect offers multi-language support, including English and Spanish, on both inbound and outbound calls.",
   },
+  {
+    q: "Is US Tow AI-Connect a replacement for TowPilot AI?",
+    a: "Yes. AI-Connect is built to replace TowPilot AI. It does everything TowPilot does — inbound answering, 24/7 coverage, live ETA lookups, impound inquiries, smart transfers, and multilingual support — plus outbound confirmation calls, an auto repair shop referral engine, CONVINI integration, dynamic day/night routing, and AAA portal integration, none of which TowPilot offers.",
+  },
+  {
+    q: "What makes the AI-Connect dispatcher better than other AI phone tools?",
+    a: "AI-Connect runs on coded, deterministic business logic instead of an unpredictable chatbot. It polls your dispatch board every 60 seconds, classifies destinations with Google Places, and executes automatic shop flips — so behavior is consistent and controllable, and pricing is flexible across Profile, Elite, and Shareholder tiers.",
+  },
+  {
+    q: "Can AI dispatch really cost almost nothing?",
+    a: "Effectively, yes. When a towing owner runs the full system, the outbound revenue engine — preferred-shop referrals and CONVINI — generates income that can offset the entire per-minute dispatch cost. Combined with the Shareholder rate of $0.20/min, your net AI dispatch cost can approach zero.",
+  },
 ];
 
 const FAQ_SCHEMA = {
@@ -130,12 +142,80 @@ const FAQ_SCHEMA = {
   })),
 };
 
+const SOFTWARE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "US Tow AI-Connect",
+  applicationCategory: "BusinessApplication",
+  applicationSubCategory: "AI Dispatcher for Towing Companies",
+  operatingSystem: "Web",
+  url: "https://www.ustowaiconnect.com",
+  description:
+    "AI dispatcher for towing companies. Answers every inbound call 24/7 and makes outbound calls that confirm jobs, refer repair shops, and grow revenue — built to replace TowPilot AI with coded, deterministic logic and flexible per-minute pricing.",
+  provider: {
+    "@type": "Organization",
+    name: "Blue Collar AI",
+    url: "https://www.bluecollarai.online",
+  },
+  featureList: [
+    "24/7 inbound AI call answering",
+    "Live ETA lookups from dispatch software",
+    "Impound inquiries and vehicle status",
+    "Outbound job confirmation calls",
+    "Preferred auto repair shop referral engine",
+    "CONVINI app promotion",
+    "Dynamic day/night call routing",
+    "AAA portal integration",
+    "Multilingual support (English, Spanish)",
+  ],
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Alliance Profile",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: "0.30",
+        priceCurrency: "USD",
+        unitText: "per minute",
+      },
+      description: "$0.30 per minute usage · $499 one-time setup.",
+    },
+    {
+      "@type": "Offer",
+      name: "Alliance Elite",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: "0.25",
+        priceCurrency: "USD",
+        unitText: "per minute",
+      },
+      description: "$0.25 per minute usage · $399 setup.",
+    },
+    {
+      "@type": "Offer",
+      name: "AI-Connect Shareholder",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: "0.20",
+        priceCurrency: "USD",
+        unitText: "per minute",
+      },
+      description:
+        "$0.20 per minute usage · setup waived · quarterly profit-sharing dividends and equity.",
+    },
+  ],
+};
+
 export default function Home() {
   return (
     <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(LOCAL_BUSINESS_SCHEMA) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(SOFTWARE_SCHEMA) }}
       />
       <script
         type="application/ld+json"

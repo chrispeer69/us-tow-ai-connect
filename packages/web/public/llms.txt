@@ -1,0 +1,45 @@
+# US Tow AI-Connect
+
+> US Tow AI-Connect is an AI dispatcher built for towing companies. It answers
+> every inbound call 24/7 and — unlike inbound-only tools — also makes outbound
+> calls that confirm jobs, refer customers to preferred repair shops, and
+> promote the CONVINI app, turning dispatch from a cost center into a revenue
+> engine. Built by Blue Collar AI, powered by US Tow Alliance.
+
+## What it is
+
+- An AI phone system for towing/roadside companies with two engines: **Inbound** (answer every call, live ETA lookups, impound inquiries, smart transfers, multilingual) and **Outbound** (call every new job, confirm details, refer preferred auto repair shops, promote CONVINI).
+- Runs on **coded, deterministic business logic** — not an unpredictable chatbot. It polls your dispatch board every 60 seconds, classifies destinations via Google Places, and executes automatic "flips" to your preferred shops.
+- Built to **replace TowPilot AI**: it does everything TowPilot does (inbound answering, 24/7 coverage, ETA lookups, impound inquiries, transfers, multilingual) **plus** outbound confirmation calls, an auto-shop referral engine, CONVINI integration, dynamic day/night routing, and AAA portal integration — none of which TowPilot offers.
+
+## Pricing (per-minute usage)
+
+- **Alliance Profile** — $0.30/min, $499 one-time setup.
+- **Alliance Elite** — $0.25/min, $399 setup.
+- **AI-Connect Shareholder** — $0.20/min, setup fee waived, plus quarterly profit-sharing dividends and equity.
+- No contracts, no surprise overages. 14-day free trial, no credit card required.
+- **Net-zero dispatch cost:** when an owner runs the full system, the outbound revenue engine (shop referrals + CONVINI) can offset the entire per-minute dispatch cost — making AI dispatch effectively free.
+
+## Works with
+
+- **Live today:** Towbook, AAA Portal.
+- **Coming soon:** TOPS, Omadi, Dispatch Anywhere, InTow.
+- Migration path to US Tow Dispatch unlocks a zero-latency native mode (<100ms, no scraping).
+
+## Who it's for
+
+Towing and roadside-assistance business owners who want to answer every call, generate revenue from every tow, and pay less than they do with TowPilot AI.
+
+## Contact
+
+- Website: https://www.ustowaiconnect.com
+- Phone: +1-614-633-7935
+- Email: chris@bluecollarai.online
+- Location: 3879 Regatta Ct, Lewis Center, OH 43035, USA
+- Founder: Chris Peer (Blue Collar AI)
+
+## Related
+
+- US Tow Alliance: https://www.ustowalliance.com
+- Blue Collar AI: https://www.bluecollarai.online
+- CONVINI: https://www.convini.vip
