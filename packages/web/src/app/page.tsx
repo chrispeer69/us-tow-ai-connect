@@ -48,9 +48,58 @@ const HERO_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJz
 const NETWORK_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/abstract-network-oA2VngdyJYwNm5mFK5keYA.webp";
 const DASHBOARD_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/dashboard-mockup-ELDckAk4NofknNGiKepd2n.webp";
 
+const LOCAL_BUSINESS_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "@id": "https://www.ustowaiconnect.com/#business",
+  name: "US Tow AI-Connect",
+  legalName: "Blue Collar AI",
+  url: "https://www.ustowaiconnect.com",
+  description:
+    "AI dispatcher for towing companies. AI-Connect answers every inbound call 24/7 and makes outbound sales calls that confirm jobs, refer repair shops, and grow revenue.",
+  image: HERO_IMAGE,
+  logo: "https://www.ustowaiconnect.com/favicon.svg",
+  telephone: "+1-614-633-7935",
+  email: "chris@bluecollarai.online",
+  priceRange: "$$",
+  founder: { "@type": "Person", name: "Chris Peer" },
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "3879 Regatta Ct",
+    addressLocality: "Lewis Center",
+    addressRegion: "OH",
+    postalCode: "43035",
+    addressCountry: "US",
+  },
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: 40.2217884,
+    longitude: -82.980971,
+  },
+  hasMap:
+    "https://www.google.com/maps?q=3879+Regatta+Ct,+Lewis+Center,+OH+43035",
+  areaServed: { "@type": "Country", name: "United States" },
+  sameAs: [
+    "https://www.ustowalliance.com",
+    "https://www.bluecollarai.online",
+  ],
+  contactPoint: {
+    "@type": "ContactPoint",
+    telephone: "+1-614-633-7935",
+    email: "chris@bluecollarai.online",
+    contactType: "sales",
+    areaServed: "US",
+    availableLanguage: ["English", "Spanish"],
+  },
+};
+
 export default function Home() {
   return (
     <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(LOCAL_BUSINESS_SCHEMA) }}
+      />
       <StickyComparisonBar />
 
       {/* Navigation */}
@@ -92,7 +141,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative pt-16 lg:pt-24 pb-20 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src={HERO_IMAGE} alt="Heavy-duty tow truck on a highway at night representing the AI-powered towing dispatch service" className="w-full h-full object-cover opacity-35" />
+          <img src={HERO_IMAGE} alt="Heavy-duty tow truck on a highway at night representing the AI-powered towing dispatch service" width={1920} height={1080} className="w-full h-full object-cover opacity-35" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background"></div>
           <div className="absolute inset-0 bg-grid opacity-30"></div>
         </div>
@@ -318,7 +367,7 @@ export default function Home() {
       {/* Live Demo */}
       <section id="demo" className="py-24 lg:py-32 relative">
         <div className="absolute inset-0 z-0 opacity-30">
-          <img src={NETWORK_IMAGE} alt="Abstract network connectivity graphic illustrating the AI-Connect dispatch automation platform" className="w-full h-full object-cover" />
+          <img src={NETWORK_IMAGE} alt="Abstract network connectivity graphic illustrating the AI-Connect dispatch automation platform" width={1920} height={1080} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background/60 to-background"></div>
         </div>
         <div className="container relative z-10">
@@ -592,7 +641,7 @@ export default function Home() {
 
           <Card className="bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-card border-cyan-500/30 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-1/2 h-full opacity-25">
-              <img src={DASHBOARD_IMAGE} alt="US Tow Dispatch native dashboard showing zero-latency AI integration with real-time tow job data" className="w-full h-full object-cover" />
+              <img src={DASHBOARD_IMAGE} alt="US Tow Dispatch native dashboard showing zero-latency AI integration with real-time tow job data" width={1200} height={800} className="w-full h-full object-cover" />
             </div>
             <CardContent className="p-10 lg:p-14 relative z-10">
               <div className="max-w-2xl">
@@ -1196,6 +1245,8 @@ export default function Home() {
           <img
             src="https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/Vv2UwtRczgts7bjQRsKEeR/vendor-network-hero_1e7b5699.png"
             alt="ConViniCar vendor network — auto repair, tow, body shops, and rental services connected through one intelligent system"
+            width={1920}
+            height={1080}
             className="w-full h-full object-cover opacity-40"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/85 to-background"></div>
@@ -1280,7 +1331,7 @@ export default function Home() {
       {/* Final CTA */}
       <section className="py-24 lg:py-32 relative overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src={NETWORK_IMAGE} alt="Blue Collar AI network background graphic for the US Tow AI-Connect call to action" className="w-full h-full object-cover opacity-30" />
+          <img src={NETWORK_IMAGE} alt="Blue Collar AI network background graphic for the US Tow AI-Connect call to action" width={1920} height={1080} className="w-full h-full object-cover opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background"></div>
         </div>
         <div className="container relative z-10">
@@ -1311,6 +1362,58 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Location / Map */}
+      <section id="location" className="py-20 lg:py-28 bg-card/30 border-t border-border">
+        <div className="container">
+          <div className="grid lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-5">
+              <Badge className="mb-4 bg-blue-500/10 text-blue-400 border-blue-500/30 px-3 py-1 text-xs font-semibold tracking-wider uppercase">
+                Visit Us
+              </Badge>
+              <h2 className="text-3xl lg:text-4xl font-black tracking-tight mb-4">
+                Based in Lewis Center, Ohio.
+                <br />
+                <span className="text-gradient-blue">Serving towing companies nationwide.</span>
+              </h2>
+              <address className="not-italic text-muted-foreground leading-relaxed mb-6">
+                <div className="font-semibold text-foreground">US Tow AI-Connect</div>
+                3879 Regatta Ct
+                <br />
+                Lewis Center, OH 43035
+              </address>
+              <div className="flex flex-col gap-3 text-sm">
+                <a href="tel:+16146337935" className="inline-flex items-center gap-2 font-semibold text-blue-300 hover:text-blue-200 transition-colors">
+                  <Phone className="w-4 h-4" /> 614-633-7935
+                </a>
+                <a
+                  href="https://www.google.com/maps?q=3879+Regatta+Ct,+Lewis+Center,+OH+43035"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 font-semibold text-cyan-300 hover:text-cyan-200 transition-colors"
+                >
+                  <ArrowRight className="w-4 h-4" /> Get Directions
+                </a>
+              </div>
+            </div>
+            <div className="lg:col-span-7">
+              <div className="overflow-hidden rounded-xl border border-border shadow-xl">
+                <iframe
+                  title="Map showing US Tow AI-Connect at 3879 Regatta Ct, Lewis Center, OH 43035"
+                  src="https://www.google.com/maps?q=3879+Regatta+Ct,+Lewis+Center,+OH+43035&output=embed"
+                  width={800}
+                  height={420}
+                  className="w-full h-[360px] lg:h-[420px]"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-border py-12 bg-card/30">
         <div className="container">
@@ -1331,7 +1434,9 @@ export default function Home() {
               <div className="text-xs text-muted-foreground">
                 Chris Peer · Founder & Lead AI Architect
                 <br />
-                chris@bluecollarai.online · 614-633-7935
+                <a href="mailto:chris@bluecollarai.online" className="hover:text-blue-400 transition-colors">chris@bluecollarai.online</a>
+                {" · "}
+                <a href="tel:+16146337935" className="hover:text-blue-400 transition-colors">614-633-7935</a>
               </div>
             </div>
             <div>
