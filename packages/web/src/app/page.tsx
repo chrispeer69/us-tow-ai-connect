@@ -48,9 +48,50 @@ const HERO_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJz
 const NETWORK_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/abstract-network-oA2VngdyJYwNm5mFK5keYA.webp";
 const DASHBOARD_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/dashboard-mockup-ELDckAk4NofknNGiKepd2n.webp";
 
+const LOCAL_BUSINESS_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "@id": "https://www.ustowaiconnect.com/#business",
+  name: "US Tow AI-Connect",
+  legalName: "Blue Collar AI",
+  url: "https://www.ustowaiconnect.com",
+  description:
+    "AI dispatcher for towing companies. AI-Connect answers every inbound call 24/7 and makes outbound sales calls that confirm jobs, refer repair shops, and grow revenue.",
+  image: HERO_IMAGE,
+  logo: "https://www.ustowaiconnect.com/favicon.svg",
+  telephone: "+1-614-633-7935",
+  email: "chris@bluecollarai.online",
+  priceRange: "$$",
+  founder: { "@type": "Person", name: "Chris Peer" },
+  // NOTE: streetAddress + geo coordinates must be filled in with the real
+  // business location so this matches the Google Business Profile exactly.
+  address: {
+    "@type": "PostalAddress",
+    addressRegion: "OH",
+    addressCountry: "US",
+  },
+  areaServed: { "@type": "Country", name: "United States" },
+  sameAs: [
+    "https://www.ustowalliance.com",
+    "https://www.bluecollarai.online",
+  ],
+  contactPoint: {
+    "@type": "ContactPoint",
+    telephone: "+1-614-633-7935",
+    email: "chris@bluecollarai.online",
+    contactType: "sales",
+    areaServed: "US",
+    availableLanguage: ["English", "Spanish"],
+  },
+};
+
 export default function Home() {
   return (
     <div className="dark min-h-screen bg-background text-foreground overflow-x-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(LOCAL_BUSINESS_SCHEMA) }}
+      />
       <StickyComparisonBar />
 
       {/* Navigation */}
@@ -92,7 +133,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative pt-16 lg:pt-24 pb-20 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src={HERO_IMAGE} alt="Heavy-duty tow truck on a highway at night representing the AI-powered towing dispatch service" className="w-full h-full object-cover opacity-35" />
+          <img src={HERO_IMAGE} alt="Heavy-duty tow truck on a highway at night representing the AI-powered towing dispatch service" width={1920} height={1080} className="w-full h-full object-cover opacity-35" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background"></div>
           <div className="absolute inset-0 bg-grid opacity-30"></div>
         </div>
@@ -318,7 +359,7 @@ export default function Home() {
       {/* Live Demo */}
       <section id="demo" className="py-24 lg:py-32 relative">
         <div className="absolute inset-0 z-0 opacity-30">
-          <img src={NETWORK_IMAGE} alt="Abstract network connectivity graphic illustrating the AI-Connect dispatch automation platform" className="w-full h-full object-cover" />
+          <img src={NETWORK_IMAGE} alt="Abstract network connectivity graphic illustrating the AI-Connect dispatch automation platform" width={1920} height={1080} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-background via-background/60 to-background"></div>
         </div>
         <div className="container relative z-10">
@@ -592,7 +633,7 @@ export default function Home() {
 
           <Card className="bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-card border-cyan-500/30 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-1/2 h-full opacity-25">
-              <img src={DASHBOARD_IMAGE} alt="US Tow Dispatch native dashboard showing zero-latency AI integration with real-time tow job data" className="w-full h-full object-cover" />
+              <img src={DASHBOARD_IMAGE} alt="US Tow Dispatch native dashboard showing zero-latency AI integration with real-time tow job data" width={1200} height={800} className="w-full h-full object-cover" />
             </div>
             <CardContent className="p-10 lg:p-14 relative z-10">
               <div className="max-w-2xl">
@@ -1196,6 +1237,8 @@ export default function Home() {
           <img
             src="https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/Vv2UwtRczgts7bjQRsKEeR/vendor-network-hero_1e7b5699.png"
             alt="ConViniCar vendor network — auto repair, tow, body shops, and rental services connected through one intelligent system"
+            width={1920}
+            height={1080}
             className="w-full h-full object-cover opacity-40"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/85 to-background"></div>
@@ -1280,7 +1323,7 @@ export default function Home() {
       {/* Final CTA */}
       <section className="py-24 lg:py-32 relative overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img src={NETWORK_IMAGE} alt="Blue Collar AI network background graphic for the US Tow AI-Connect call to action" className="w-full h-full object-cover opacity-30" />
+          <img src={NETWORK_IMAGE} alt="Blue Collar AI network background graphic for the US Tow AI-Connect call to action" width={1920} height={1080} className="w-full h-full object-cover opacity-30" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background"></div>
         </div>
         <div className="container relative z-10">
@@ -1331,7 +1374,9 @@ export default function Home() {
               <div className="text-xs text-muted-foreground">
                 Chris Peer · Founder & Lead AI Architect
                 <br />
-                chris@bluecollarai.online · 614-633-7935
+                <a href="mailto:chris@bluecollarai.online" className="hover:text-blue-400 transition-colors">chris@bluecollarai.online</a>
+                {" · "}
+                <a href="tel:+16146337935" className="hover:text-blue-400 transition-colors">614-633-7935</a>
               </div>
             </div>
             <div>
