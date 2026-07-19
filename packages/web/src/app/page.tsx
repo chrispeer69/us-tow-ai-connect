@@ -63,13 +63,21 @@ const LOCAL_BUSINESS_SCHEMA = {
   email: "chris@bluecollarai.online",
   priceRange: "$$",
   founder: { "@type": "Person", name: "Chris Peer" },
-  // NOTE: streetAddress + geo coordinates must be filled in with the real
-  // business location so this matches the Google Business Profile exactly.
   address: {
     "@type": "PostalAddress",
+    streetAddress: "3879 Regatta Ct",
+    addressLocality: "Lewis Center",
     addressRegion: "OH",
+    postalCode: "43035",
     addressCountry: "US",
   },
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: 40.2217884,
+    longitude: -82.980971,
+  },
+  hasMap:
+    "https://www.google.com/maps?q=3879+Regatta+Ct,+Lewis+Center,+OH+43035",
   areaServed: { "@type": "Country", name: "United States" },
   sameAs: [
     "https://www.ustowalliance.com",
@@ -1351,6 +1359,58 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      </section>
+
+      {/* Location / Map */}
+      <section id="location" className="py-20 lg:py-28 bg-card/30 border-t border-border">
+        <div className="container">
+          <div className="grid lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-5">
+              <Badge className="mb-4 bg-blue-500/10 text-blue-400 border-blue-500/30 px-3 py-1 text-xs font-semibold tracking-wider uppercase">
+                Visit Us
+              </Badge>
+              <h2 className="text-3xl lg:text-4xl font-black tracking-tight mb-4">
+                Based in Lewis Center, Ohio.
+                <br />
+                <span className="text-gradient-blue">Serving towing companies nationwide.</span>
+              </h2>
+              <address className="not-italic text-muted-foreground leading-relaxed mb-6">
+                <div className="font-semibold text-foreground">US Tow AI-Connect</div>
+                3879 Regatta Ct
+                <br />
+                Lewis Center, OH 43035
+              </address>
+              <div className="flex flex-col gap-3 text-sm">
+                <a href="tel:+16146337935" className="inline-flex items-center gap-2 font-semibold text-blue-300 hover:text-blue-200 transition-colors">
+                  <Phone className="w-4 h-4" /> 614-633-7935
+                </a>
+                <a
+                  href="https://www.google.com/maps?q=3879+Regatta+Ct,+Lewis+Center,+OH+43035"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 font-semibold text-cyan-300 hover:text-cyan-200 transition-colors"
+                >
+                  <ArrowRight className="w-4 h-4" /> Get Directions
+                </a>
+              </div>
+            </div>
+            <div className="lg:col-span-7">
+              <div className="overflow-hidden rounded-xl border border-border shadow-xl">
+                <iframe
+                  title="Map showing US Tow AI-Connect at 3879 Regatta Ct, Lewis Center, OH 43035"
+                  src="https://www.google.com/maps?q=3879+Regatta+Ct,+Lewis+Center,+OH+43035&output=embed"
+                  width={800}
+                  height={420}
+                  className="w-full h-[360px] lg:h-[420px]"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
