@@ -46,6 +46,17 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async redirects() {
+    return [
+      // Short, speakable link for email signatures, social posts and print.
+      // Lands on the demo with the guided tour already running.
+      {
+        source: '/tour',
+        destination: '/demo?tour=1',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

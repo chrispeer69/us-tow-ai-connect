@@ -135,7 +135,7 @@ export function JobDrawer({
           </section>
         )}
 
-        <section>
+        <section data-tour="drawer-customer-call">
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Customer call</h3>
           <label className="mt-2 block text-xs font-medium text-zinc-600">
             Script
@@ -167,7 +167,7 @@ export function JobDrawer({
         </section>
 
         {(job.latestCall || job.latestFlip) && (
-          <section className="rounded border border-zinc-200 bg-zinc-50 p-4">
+          <section data-tour="drawer-ai-result" className="rounded border border-zinc-200 bg-zinc-50 p-4">
             <h3 className="text-xs uppercase tracking-wide text-zinc-500">AI call result</h3>
             {job.latestCall && (
               <div className="mt-2 flex items-center justify-between gap-3">
@@ -250,7 +250,7 @@ export function JobDrawer({
           </section>
         )}
 
-        <section>
+        <section data-tour="drawer-assign">
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Assign driver</h3>
           <select
             value={pendingDriver}
