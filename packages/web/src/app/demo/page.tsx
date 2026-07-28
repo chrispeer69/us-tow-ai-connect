@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icons';
 import {
@@ -18,6 +18,7 @@ import { FilterBar, type CommandCenterFilters } from '../admin/command-center/co
 import { JobsTable } from '../admin/command-center/components/JobsTable';
 import { JobDrawer, type ManualCallScriptType } from '../admin/command-center/components/JobDrawer';
 import { ScheduleDemoClient } from '../schedule-demo/ScheduleDemoClient';
+import { DemoTour, type DemoTourController } from './DemoTour';
 
 const TENANT_ID = 'demo-tenant';
 const COMMAND_CENTER_HREF = '/admin/command-center';
@@ -41,6 +42,22 @@ export default function PublicDemoPage() {
     priority: 'all',
     search: '',
   });
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // Stable so the tour's step effects do not re-fire on every page render.
+  const tourController = useMemo<DemoTourController>(
+    () => ({
+      setSection: setActiveHref,
+      selectJob: setSelectedJobId,
+      closeOverlays: () => {
+        setShowCallDemo(false);
+        setShowManualJob(false);
+        setShowMobileNav(false);
+      },
+    }),
+    [],
+  );
+
   const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
   const visibleJobs = useMemo(
     () => jobs.filter((job) => jobMatchesFilters(job, filters)),
@@ -186,7 +203,14 @@ export default function PublicDemoPage() {
               <h1 className="font-display text-xl font-extrabold leading-tight text-zinc-900 sm:text-2xl">{activeLabel}</h1>
             </div>
           </div>
-          <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap pb-1 xl:justify-end">
+          <div
+            data-tour="header-actions"
+            className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto whitespace-nowrap pb-1 xl:justify-end"
+          >
+            <Button className="shrink-0 gap-2" onClick={() => setTourOpen(true)}>
+              <Sparkles className="h-4 w-4" />
+              Take the tour
+            </Button>
             <ExplainedAction
               label="Test Agent Call"
               help="Shows what happens when a dispatcher tries to place an AI call from the demo. The public demo blocks the actual call."
@@ -206,11 +230,14 @@ export default function PublicDemoPage() {
               <Button variant="outline" className="shrink-0">Book demo</Button>
             </Link>
             <Link href="/">
-              <Button className="shrink-0">Home</Button>
+              <Button variant="outline" className="shrink-0">Home</Button>
             </Link>
           </div>
         </div>
-        <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+        <p
+          data-tour="demo-banner"
+          className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800"
+        >
           Demo mode: outbound calls and writes to the real database are disabled.
         </p>
       </header>
@@ -231,7 +258,7 @@ export default function PublicDemoPage() {
           <main className="grid min-w-0 flex-1 grid-cols-12 overflow-y-auto lg:overflow-hidden">
             <section className="col-span-12 flex min-h-0 flex-col gap-3 p-3 sm:p-4 lg:col-span-9 lg:overflow-y-auto">
               <CompactStatsStrip stats={stats} />
-              <div>
+              <div data-tour="filters">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="font-label text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
                     Filter queue
@@ -249,10 +276,10 @@ export default function PublicDemoPage() {
                   ['Table rows', 'Use the table when dispatchers need dense, scannable job details.'],
                 ]}
               />
-              <div className="h-1/2 min-h-[300px] shrink-0">
+              <div data-tour="map" className="h-1/2 min-h-[300px] shrink-0">
                 <DemoMap jobs={visibleJobs} drivers={drivers} selectedJobId={selectedJobId} onSelect={setSelectedJobId} />
               </div>
-              <div className="min-h-[280px] flex-1">
+              <div data-tour="jobs-table" className="min-h-[280px] flex-1">
                 <JobsTable
                   jobs={visibleJobs}
                   hasIntegrations
@@ -262,7 +289,10 @@ export default function PublicDemoPage() {
               </div>
             </section>
 
-            <section className="col-span-12 min-h-[420px] overflow-visible border-t border-zinc-200 bg-white lg:col-span-3 lg:min-h-0 lg:border-l lg:border-t-0">
+            <section
+              data-tour="drawer-column"
+              className="col-span-12 min-h-[420px] overflow-visible border-t border-zinc-200 bg-white lg:col-span-3 lg:min-h-0 lg:border-l lg:border-t-0"
+            >
               <div className="border-b border-zinc-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 <div className="flex items-center gap-2 font-semibold">
                   Job drawer
@@ -313,6 +343,8 @@ export default function PublicDemoPage() {
           }}
         />
       )}
+
+      <DemoTour open={tourOpen} onOpenChange={setTourOpen} controller={tourController} />
     </div>
   );
 }
@@ -381,7 +413,7 @@ function CompactStatsStrip({ stats }: { stats: Stats }) {
     { label: 'Jobs/hr', value: stats.jobsPerHour.toFixed(1), tone: 'text-amber-700' },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div data-tour="stats" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {items.map((item) => (
         <div key={item.label} className="rounded-lg border border-zinc-200 bg-white px-3 py-2 shadow-sm">
           <div className={cn('text-lg font-black leading-none', item.tone)}>{item.value}</div>
@@ -511,7 +543,7 @@ function DemoPanel({
   children: ReactNode;
 }) {
   return (
-    <main className="min-w-0 flex-1 overflow-y-auto p-4">
+    <main data-tour="section-panel" className="min-w-0 flex-1 overflow-y-auto p-4">
       <div className="mx-auto max-w-6xl space-y-4">
         <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
           <div className="flex items-start justify-between gap-3">
@@ -779,7 +811,7 @@ function DemoFlipEngineSection({ onAction }: { onAction: () => void }) {
           </div>
         ))}
       </div>
-      <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+      <div data-tour="flip-sandbox" className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Classification sandbox</div>
         <pre className="overflow-auto rounded bg-white p-3 text-xs text-zinc-700">{JSON.stringify({
           destination: { tag: 'competitor_repair', resolvedName: 'Buckeye Auto Repair', reason: 'places_nearby_repair' },

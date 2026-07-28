@@ -251,8 +251,8 @@ export default function Home() {
               <Phone className="w-4 h-4" aria-hidden="true" /> 614-633-7935
             </a>
             <Link
-              href="/demo"
-              className="hidden sm:inline-flex items-center rounded-full border border-cyan-400/50 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.16)] transition-colors hover:border-cyan-300 hover:bg-cyan-400/20 hover:text-white"
+              href="/demo?tour=1"
+              className="inline-flex items-center rounded-full border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-sm font-bold text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.16)] transition-colors hover:border-cyan-300 hover:bg-cyan-400/20 hover:text-white sm:px-4"
             >
               Try Demo
             </Link>
@@ -309,6 +309,20 @@ export default function Home() {
                 </a> —
                 driving more revenue, opportunity, and customer development to your business.
               </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 max-w-2xl mb-10 animate-float-up">
+                <Link href="/demo?tour=1">
+                  <Button size="lg" className="w-full sm:w-auto h-14 px-8 text-base bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-xl shadow-blue-500/40">
+                    Take the 3-Minute Tour
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+                <Link href="/schedule-demo">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto h-14 px-8 text-base bg-[#1a365d] border-cyan-500/40 text-cyan-300 hover:bg-[#1e4270] hover:text-white font-bold">
+                    Schedule a Live Demo
+                  </Button>
+                </Link>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mb-10">
                 <Card className="bg-blue-500/5 border-blue-500/40 backdrop-blur-sm relative overflow-hidden glow-blue">
@@ -1601,6 +1615,7 @@ export default function Home() {
             <div>
               <div className="text-xs uppercase tracking-[0.15em] font-bold mb-4 text-muted-foreground">Product</div>
               <ul className="space-y-2 text-sm">
+                <li><a href="/demo?tour=1" className="hover:text-blue-400 transition-colors">Interactive Demo</a></li>
                 <li><a href="#features" className="hover:text-blue-400 transition-colors">Features</a></li>
                 <li><a href="#pricing" className="hover:text-blue-400 transition-colors">Pricing</a></li>
                 <li><a href="#comparison" className="hover:text-blue-400 transition-colors">vs TowPilot</a></li>
