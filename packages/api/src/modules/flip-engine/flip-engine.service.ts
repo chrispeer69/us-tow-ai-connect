@@ -169,7 +169,7 @@ export class FlipEngineService {
 
   async createBlocklistEntry(input: {
     tenantId: string;
-    matchType: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
+    matchType: 'STANDALONE_WORD' | 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
     matchValue: string;
     label: string;
     notes?: string | null;
@@ -202,7 +202,7 @@ export class FlipEngineService {
     tenantId: string,
     id: string,
     patch: Partial<{
-      matchType: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
+      matchType: 'STANDALONE_WORD' | 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
       matchValue: string;
       label: string;
       notes: string | null;
