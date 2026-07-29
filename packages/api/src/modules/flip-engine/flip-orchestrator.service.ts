@@ -327,6 +327,7 @@ export class FlipOrchestratorService {
         destinationType: destination.tag,
         flipEligible: flipEligible,
         nearestOurShop: nearestShopName,
+        noFlipReason: flipEligible ? null : (decision.flipEligible ? 'flip_suppressed_no_nearby_shop_within_max_distance' : decision.reasonCode),
       })
       .returning({ id: outboundCallLogs.id });
 

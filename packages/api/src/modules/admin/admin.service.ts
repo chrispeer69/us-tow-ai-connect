@@ -523,35 +523,19 @@ export class AdminService {
       addResult('Voice Engine Enabled', 'warn', 'Outbound Voice is DISABLED.');
     }
 
-    // 8. Retell Agent Ping
-    const agentId = readConfigString(t.outboundVoiceConfig, 'retell_outbound_agent_id', null);
-    if (!agentId) {
-      addResult('Retell Agent Ping', 'fail', 'No Retell Agent ID configured for this tenant.');
+    // 8. Voice Engine Agent
+    const retellAgentId = readConfigString(t.outboundVoiceConfig, 'retell_outbound_agent_id', null);
+    const thinkrrAgentId = readConfigString(t.outboundVoiceConfig, 'thinkrr_outbound_agent_id', null);
+    if (!retellAgentId && !thinkrrAgentId) {
+      addResult('Voice Engine Agent', 'info', 'No tenant-specific agent ID configured. AI will use the global default provider agent.');
     } else {
-      const apiKey = process.env.RETELL_API_KEY;
-      if (!apiKey) {
-        addResult('Retell Agent Ping', 'fail', 'System missing RETELL_API_KEY env var.');
-      } else {
-        try {
-          const res = await fetch(`https://api.retellai.com/get-agent/${agentId}`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            addResult('Retell Agent Ping', 'pass', 'Agent is alive on Retell API.', data);
-          } else {
-            addResult('Retell Agent Ping', 'fail', `Retell API returned ${res.status}. Agent may be deleted or key invalid.`);
-          }
-        } catch (err: any) {
-          addResult('Retell Agent Ping', 'fail', `Network error pinging Retell: ${err.message}`);
-        }
-      }
+      addResult('Voice Engine Agent', 'pass', `Tenant-specific agent configured: ${retellAgentId || thinkrrAgentId}`);
     }
 
     // 9. Callback Number Set
     const callbackNumber = readConfigString(t.outboundVoiceConfig, 'callback_number', null);
     if (!callbackNumber) {
-      addResult('Callback Number Set', 'fail', 'No callback number configured. AI will not be able to forward calls.');
+      addResult('Callback Number Set', 'info', 'No callback number configured. AI will not be able to forward calls, but can still complete them normally.');
     } else {
       addResult('Callback Number Set', 'pass', `Callback forwarding number is ${callbackNumber}.`);
     }
