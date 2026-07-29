@@ -26,6 +26,7 @@ import {
   users,
   aaaBrandedBlocklist,
   outboundCallLogs,
+  outboundCalls,
 } from '../../db/schema';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { AdapterFactory } from '../adapters/adapter.factory';
