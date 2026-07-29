@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
@@ -335,6 +335,20 @@ export class SuperAdminService {
       .from(supportTickets)
       .leftJoin(tenants, eq(tenants.id, supportTickets.tenantId))
       .orderBy(desc(supportTickets.createdAt));
+  }
+
+  async updateSupportTicketStatus(id: string, status: string) {
+    if (!['open', 'resolved', 'closed'].includes(status)) {
+      throw new BadRequestException('Invalid status');
+    }
+    const result = await this.db
+      .update(supportTickets)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(supportTickets.id, id))
+      .returning();
+      
+    if (!result.length) throw new NotFoundException('Ticket not found');
+    return result[0];
   }
 
   private async readPlatformBool(key: string, defaultValue: boolean) {

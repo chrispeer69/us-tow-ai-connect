@@ -52,7 +52,7 @@ type ShopCreateBody = z.infer<typeof ShopCreateSchema>;
 const ShopPatchSchema = ShopCreateSchema.partial();
 type ShopPatchBody = z.infer<typeof ShopPatchSchema>;
 
-const BlocklistMatchEnum = z.enum(['NAME_PATTERN', 'EXACT_NAME', 'EXACT_ADDRESS', 'PHONE']);
+const BlocklistMatchEnum = z.enum(['STANDALONE_WORD', 'NAME_PATTERN', 'EXACT_NAME', 'EXACT_ADDRESS', 'PHONE']);
 
 const BlocklistCreateSchema = z.object({
   matchType: BlocklistMatchEnum,

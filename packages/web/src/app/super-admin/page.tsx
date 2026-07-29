@@ -17,6 +17,13 @@ import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/utils';
 import { ArrowRight, Activity, Users, PhoneCall, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 const PLAN_OPTIONS = ['FREE', 'TRIAL', 'STARTER', 'PRO', 'ENTERPRISE'];
 
@@ -47,6 +54,7 @@ export default function SuperAdminPage() {
   const [savingDemoSettings, setSavingDemoSettings] = useState(false);
   const [publicDemoCallsEnabled, setPublicDemoCallsEnabled] = useState(false);
   const [capDrafts, setCapDrafts] = useState<Record<string, string>>({});
+  const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
   const { setToken } = useAuth();
 
   const loadData = useCallback(async () => {
@@ -312,18 +320,19 @@ export default function SuperAdminPage() {
               <TableHead className="text-zinc-400">Subject</TableHead>
               <TableHead className="text-zinc-400">Status</TableHead>
               <TableHead className="text-zinc-400">Date</TableHead>
+              <TableHead className="text-zinc-400 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading && tickets.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={4} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={5} className="h-32 text-center text-zinc-500">
                   <Spinner className="mx-auto" />
                 </TableCell>
               </TableRow>
             ) : tickets.length === 0 ? (
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableCell colSpan={4} className="h-32 text-center text-zinc-500">
+                <TableCell colSpan={5} className="h-32 text-center text-zinc-500">
                   No support tickets found.
                 </TableCell>
               </TableRow>
@@ -333,7 +342,7 @@ export default function SuperAdminPage() {
                   <TableCell className="font-medium text-white">{t.companyName}</TableCell>
                   <TableCell>
                     <div className="font-medium">{t.subject}</div>
-                    <div className="text-sm text-zinc-400">{t.description}</div>
+                    <div className="text-sm text-zinc-400 max-w-[200px] truncate">{t.description}</div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={t.status === 'open' ? 'outline' : 'default'} className="capitalize">
@@ -343,14 +352,67 @@ export default function SuperAdminPage() {
                   <TableCell className="text-zinc-400 text-sm">
                     {new Date(t.createdAt).toLocaleDateString()}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedTicket(t)}>
+                        View
+                      </Button>
+                      {t.status === 'open' && (
+                        <Button variant="default" size="sm" onClick={() => updateTicketStatus(t.id, 'resolved')}>
+                          Resolve
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </Card>
+
+      <Dialog open={!!selectedTicket} onOpenChange={(open) => !open && setSelectedTicket(null)}>
+        <DialogContent className="bg-zinc-950 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle>{selectedTicket?.subject}</DialogTitle>
+            <DialogDescription>
+              From {selectedTicket?.companyName} on {selectedTicket && new Date(selectedTicket.createdAt).toLocaleString()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 rounded-md bg-zinc-900 border border-zinc-800 text-sm whitespace-pre-wrap">
+              {selectedTicket?.description}
+            </div>
+            {selectedTicket?.status === 'open' && (
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="outline" onClick={() => updateTicketStatus(selectedTicket.id, 'closed')}>
+                  Close as Won't Fix
+                </Button>
+                <Button onClick={() => updateTicketStatus(selectedTicket.id, 'resolved')}>
+                  Mark as Resolved
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+
+  async function updateTicketStatus(id: string, status: string) {
+    try {
+      await api(`/v1/super-admin/tickets/${id}/status`, {
+        method: 'PATCH',
+        json: { status }
+      });
+      setTickets(tickets.map(t => t.id === id ? { ...t, status } : t));
+      if (selectedTicket?.id === id) {
+        setSelectedTicket(null);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function updateTenantCallControls(
     tenantId: string,

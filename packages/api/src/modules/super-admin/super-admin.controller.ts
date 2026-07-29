@@ -102,6 +102,12 @@ export class SuperAdminController {
     return this.service.listSupportTickets();
   }
 
+  @Patch('tickets/:id/status')
+  updateTicketStatus(@Param('id') id: string, @Body() body: { status: string }) {
+    if (!body.status) throw new BadRequestException('status is required');
+    return this.service.updateSupportTicketStatus(id, body.status);
+  }
+
   // --- Diagnostics ---
   @Get('diagnostics/adapter-test')
   testAdapterPickup(@Query('tenantId') tenantId: string, @Query('softwareType') softwareType: string) {
