@@ -71,20 +71,20 @@ export default function SupportPage() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto py-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Support Tickets</h1>
-        <p className="text-sm text-zinc-400 mt-1">
+        <h1 className="text-2xl font-bold tracking-tight">Support Tickets</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Report bugs or request support directly from our technical team.
         </p>
       </div>
 
       <div className="space-y-6">
-          <Card className="bg-zinc-950 border-zinc-800">
+          <Card>
             <CardHeader>
               <CardTitle>Submit a New Ticket</CardTitle>
             </CardHeader>
             <CardContent>
               {message && (
-                <div className={`mb-4 p-3 rounded text-sm ${message.type === 'success' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800' : 'bg-rose-900/30 text-rose-400 border border-rose-800'}`}>
+                <div className={`mb-4 p-3 rounded text-sm ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
                   {message.text}
                 </div>
               )}
@@ -116,7 +116,7 @@ export default function SupportPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-zinc-950 border-zinc-800">
+          <Card>
             <CardHeader>
               <CardTitle>Your Tickets</CardTitle>
             </CardHeader>
@@ -124,24 +124,24 @@ export default function SupportPage() {
               {loading ? (
                 <div className="py-8 text-center"><Spinner className="mx-auto" /></div>
               ) : tickets.length === 0 ? (
-                <div className="py-8 text-center text-zinc-500">No tickets found.</div>
+                <div className="py-8 text-center text-muted-foreground">No tickets found.</div>
               ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-zinc-800">
-                      <TableHead className="text-zinc-400">Subject</TableHead>
-                      <TableHead className="text-zinc-400">Status</TableHead>
-                      <TableHead className="text-zinc-400 text-right">Date</TableHead>
+                    <TableRow>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Date</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {tickets.map((t) => (
-                      <TableRow key={t.id} className="border-zinc-800">
+                      <TableRow key={t.id}>
                         <TableCell>
-                          <div className="font-medium text-white">{t.subject}</div>
+                          <div className="font-medium">{t.subject}</div>
                           {t.resolutionMessage && (
-                            <div className="mt-2 text-sm text-zinc-400 bg-zinc-900/50 p-2 rounded-md border border-zinc-800">
-                              <span className="font-medium text-zinc-300 block mb-1">Support Response:</span>
+                            <div className="mt-2 text-sm text-muted-foreground bg-muted p-3 rounded-md border">
+                              <span className="font-medium text-foreground block mb-1">Support Response:</span>
                               <div className="whitespace-pre-wrap">{t.resolutionMessage}</div>
                             </div>
                           )}
@@ -151,7 +151,7 @@ export default function SupportPage() {
                             {t.status.replace('_', ' ')}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right text-zinc-400 text-sm align-top pt-4">
+                        <TableCell className="text-right text-muted-foreground text-sm align-top pt-4">
                           {new Date(t.createdAt).toLocaleDateString()}
                         </TableCell>
                       </TableRow>
