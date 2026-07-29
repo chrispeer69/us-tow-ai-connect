@@ -1,0 +1,1 @@
+ALTER TABLE "support_tickets" ADD COLUMN "resolution_message" text;
