@@ -330,6 +330,7 @@ export class SuperAdminService {
         subject: supportTickets.subject,
         description: supportTickets.description,
         status: supportTickets.status,
+        resolutionMessage: supportTickets.resolutionMessage,
         createdAt: supportTickets.createdAt,
       })
       .from(supportTickets)
@@ -337,13 +338,17 @@ export class SuperAdminService {
       .orderBy(desc(supportTickets.createdAt));
   }
 
-  async updateSupportTicketStatus(id: string, status: string) {
+  async updateSupportTicketStatus(id: string, status: string, resolutionMessage?: string) {
     if (!['open', 'resolved', 'closed'].includes(status)) {
       throw new BadRequestException('Invalid status');
     }
+    const setClause: any = { status, updatedAt: new Date() };
+    if (resolutionMessage !== undefined) {
+      setClause.resolutionMessage = resolutionMessage;
+    }
     const result = await this.db
       .update(supportTickets)
-      .set({ status, updatedAt: new Date() })
+      .set(setClause)
       .where(eq(supportTickets.id, id))
       .returning();
       

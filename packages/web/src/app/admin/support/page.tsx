@@ -15,6 +15,7 @@ interface SupportTicket {
   subject: string;
   description: string;
   status: string;
+  resolutionMessage?: string;
   createdAt: string;
 }
 
@@ -135,14 +136,22 @@ export default function SupportPage() {
                   </TableHeader>
                   <TableBody>
                     {tickets.map((t) => (
-                      <TableRow key={t.id} className="border-zinc-800 hover:bg-zinc-900">
-                        <TableCell className="font-medium">{t.subject}</TableCell>
+                      <TableRow key={t.id} className="border-zinc-800">
                         <TableCell>
+                          <div className="font-medium text-white">{t.subject}</div>
+                          {t.resolutionMessage && (
+                            <div className="mt-2 text-sm text-zinc-400 bg-zinc-900/50 p-2 rounded-md border border-zinc-800">
+                              <span className="font-medium text-zinc-300 block mb-1">Support Response:</span>
+                              <div className="whitespace-pre-wrap">{t.resolutionMessage}</div>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="align-top pt-4">
                           <Badge variant={t.status === 'open' ? 'outline' : 'default'} className="capitalize">
-                            {t.status}
+                            {t.status.replace('_', ' ')}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right text-zinc-400 text-sm">
+                        <TableCell className="text-right text-zinc-400 text-sm align-top pt-4">
                           {new Date(t.createdAt).toLocaleDateString()}
                         </TableCell>
                       </TableRow>

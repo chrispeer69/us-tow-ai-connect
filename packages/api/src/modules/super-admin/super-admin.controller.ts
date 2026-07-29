@@ -103,9 +103,9 @@ export class SuperAdminController {
   }
 
   @Patch('tickets/:id/status')
-  updateTicketStatus(@Param('id') id: string, @Body() body: { status: string }) {
+  updateTicketStatus(@Param('id') id: string, @Body() body: { status: string; resolutionMessage?: string }) {
     if (!body.status) throw new BadRequestException('status is required');
-    return this.service.updateSupportTicketStatus(id, body.status);
+    return this.service.updateSupportTicketStatus(id, body.status, body.resolutionMessage);
   }
 
   // --- Diagnostics ---

@@ -55,6 +55,7 @@ export default function SuperAdminPage() {
   const [publicDemoCallsEnabled, setPublicDemoCallsEnabled] = useState(false);
   const [capDrafts, setCapDrafts] = useState<Record<string, string>>({});
   const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+  const [resolutionMessage, setResolutionMessage] = useState('');
   const { setToken } = useAuth();
 
   const loadData = useCallback(async () => {
@@ -371,8 +372,16 @@ export default function SuperAdminPage() {
         </Table>
       </Card>
 
-      <Dialog open={!!selectedTicket} onOpenChange={(open) => !open && setSelectedTicket(null)}>
-        <DialogContent className="bg-zinc-950 border-zinc-800">
+      <Dialog 
+        open={!!selectedTicket} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTicket(null);
+            setResolutionMessage('');
+          }
+        }}
+      >
+        <DialogContent className="bg-zinc-950 border-zinc-800 text-zinc-100">
           <DialogHeader>
             <DialogTitle>{selectedTicket?.subject}</DialogTitle>
             <DialogDescription>
@@ -380,17 +389,34 @@ export default function SuperAdminPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="p-4 rounded-md bg-zinc-900 border border-zinc-800 text-sm whitespace-pre-wrap">
+            <div className="p-4 rounded-md bg-zinc-900 border border-zinc-800 text-sm whitespace-pre-wrap text-zinc-100">
               {selectedTicket?.description}
             </div>
-            {selectedTicket?.status === 'open' && (
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="outline" onClick={() => updateTicketStatus(selectedTicket.id, 'closed')}>
-                  Close as Won't Fix
-                </Button>
-                <Button onClick={() => updateTicketStatus(selectedTicket.id, 'resolved')}>
-                  Mark as Resolved
-                </Button>
+            {selectedTicket?.status !== 'closed' && selectedTicket?.status !== 'resolved' && (
+              <div className="space-y-3 mt-4">
+                <div>
+                  <label className="text-xs font-medium text-zinc-400 mb-1 block">Response to Tenant (Optional)</label>
+                  <textarea
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-md p-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    rows={3}
+                    placeholder="Enter a message to send to the tenant..."
+                    value={resolutionMessage}
+                    onChange={(e) => setResolutionMessage(e.target.value)}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => updateTicketStatus(selectedTicket.id, 'closed', resolutionMessage)}>
+                    Close Ticket
+                  </Button>
+                  {selectedTicket?.status === 'open' && (
+                    <Button variant="outline" onClick={() => updateTicketStatus(selectedTicket.id, 'in_progress', resolutionMessage)}>
+                      Mark In Progress
+                    </Button>
+                  )}
+                  <Button onClick={() => updateTicketStatus(selectedTicket.id, 'resolved', resolutionMessage)}>
+                    Mark as Resolved
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -399,15 +425,16 @@ export default function SuperAdminPage() {
     </div>
   );
 
-  async function updateTicketStatus(id: string, status: string) {
+  async function updateTicketStatus(id: string, status: string, msg?: string) {
     try {
       await api(`/v1/super-admin/tickets/${id}/status`, {
         method: 'PATCH',
-        json: { status }
+        json: { status, resolutionMessage: msg || undefined }
       });
-      setTickets(tickets.map(t => t.id === id ? { ...t, status } : t));
+      setTickets(tickets.map(t => t.id === id ? { ...t, status, resolutionMessage: msg || t.resolutionMessage } : t));
       if (selectedTicket?.id === id) {
         setSelectedTicket(null);
+        setResolutionMessage('');
       }
     } catch (err) {
       setError((err as Error).message);

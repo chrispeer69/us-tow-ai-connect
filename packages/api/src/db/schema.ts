@@ -1087,6 +1087,7 @@ export const supportTickets = pgTable(
     subject: varchar('subject', { length: 255 }).notNull(),
     description: text('description').notNull(),
     status: varchar('status', { length: 50 }).notNull().default('open'), // open, in_progress, resolved, closed
+    resolutionMessage: text('resolution_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
