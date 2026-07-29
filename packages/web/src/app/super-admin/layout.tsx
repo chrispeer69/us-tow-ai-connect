@@ -8,7 +8,7 @@ export default function SuperAdminLayout({
 }) {
   return (
     <ProtectedRoute>
-      <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+      <div className="dark flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
         <header className="border-b border-zinc-800 bg-zinc-900/50 px-6 py-4">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold tracking-tight text-white">Platform Monitor</h1>

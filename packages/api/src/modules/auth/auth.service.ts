@@ -258,6 +258,28 @@ export class AuthService {
     // Delete all OTPs for this user so they can't be reused
     await this.db.delete(passwordResetOtps).where(eq(passwordResetOtps.userId, user.id));
   }
+
+  async impersonateTenant(adminUser: JwtPayload, targetTenantId: string) {
+    if (!adminUser.email || (!isConfiguredSuperAdminEmail(adminUser.email) && adminUser.platformRole !== 'super_admin')) {
+      throw new UnauthorizedException('Only super admins can impersonate tenants');
+    }
+
+    // Verify tenant exists
+    const [tenant] = await this.db.select().from(tenants).where(eq(tenants.id, targetTenantId)).limit(1);
+    if (!tenant) {
+      throw new BadRequestException('Target tenant not found');
+    }
+
+    const payload: JwtPayload = {
+      userId: adminUser.userId,
+      email: adminUser.email,
+      tenantId: targetTenantId,
+      role: 'SUPPORT',
+      platformRole: 'super_admin',
+    };
+
+    try { return { access_token: this.jwtService.sign(payload) }; } catch (e: any) { throw new Error("JWT Crash: " + e.message); }
+  }
 }
 
 function isConfiguredSuperAdminEmail(email: string): boolean {

@@ -53,22 +53,20 @@ export class DestinationClassifierService {
   private readonly logger = new Logger(DestinationClassifierService.name);
 
   async classify(input: ClassifyDestinationInput): Promise<ClassifyDestinationResult> {
-    // 1. AAA-branded hard guardrail — ONLY for AAA-source jobs.
-    if (input.source === 'AAA_PORTAL') {
-      const m = isAaaBrandedShop({
-        destinationName: input.destinationName,
-        destinationAddress: input.destinationAddress,
-        destinationPhone: input.destinationPhone,
-        blocklist: input.blocklist ?? [],
-      });
-      if (m.matched) {
-        return {
-          tag: 'aaa_branded',
-          reason: `aaa_hard_guardrail:${m.rule}`,
-          resolvedName: input.destinationName ?? null,
-          resolvedAddress: input.destinationAddress ?? null,
-        };
-      }
+    // 1. Blocklist guardrail — applies to ALL jobs, universally blocking specified patterns.
+    const m = isAaaBrandedShop({
+      destinationName: input.destinationName,
+      destinationAddress: input.destinationAddress,
+      destinationPhone: input.destinationPhone,
+      blocklist: input.blocklist ?? [],
+    });
+    if (m.matched) {
+      return {
+        tag: 'aaa_branded',
+        reason: `aaa_hard_guardrail:${m.rule}`,
+        resolvedName: input.destinationName ?? null,
+        resolvedAddress: input.destinationAddress ?? null,
+      };
     }
 
     // 2. Self-detect: is the destination one of our partner shops?

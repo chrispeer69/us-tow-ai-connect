@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Check,
   CalendarClock,
-  Building2,
   MapPin,
   Phone,
   Mail,

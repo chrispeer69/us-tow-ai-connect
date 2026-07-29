@@ -49,4 +49,13 @@ export class AuthController {
     await this.authService.resetPasswordWithOtp(body.email, body.otp, body.newPassword);
     return { success: true };
   }
+
+  @Post('impersonate')
+  @UseGuards(AuthGuard('jwt'))
+  async impersonate(@Request() req: any, @Body() body: { tenantId: string }) {
+    if (!body.tenantId) {
+      throw new Error('tenantId is required');
+    }
+    return this.authService.impersonateTenant(req.user, body.tenantId);
+  }
 }

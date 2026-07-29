@@ -25,7 +25,7 @@
  */
 
 export interface BlocklistEntry {
-  matchType: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
+  matchType: 'STANDALONE_WORD' | 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
   matchValue: string;
   active: boolean;
 }
@@ -40,7 +40,7 @@ export interface AaaBrandedCheckInput {
 export interface AaaBrandedCheckResult {
   matched: boolean;
   rule:
-    | 'standalone_aaa_word'
+    | 'standalone_word'
     | 'name_pattern'
     | 'exact_name'
     | 'exact_address'
@@ -49,21 +49,24 @@ export interface AaaBrandedCheckResult {
   matchedValue: string | null;
 }
 
-const STANDALONE_AAA = /\bAAA\b/i;
-
 export function isAaaBrandedShop(input: AaaBrandedCheckInput): AaaBrandedCheckResult {
   const name = (input.destinationName ?? '').trim();
   const address = (input.destinationAddress ?? '').trim();
   const phoneDigits = digitsOnly(input.destinationPhone ?? '');
   const blocklist = (input.blocklist ?? []).filter((b) => b.active);
 
-  // Rule 1: hard-coded standalone "AAA" word in the business name.
-  if (name && STANDALONE_AAA.test(name)) {
-    return {
-      matched: true,
-      rule: 'standalone_aaa_word',
-      matchedValue: name,
-    };
+  // Rule 1: STANDALONE_WORD regex match (case-insensitive word boundary).
+  if (name) {
+    for (const entry of blocklist) {
+      if (entry.matchType !== 'STANDALONE_WORD') continue;
+      // Safely escape the input for regex
+      const escaped = entry.matchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').trim();
+      if (!escaped) continue;
+      const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+      if (regex.test(name)) {
+        return { matched: true, rule: 'standalone_word', matchedValue: entry.matchValue };
+      }
+    }
   }
 
   // Rule 2: NAME_PATTERN substring match (case-insensitive).

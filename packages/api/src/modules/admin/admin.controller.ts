@@ -11,6 +11,7 @@ import {
   Res,
   UseGuards,
   UsePipes,
+  BadRequestException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
@@ -66,6 +67,19 @@ export class AdminController {
   @Get('integrations/status')
   getIntegrationStatus(@Req() req: AdminRequest) {
     return this.service.getIntegrationStatus(req.tenantId);
+  }
+
+  @Get('diagnostics/adapter-test')
+  testAdapterPickup(@Req() req: AdminRequest, @Query('softwareType') softwareType: string) {
+    if (!softwareType) {
+      throw new BadRequestException('softwareType is required');
+    }
+    return this.service.testAdapterPickup(req.tenantId, softwareType);
+  }
+
+  @Get('diagnostics/ai-context')
+  getAiDiagnosticContext(@Req() req: AdminRequest) {
+    return this.service.getAiDiagnosticContext(req.tenantId);
   }
 
   // --- Routing rules ---

@@ -131,13 +131,12 @@ export default function AdminDigestPage() {
   const loadPreview = useCallback(async () => {
     setError(null);
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-      const tenantId = settings?.tenantId ?? '';
-      const res = await fetch(`${apiBase}/v1/admin/digest/preview?range=${previewRange}`, {
-        headers: { 'x-tenant-id': tenantId },
+      const html = await api<string>(`/v1/admin/digest/preview?range=${previewRange}`, {
+        headers: { 
+          'x-tenant-id': settings?.tenantId ?? '',
+          Accept: 'text/html'
+        },
       });
-      if (!res.ok) throw new Error(`Preview failed: ${res.status}`);
-      const html = await res.text();
       setPreviewHtml(html);
     } catch (err) {
       setError((err as Error).message);

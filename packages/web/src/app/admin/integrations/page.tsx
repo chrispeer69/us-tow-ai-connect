@@ -240,10 +240,10 @@ export default function IntegrationsPage() {
                     <SelectValue placeholder="Select software" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TOWBOOK" disabled={integrations.some(i => i.softwareType === 'TOWBOOK')}>Towbook</SelectItem>
-                    <SelectItem value="TOWLOGS" disabled={integrations.some(i => i.softwareType === 'TOWLOGS')}>TowLogs</SelectItem>
-                    <SelectItem value="OMADI" disabled={integrations.some(i => i.softwareType === 'OMADI')}>Omadi</SelectItem>
-                    <SelectItem value="AAA_PORTAL" disabled={integrations.some(i => i.softwareType === 'AAA_PORTAL')}>AAA Portal</SelectItem>
+                    <SelectItem value="TOWBOOK">Towbook</SelectItem>
+                    <SelectItem value="TOWLOGS">TowLogs</SelectItem>
+                    <SelectItem value="OMADI">Omadi</SelectItem>
+                    <SelectItem value="AAA_PORTAL">AAA Portal</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

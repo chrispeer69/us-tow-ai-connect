@@ -6,11 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useBranding, type Branding, DEFAULT_BRANDING } from '@/components/branding/BrandingProvider';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
-const DEFAULT_TENANT_ID =
-  process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID ||
-  '00000000-0000-0000-0000-000000000001';
+import { api } from '@/lib/utils';
 
 const FONT_OPTIONS = ['Inter', 'Roboto', 'Open Sans', 'Source Sans 3', 'Lato', 'Montserrat', 'System UI'] as const;
 
@@ -23,10 +19,8 @@ export default function BrandingAdminPage() {
   const fileFav = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/v1/admin/branding`, {
-      headers: { 'x-tenant-id': DEFAULT_TENANT_ID },
-    })
-      .then((r) => (r.ok ? r.json() : DEFAULT_BRANDING))
+    api<Branding>('/v1/admin/branding')
+      .then((b) => b || DEFAULT_BRANDING)
       .then((b) => {
         setForm({ ...DEFAULT_BRANDING, ...b });
         setBranding(b);
@@ -43,13 +37,10 @@ export default function BrandingAdminPage() {
     setSaving(true);
     setMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/admin/branding`, {
+      const updated = await api<Branding>('/v1/admin/branding', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': DEFAULT_TENANT_ID },
-        body: JSON.stringify(form),
+        json: form,
       });
-      if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
-      const updated = await res.json();
       setForm(updated);
       setBranding(updated);
       setMsg('Branding saved.');
@@ -64,13 +55,11 @@ export default function BrandingAdminPage() {
     setSaving(true);
     setMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/admin/branding/upload/${kind}`, {
+      const body = await api<{ url: string; branding: Branding }>(`/v1/admin/branding/upload/${kind}`, {
         method: 'POST',
-        headers: { 'Content-Type': file.type, 'x-tenant-id': DEFAULT_TENANT_ID },
+        headers: { 'Content-Type': file.type },
         body: file,
       });
-      if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
-      const body = (await res.json()) as { url: string; branding: Branding };
       setForm(body.branding);
       setBranding(body.branding);
       setMsg(`${kind} uploaded.`);

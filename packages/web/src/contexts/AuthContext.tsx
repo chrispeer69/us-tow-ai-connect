@@ -48,9 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('access_token');
+    const isImpersonating = !!sessionStorage.getItem('impersonationBanner');
     if (stored) {
       setTokenState(stored);
-      setIsSuperAdmin(isTokenForSuperAdmin(stored));
+      setIsSuperAdmin(!isImpersonating && isTokenForSuperAdmin(stored));
     }
     setLoading(false);
   }, []);
@@ -59,7 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTokenState(newToken);
     if (newToken) {
       localStorage.setItem('access_token', newToken);
-      setIsSuperAdmin(isTokenForSuperAdmin(newToken));
+      const isImpersonating = !!sessionStorage.getItem('impersonationBanner');
+      setIsSuperAdmin(!isImpersonating && isTokenForSuperAdmin(newToken));
     } else {
       localStorage.removeItem('access_token');
       setIsSuperAdmin(false);

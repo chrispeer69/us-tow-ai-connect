@@ -65,6 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/super-admin', label: 'Platform Monitor', icon: 'tenants' },
       { href: '/super-admin/flip-defaults', label: 'Global Flip Defaults', icon: 'flip-engine' },
+      { href: '/super-admin/diagnostics', label: 'Diagnostics Hub', icon: 'support' as IconName },
     ],
   },
 ];

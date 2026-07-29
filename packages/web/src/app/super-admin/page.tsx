@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -16,7 +15,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/utils';
-import { ArrowRight, Activity, Users, PhoneCall } from 'lucide-react';
+import { ArrowRight, Activity, Users, PhoneCall, UserCheck } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const PLAN_OPTIONS = ['FREE', 'TRIAL', 'STARTER', 'PRO', 'ENTERPRISE'];
 
@@ -47,6 +47,7 @@ export default function SuperAdminPage() {
   const [savingDemoSettings, setSavingDemoSettings] = useState(false);
   const [publicDemoCallsEnabled, setPublicDemoCallsEnabled] = useState(false);
   const [capDrafts, setCapDrafts] = useState<Record<string, string>>({});
+  const { setToken } = useAuth();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -264,16 +265,34 @@ export default function SuperAdminPage() {
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link href={`/admin/tenants/${t.id}`}>
+                    <div className="flex justify-end gap-2">
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-800"
+                        variant="secondary"
+                        className="bg-red-600 text-white hover:bg-red-700"
+                        onClick={async () => {
+                          try {
+                            const res = await api<{ access_token: string }>('/v1/auth/impersonate', {
+                              method: 'POST',
+                              json: { tenantId: t.id }
+                            });
+                            const currentToken = localStorage.getItem('access_token');
+                            if (currentToken) {
+                              localStorage.setItem('original_access_token', currentToken);
+                            }
+                            sessionStorage.setItem('impersonationBanner', `Impersonating Tenant: ${t.companyName}`);
+                            sessionStorage.setItem('impersonationReturnUrl', '/super-admin');
+                            setToken(res.access_token);
+                            window.location.href = '/admin/command-center';
+                          } catch (err) {
+                            setError((err as Error).message);
+                          }
+                        }}
                       >
-                        Profile
-                        <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                        <UserCheck className="mr-2 h-3.5 w-3.5" />
+                        Impersonate
                       </Button>
-                    </Link>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -317,7 +336,7 @@ export default function SuperAdminPage() {
                     <div className="text-sm text-zinc-400">{t.description}</div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={t.status === 'open' ? 'outline' : 'secondary'} className="capitalize">
+                    <Badge variant={t.status === 'open' ? 'outline' : 'default'} className="capitalize">
                       {t.status}
                     </Badge>
                   </TableCell>

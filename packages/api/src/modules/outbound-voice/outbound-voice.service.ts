@@ -286,6 +286,7 @@ export class OutboundVoiceService {
       }
       const updated = await this.dispatchOne(call, tenant);
       if (updated) out.push(updated);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     return out;
   }

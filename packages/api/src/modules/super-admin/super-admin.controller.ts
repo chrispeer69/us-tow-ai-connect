@@ -4,15 +4,24 @@ import {
   Get,
   Param,
   Patch,
+  Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SuperAdminAuthGuard } from './super-admin-auth.guard';
 import { SuperAdminService } from './super-admin.service';
+import { AdminService } from '../admin/admin.service';
+import { FlipEngineService } from '../flip-engine/flip-engine.service';
+import { BadRequestException } from '@nestjs/common';
 
 @Controller('v1/super-admin')
 @UseGuards(SuperAdminAuthGuard)
 export class SuperAdminController {
-  constructor(private readonly service: SuperAdminService) {}
+  constructor(
+    private readonly service: SuperAdminService,
+    private readonly adminService: AdminService,
+    private readonly flipEngineService: FlipEngineService,
+  ) {}
 
   @Get('tenants')
   listTenants() {
@@ -91,5 +100,43 @@ export class SuperAdminController {
   @Get('tickets')
   listTickets() {
     return this.service.listSupportTickets();
+  }
+
+  // --- Diagnostics ---
+  @Get('diagnostics/adapter-test')
+  testAdapterPickup(@Query('tenantId') tenantId: string, @Query('softwareType') softwareType: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    if (!softwareType) throw new BadRequestException('softwareType is required');
+    return this.adminService.testAdapterPickup(tenantId, softwareType);
+  }
+
+  @Get('diagnostics/ai-context')
+  getAiDiagnosticContext(@Query('tenantId') tenantId: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    return this.adminService.getAiDiagnosticContext(tenantId);
+  }
+
+  @Post('diagnostics/sandbox-ping')
+  sandboxPing(@Body() body: { tenantId: string; phone: string }) {
+    if (!body.tenantId) throw new BadRequestException('tenantId is required');
+    if (!body.phone) throw new BadRequestException('phone is required');
+    return { success: false, message: 'Sandbox ping not yet implemented' };
+  }
+
+  @Get('diagnostics/ai-ping')
+  aiPing(@Query('tenantId') tenantId: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    return this.adminService.testAiVoicePing(tenantId);
+  }
+
+  @Get('diagnostics/run-all')
+  async runAllDiagnostics(@Query('tenantId') tenantId: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+    try {
+      return await this.adminService.runFullDiagnostics(tenantId);
+    } catch (err: any) {
+      console.error('FATAL DIAGNOSTIC ERROR:', err);
+      return { success: false, error: err.message, stack: err.stack };
+    }
   }
 }

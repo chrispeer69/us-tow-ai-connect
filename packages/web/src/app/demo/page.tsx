@@ -408,7 +408,7 @@ function DemoSidebar({
 function CompactStatsStrip({ stats }: { stats: Stats }) {
   const items = [
     { label: 'Active', value: stats.activeJobs.toLocaleString(), tone: 'text-blue-700' },
-    { label: 'Avg ETA', value: `${stats.avgEtaMinutes.toFixed(0)}m`, tone: 'text-emerald-700' },
+    { label: 'Avg ETA', value: `${(stats.avgEtaMinutes ?? 0).toFixed(0)}m`, tone: 'text-emerald-700' },
     { label: '24h Jobs', value: stats.jobsLast24h.toLocaleString(), tone: 'text-zinc-900' },
     { label: 'Jobs/hr', value: stats.jobsPerHour.toFixed(1), tone: 'text-amber-700' },
   ];
@@ -634,7 +634,8 @@ function DemoHelp({
   );
 }
 
-function ExplainerBox({ title, body }: { title: string; body: string }) {
+// @ts-expect-error Reserved for future use
+function _ExplainerBox({ title, body }: { title: string; body: string }) {
   return (
     <div className="min-w-[220px] rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 shadow-sm md:min-w-0">
       <div className="font-label text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">

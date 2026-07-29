@@ -10,6 +10,7 @@ export interface FlipDecisionInput {
     no_flip_confidence_threshold?: number;
     no_flip_categories?: string[];
   };
+  destinationReason?: string;
 }
 
 export interface FlipDecision {
@@ -30,13 +31,13 @@ const DEFAULT_NO_FLIP_CATEGORIES: IssueSubcategory[] = [
 ];
 
 export function decideFlip(input: FlipDecisionInput): FlipDecision {
-  // Hard rule 1: AAA-branded → never flip.
+  // Hard rule 1: AAA-branded / Blocklist → never flip.
   if (input.destinationTag === 'aaa_branded') {
     return {
       flipEligible: false,
       conviniIntensity: 'soft',
       bodyShopSoftMention: false,
-      reasonCode: 'aaa_branded_hard_block',
+      reasonCode: input.destinationReason || 'aaa_branded_hard_block',
     };
   }
 

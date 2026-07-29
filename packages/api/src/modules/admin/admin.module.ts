@@ -8,5 +8,6 @@ import { AdaptersModule } from '../adapters/adapters.module';
   imports: [AdaptersModule],
   controllers: [AdminController, SentryDebugController],
   providers: [AdminService],
+  exports: [AdminService],
 })
 export class AdminModule {}

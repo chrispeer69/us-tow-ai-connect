@@ -305,16 +305,24 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
 
 async function impersonate(targetTenantId: string, email: string) {
   try {
-    const res = await fetch(`${API_BASE}/v1/super-admin/impersonate`, {
+    const res = await fetch(`${API_BASE}/v1/auth/impersonate`, {
       method: 'POST',
       headers: authedHeaders(email, { 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ targetTenantId }),
+      body: JSON.stringify({ tenantId: targetTenantId }),
     });
     if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
-    const body = (await res.json()) as { token: string; bannerLabel: string };
-    sessionStorage.setItem('impersonationToken', body.token);
-    sessionStorage.setItem('impersonationBanner', body.bannerLabel);
-    window.location.href = '/admin/integrations';
+    const body = (await res.json()) as { access_token: string };
+    
+    const currentToken = localStorage.getItem('access_token');
+    if (currentToken) {
+      localStorage.setItem('original_access_token', currentToken);
+    }
+    
+    sessionStorage.setItem('impersonationBanner', `Impersonating Tenant: ${targetTenantId}`);
+    localStorage.setItem('access_token', body.access_token);
+    
+    alert(`Impersonation session active.\nToken stored in localStorage. Refreshing page...`);
+    window.location.href = '/admin/command-center';
   } catch (e) {
     alert(`Impersonation failed: ${(e as Error).message}`);
   }

@@ -11,7 +11,8 @@
  *   - DEMO_SMS_TO          (optional override, defaults to +16146337935)
  */
 
-const DEFAULT_RECIPIENT = '+16146337935'; // Chris Peer
+// @ts-expect-error Kept as reference for Twilio fallback
+const _DEFAULT_RECIPIENT = '+16146337935'; // Chris Peer
 
 export type ScheduleDemoResult = { ok: true } | { ok: false; error: string };
 

@@ -18,11 +18,11 @@ export const TENANT_HEADER = 'x-tenant-id';
 export const DEFAULT_TENANT_ID =
   process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
 
-export async function api<T = unknown>(
+export async function api<T = any>(
   path: string,
-  init: RequestInit & { json?: unknown } = {},
+  opts: RequestInit & { json?: any; direct?: boolean } = {},
 ): Promise<T> {
-  const { json, headers, ...rest } = init;
+  const { json, direct, headers, ...rest } = opts;
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',
     [TENANT_HEADER]: DEFAULT_TENANT_ID,
@@ -38,10 +38,17 @@ export async function api<T = unknown>(
   if (json !== undefined) {
     finalHeaders['Content-Type'] = 'application/json';
   }
-  const res = await fetch(`/api${path}`, {
+  const baseUrl = direct
+    ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001')
+    : '';
+  const urlPath = direct
+    ? (path.startsWith('/') ? path : `/${path}`)
+    : (path.startsWith('/api') ? path : `/api${path}`);
+
+  const res = await fetch(`${baseUrl}${urlPath}`, {
     ...rest,
     headers: finalHeaders,
-    body: json !== undefined ? JSON.stringify(json) : (init.body ?? undefined),
+    body: json !== undefined ? JSON.stringify(json) : (opts.body ?? undefined),
     cache: 'no-store',
   });
   if (!res.ok) {

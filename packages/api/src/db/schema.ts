@@ -283,8 +283,8 @@ export const tenantMembers = pgTable('tenant_members', {
   email: varchar('email', { length: 255 }).notNull(),
   name: varchar('name', { length: 255 }),
   // RBAC role (Session 45). UPPERCASE to match existing rows + the onboarding
-  // writer. Allowed set enforced by a CHECK constraint in 0022_members_rbac.sql:
-  // OWNER | DISPATCHER | DRIVER | ACCOUNTING | VIEWER.
+  // writer. Allowed set enforced by a CHECK constraint in 0022_members_rbac.sql and 0038_support_role.sql:
+  // OWNER | DISPATCHER | DRIVER | ACCOUNTING | VIEWER | SUPPORT.
   role: varchar('role', { length: 20 }).notNull().default('VIEWER'),
   status: varchar('status', { length: 20 }).notNull().default('INVITED'),
   invitedBy: varchar('invited_by', { length: 255 }),
@@ -366,6 +366,10 @@ export const tenantCredentialsRelations = relations(tenantCredentials, ({ one })
 
 export const routingRulesRelations = relations(routingRules, ({ one }) => ({
   tenant: one(tenants, { fields: [routingRules.tenantId], references: [tenants.id] }),
+}));
+
+export const outboundCallLogsRelations = relations(outboundCallLogs, ({ one }) => ({
+  tenant: one(tenants, { fields: [outboundCallLogs.tenantId], references: [tenants.id] }),
 }));
 
 export const interactionLogsRelations = relations(interactionLogs, ({ one }) => ({
@@ -1055,7 +1059,7 @@ export const aaaBrandedBlocklist = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    matchType: varchar('match_type', { length: 20 }).notNull(), // NAME_PATTERN | EXACT_NAME | EXACT_ADDRESS | PHONE
+    matchType: varchar('match_type', { length: 20 }).notNull(), // STANDALONE_WORD | NAME_PATTERN | EXACT_NAME | EXACT_ADDRESS | PHONE
     matchValue: varchar('match_value', { length: 255 }).notNull(),
     label: varchar('label', { length: 180 }).notNull(),
     notes: text('notes'),

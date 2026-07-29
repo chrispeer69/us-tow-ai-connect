@@ -379,4 +379,21 @@ export class FlipEngineController {
   ) {
     return this.orchestrator.simulateLiveCall(req.tenantId, body);
   }
+
+  @Post('sandbox/ping')
+  @UseGuards(AdminAuthGuard)
+  async sandboxPing(@Req() req: AdminRequest, @Body() body: { phone: string }) {
+    if (!body.phone) {
+      throw new BadRequestException('phone number is required');
+    }
+    
+    // Check permission: OWNER or SUPPORT
+    const role = req.user?.role;
+    if (role !== 'OWNER' && role !== 'SUPPORT') {
+      throw new BadRequestException('Insufficient permissions to send test pings');
+    }
+
+    await this.orchestrator.pingSandbox(req.tenantId, body.phone);
+    return { status: 'success', message: 'Test call triggered successfully' };
+  }
 }

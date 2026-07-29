@@ -15,7 +15,6 @@ import {
   Bot,
   Zap,
   ShieldCheck,
-  Network,
   DollarSign,
   Check,
   X,

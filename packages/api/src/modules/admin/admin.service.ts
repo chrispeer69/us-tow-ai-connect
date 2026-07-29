@@ -23,6 +23,9 @@ import {
   tenantBilling,
   tenantCredentials,
   tenants,
+  users,
+  aaaBrandedBlocklist,
+  outboundCallLogs,
 } from '../../db/schema';
 import { EncryptionUtil } from '../../common/utils/encryption.util';
 import { AdapterFactory } from '../adapters/adapter.factory';
@@ -320,6 +323,331 @@ export class AdminService {
       })
       .where(eq(tenantCredentials.id, cred.id));
     return result;
+  }
+
+  async testAdapterPickup(tenantId: string, softwareType: string) {
+    const cred = (
+      await this.db
+        .select()
+        .from(tenantCredentials)
+        .where(
+          and(
+            eq(tenantCredentials.tenantId, tenantId),
+            eq(tenantCredentials.softwareType, softwareType)
+          )
+        )
+        .limit(1)
+    )[0];
+    if (!cred) {
+      throw new NotFoundException('No credentials saved for this software type.');
+    }
+
+    let decoded: { username: string; password: string };
+    try {
+      decoded = this.encryption.decrypt(
+        cred.usernameEncrypted,
+        cred.passwordEncrypted,
+        cred.encryptionIv,
+        cred.authTag,
+      );
+    } catch (err) {
+      throw new BadRequestException('Credentials could not be decrypted.');
+    }
+
+    try {
+      const adapter = this.adapters.getAdapter(softwareType);
+      await adapter.login(tenantId, decoded);
+      const activeJobs = await adapter.scrapeAllActiveJobs(tenantId);
+
+      return {
+        success: true,
+        jobCount: activeJobs.length,
+        sampleJob: activeJobs.length > 0 ? activeJobs[0] : null,
+        message: `Adapter connected successfully. 200 OK. Fetched ${activeJobs.length} active jobs.`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Adapter failed to connect',
+      };
+    }
+  }
+
+  async testAiVoicePing(tenantId: string) {
+    const tenantInfo = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    if (!tenantInfo[0]) throw new NotFoundException('Tenant not found');
+
+    const t = tenantInfo[0];
+    if (!t.outboundVoiceEnabled) {
+      return { success: false, message: 'Tenant has Outbound Voice disabled.' };
+    }
+
+    const agentId = readConfigString(t.outboundVoiceConfig, 'retell_outbound_agent_id', null);
+    if (!agentId) {
+      return { success: false, message: 'No Retell Agent ID configured for this tenant.' };
+    }
+
+    const apiKey = process.env.RETELL_API_KEY;
+    if (!apiKey) {
+      return { success: false, message: 'System missing RETELL_API_KEY env var.' };
+    }
+
+    try {
+      const res = await fetch(`https://api.retellai.com/get-agent/${agentId}`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      });
+      if (!res.ok) {
+        return { success: false, message: `Retell API returned ${res.status} ${res.statusText}` };
+      }
+      const data = await res.json();
+      return {
+        success: true,
+        message: 'Retell API Connection Successful. 200 OK.',
+        agentData: data
+      };
+    } catch (err: any) {
+      return { success: false, message: `Ping failed: ${err.message}` };
+    }
+  }
+
+  async runFullDiagnostics(tenantId: string) {
+    const tenantInfo = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    if (!tenantInfo[0]) throw new NotFoundException('Tenant not found');
+    const t = tenantInfo[0];
+
+    const results: any[] = [];
+    const addResult = (name: string, status: 'pass' | 'warn' | 'fail', message: string, details?: any) => {
+      results.push({ name, status, message, details });
+    };
+
+    // 1. Billing Status
+    try {
+      const billingInfo = await this.db.select().from(tenantBilling).where(eq(tenantBilling.tenantId, tenantId)).limit(1);
+      if (!billingInfo[0]) {
+        addResult('Billing Status', 'fail', 'No billing record found.');
+      } else {
+        const b = billingInfo[0];
+        if (b.status === 'ACTIVE') {
+          addResult('Billing Status', 'pass', `Active (${b.plan})`);
+        } else {
+          addResult('Billing Status', 'warn', `Billing status is ${b.status} (${b.plan})`);
+        }
+      }
+    } catch (err: any) {
+      addResult('Billing Status', 'fail', `Error checking billing: ${err.message}`);
+    }
+
+    // 2. Routing Rules
+    try {
+      const rules = await this.db.select().from(routingRules).where(eq(routingRules.tenantId, tenantId));
+      if (rules.length === 0) {
+        addResult('Phone Routing Rules', 'fail', 'No routing rules configured. AI cannot dispatch calls.');
+      } else {
+        const activeCount = rules.filter(r => r.isActiveNow).length;
+        if (activeCount > 0) {
+          addResult('Phone Routing Rules', 'pass', `${rules.length} rule(s) found.`, `${activeCount} currently active.`);
+        } else {
+          addResult('Phone Routing Rules', 'warn', `${rules.length} rule(s) found, but NONE are currently active.`);
+        }
+      }
+    } catch (err: any) {
+      addResult('Phone Routing Rules', 'fail', `Error checking rules: ${err.message}`);
+    }
+
+    // 3. Recent Call Health
+    try {
+      const recentCalls = await this.db.select().from(outboundCallLogs).where(eq(outboundCallLogs.tenantId, tenantId)).orderBy(desc(outboundCallLogs.callTime)).limit(5);
+      if (recentCalls.length === 0) {
+        addResult('Recent Call Health', 'warn', 'No outbound calls made recently.');
+      } else {
+        const lastCall = recentCalls[0];
+        if (lastCall.flipOutcome === 'SUCCESS' || lastCall.flipOutcome === 'ACCEPTED') {
+          addResult('Recent Call Health', 'pass', 'Last AI call succeeded.', `Duration: ${lastCall.callDurationSeconds || 0}s`);
+        } else {
+          addResult('Recent Call Health', 'warn', `Last AI call did not succeed (${lastCall.flipOutcome}).`, `Reason: ${lastCall.noFlipReason || 'Unknown'}`);
+        }
+      }
+    } catch (err: any) {
+      addResult('Recent Call Health', 'fail', `Error checking calls: ${err.message}`);
+    }
+
+    // 4. Adapter Configured
+    if (!t.targetSoftwareType) {
+      addResult('Adapter Configured', 'fail', 'Primary dispatch software is NOT selected.');
+    } else {
+      addResult('Adapter Configured', 'pass', `Software set to ${t.targetSoftwareType}.`);
+    }
+
+    // 5. Credentials Valid
+    let canPingAdapter = false;
+    let decodedCreds: any = null;
+    try {
+      const creds = await this.db.select().from(tenantCredentials).where(eq(tenantCredentials.tenantId, tenantId));
+      const primaryCred = creds.find(c => c.softwareType === t.targetSoftwareType) || creds[0];
+      
+      if (!primaryCred) {
+        addResult('Credentials Valid', 'fail', 'No dispatch credentials found in database.');
+      } else {
+        decodedCreds = this.encryption.decrypt(
+          primaryCred.usernameEncrypted,
+          primaryCred.passwordEncrypted,
+          primaryCred.encryptionIv,
+          primaryCred.authTag,
+        );
+        addResult('Credentials Valid', 'pass', `Successfully decrypted credentials for ${primaryCred.softwareType}.`);
+        canPingAdapter = true;
+      }
+    } catch (err: any) {
+      addResult('Credentials Valid', 'fail', 'Failed to decrypt credentials. Keys may be corrupted or invalid.');
+    }
+
+    // 6. Live Adapter Ping
+    if (!canPingAdapter) {
+      addResult('Live Adapter Ping', 'fail', 'Cannot ping adapter without valid credentials.');
+    } else {
+      try {
+        const adapter = this.adapters.getAdapter(t.targetSoftwareType || 'TOWBOOK');
+        await adapter.login(tenantId, decodedCreds);
+        const activeJobs = await adapter.scrapeAllActiveJobs(tenantId);
+        addResult('Live Adapter Ping', 'pass', `Connected successfully. Fetched ${activeJobs.length} active jobs.`, activeJobs.length > 0 ? activeJobs[0] : null);
+      } catch (err: any) {
+        addResult('Live Adapter Ping', 'fail', `Adapter API rejected connection: ${err.message}`);
+      }
+    }
+
+    // 7. Voice Engine Enabled
+    if (t.outboundVoiceEnabled) {
+      addResult('Voice Engine Enabled', 'pass', 'Outbound Voice is toggled ON.');
+    } else {
+      addResult('Voice Engine Enabled', 'warn', 'Outbound Voice is DISABLED.');
+    }
+
+    // 8. Retell Agent Ping
+    const agentId = readConfigString(t.outboundVoiceConfig, 'retell_outbound_agent_id', null);
+    if (!agentId) {
+      addResult('Retell Agent Ping', 'fail', 'No Retell Agent ID configured for this tenant.');
+    } else {
+      const apiKey = process.env.RETELL_API_KEY;
+      if (!apiKey) {
+        addResult('Retell Agent Ping', 'fail', 'System missing RETELL_API_KEY env var.');
+      } else {
+        try {
+          const res = await fetch(`https://api.retellai.com/get-agent/${agentId}`, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            addResult('Retell Agent Ping', 'pass', 'Agent is alive on Retell API.', data);
+          } else {
+            addResult('Retell Agent Ping', 'fail', `Retell API returned ${res.status}. Agent may be deleted or key invalid.`);
+          }
+        } catch (err: any) {
+          addResult('Retell Agent Ping', 'fail', `Network error pinging Retell: ${err.message}`);
+        }
+      }
+    }
+
+    // 9. Callback Number Set
+    const callbackNumber = readConfigString(t.outboundVoiceConfig, 'callback_number', null);
+    if (!callbackNumber) {
+      addResult('Callback Number Set', 'fail', 'No callback number configured. AI will not be able to forward calls.');
+    } else {
+      addResult('Callback Number Set', 'pass', `Callback forwarding number is ${callbackNumber}.`);
+    }
+
+    // 10. Custom Scripts
+    const scriptBlocksStr = readConfigString(t.outboundVoiceConfig, 'script_blocks', null);
+    if (!scriptBlocksStr) {
+      addResult('Custom Scripts', 'pass', 'Using default system script blocks.');
+    } else {
+      addResult('Custom Scripts', 'warn', 'Tenant has modified script blocks. AI behavior may vary from defaults.', scriptBlocksStr);
+    }
+
+    // 11. Flip Engine Enabled
+    if (t.flipEngineEnabled) {
+      addResult('Flip Engine Enabled', 'pass', 'AI Dispatch Reasoning (Flip Engine) is ON.');
+    } else {
+      addResult('Flip Engine Enabled', 'warn', 'AI Dispatch Reasoning (Flip Engine) is DISABLED.');
+    }
+
+    // 12. Blocklist Health
+    try {
+      const blocklist = await this.db.select().from(aaaBrandedBlocklist).where(eq(aaaBrandedBlocklist.tenantId, tenantId));
+      const activeRules = blocklist.filter(b => b.active).length;
+      if (blocklist.length === 0) {
+        addResult('Blocklist Health', 'pass', 'No blocklist rules configured. AI will call all destinations.');
+      } else {
+        addResult('Blocklist Health', 'warn', `Tenant has ${activeRules} active blocklist rule(s). AI will refuse calls matching these.`, blocklist.map(b => b.matchValue).join(', '));
+      }
+    } catch (err: any) {
+      addResult('Blocklist Health', 'fail', `Error checking blocklist: ${err.message}`);
+    }
+
+    return { success: true, results };
+  }
+
+  async getAiDiagnosticContext(tenantId: string) {
+    const tenantInfo = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    if (!tenantInfo[0]) throw new NotFoundException('Tenant not found');
+
+    const creds = await this.db.select().from(tenantCredentials).where(eq(tenantCredentials.tenantId, tenantId));
+    
+    const recentCalls = await this.db
+      .select()
+      .from(outboundCallLogs)
+      .where(eq(outboundCallLogs.tenantId, tenantId))
+      .orderBy(desc(outboundCallLogs.callTime))
+      .limit(5);
+
+    let sampleJob: any = null;
+    const primaryCred = creds[0];
+    if (primaryCred) {
+      try {
+        const decoded = this.encryption.decrypt(
+          primaryCred.usernameEncrypted,
+          primaryCred.passwordEncrypted,
+          primaryCred.encryptionIv,
+          primaryCred.authTag,
+        );
+        const adapter = this.adapters.getAdapter(primaryCred.softwareType);
+        await adapter.login(tenantId, decoded);
+        const activeJobs = await adapter.scrapeAllActiveJobs(tenantId);
+        sampleJob = activeJobs.length > 0 ? activeJobs[0] : null;
+      } catch (err) {
+        // Ignore adapter fetch errors for the diagnostic dump
+      }
+    }
+
+    const rules = await this.db.select().from(routingRules).where(eq(routingRules.tenantId, tenantId));
+
+    return {
+      tenant: {
+        id: tenantInfo[0].id,
+        companyName: tenantInfo[0].companyName,
+        targetSoftwareType: tenantInfo[0].targetSoftwareType,
+        outboundVoiceEnabled: tenantInfo[0].outboundVoiceEnabled,
+        outboundVoiceConfig: tenantInfo[0].outboundVoiceConfig,
+        flipEngineEnabled: tenantInfo[0].flipEngineEnabled,
+        flipEngineConfig: tenantInfo[0].flipEngineConfig,
+        routingRules: rules,
+      },
+      integrations: creds.map(c => ({
+        softwareType: c.softwareType,
+        sessionStatus: c.sessionStatus,
+        failureReason: c.failureReason,
+        lastLoginSuccess: c.lastLoginSuccess,
+      })),
+      liveAdapterData: sampleJob ? { hasData: true, sample: sampleJob } : { hasData: false, sample: null },
+      recentOutboundCalls: recentCalls.map(c => ({
+        callTime: c.callTime,
+        customerPhone: c.customerPhone,
+        transcript: c.transcript,
+        flipOutcome: c.flipOutcome,
+        offer1Result: c.offer1Result,
+        offer2Result: c.offer2Result,
+        offer3Result: c.offer3Result,
+      })),
+    };
   }
 
   async getIntegrationStatus(tenantId: string) {

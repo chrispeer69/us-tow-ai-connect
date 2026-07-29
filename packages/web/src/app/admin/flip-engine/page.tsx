@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
@@ -52,7 +53,7 @@ interface AlphaShop {
 interface BlocklistEntry {
   id: string;
   tenantId: string;
-  matchType: 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
+  matchType: 'STANDALONE_WORD' | 'NAME_PATTERN' | 'EXACT_NAME' | 'EXACT_ADDRESS' | 'PHONE';
   matchValue: string;
   label: string;
   notes: string | null;
@@ -150,11 +151,20 @@ interface SandboxResult {
   scriptPreview: string;
 }
 
-const MATCH_TYPE_COLOR: Record<string, string> = {
+const MATCH_TYPE_COLOR: Record<BlocklistEntry['matchType'], string> = {
+  STANDALONE_WORD: 'bg-emerald-900 text-emerald-200',
   NAME_PATTERN: 'bg-amber-900 text-amber-200',
-  EXACT_NAME: 'bg-violet-900 text-violet-200',
-  EXACT_ADDRESS: 'bg-cyan-900 text-cyan-200',
-  PHONE: 'bg-pink-900 text-pink-200',
+  EXACT_NAME: 'bg-rose-900 text-rose-200',
+  EXACT_ADDRESS: 'bg-indigo-900 text-indigo-200',
+  PHONE: 'bg-zinc-700 text-zinc-200',
+};
+
+const MATCH_TYPE_LABEL: Record<BlocklistEntry['matchType'], string> = {
+  STANDALONE_WORD: 'Contains word',
+  NAME_PATTERN: 'Contains pattern',
+  EXACT_NAME: 'Exact name',
+  EXACT_ADDRESS: 'Exact address',
+  PHONE: 'Phone',
 };
 
 export default function FlipEnginePage() {
@@ -1083,7 +1093,7 @@ function BlocklistTab({
                 </TableCell>
                 <TableCell>
                   <Badge className={MATCH_TYPE_COLOR[b.matchType] ?? 'bg-zinc-700 text-zinc-200'}>
-                    {b.matchType}
+                    {MATCH_TYPE_LABEL[b.matchType] ?? b.matchType}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">{b.matchValue}</TableCell>
@@ -1174,36 +1184,48 @@ function AddBlocklistModal({
       <Card className="w-full max-w-lg">
         <CardContent className="space-y-3 p-5">
           <h2 className="text-lg font-semibold">Add AAA-branded blocklist entry</h2>
-          <Select
-            value={form.matchType}
-            onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['matchType'] })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Match type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NAME_PATTERN">Name pattern (substring)</SelectItem>
-              <SelectItem value="EXACT_NAME">Exact business name</SelectItem>
-              <SelectItem value="EXACT_ADDRESS">Exact address</SelectItem>
-              <SelectItem value="PHONE">Phone number</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Match value"
-            value={form.matchValue}
-            onChange={(e) => setForm({ ...form, matchValue: e.target.value })}
-          />
-          <Input
-            placeholder="Human-readable label"
-            value={form.label}
-            onChange={(e) => setForm({ ...form, label: e.target.value })}
-          />
-          <textarea
-            className="h-20 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-            placeholder="Notes (optional)"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          />
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Rule Type</label>
+            <Select
+              value={form.matchType}
+              onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['matchType'] })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Match type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="STANDALONE_WORD">Contains word</SelectItem>
+                <SelectItem value="NAME_PATTERN">Contains pattern</SelectItem>
+                <SelectItem value="EXACT_NAME">Exact business name</SelectItem>
+                <SelectItem value="EXACT_ADDRESS">Exact address</SelectItem>
+                <SelectItem value="PHONE">Phone number</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Value to Match</label>
+            <Input
+              placeholder="e.g. Firestone or 555-1234"
+              value={form.matchValue}
+              onChange={(e) => setForm({ ...form, matchValue: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Label (For Your Reference)</label>
+            <Input
+              placeholder="e.g. Firestone Auto"
+              value={form.label}
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Internal Notes</label>
+            <Textarea
+              placeholder="Notes (optional)"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
@@ -1257,36 +1279,48 @@ function EditBlocklistModal({
       <Card className="w-full max-w-lg">
         <CardContent className="space-y-3 p-5">
           <h2 className="text-lg font-semibold">Edit AAA-branded blocklist entry</h2>
-          <Select
-            value={form.matchType}
-            onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['matchType'] })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Match type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NAME_PATTERN">Name pattern (substring)</SelectItem>
-              <SelectItem value="EXACT_NAME">Exact business name</SelectItem>
-              <SelectItem value="EXACT_ADDRESS">Exact address</SelectItem>
-              <SelectItem value="PHONE">Phone number</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Match value"
-            value={form.matchValue}
-            onChange={(e) => setForm({ ...form, matchValue: e.target.value })}
-          />
-          <Input
-            placeholder="Human-readable label"
-            value={form.label}
-            onChange={(e) => setForm({ ...form, label: e.target.value })}
-          />
-          <textarea
-            className="h-20 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-            placeholder="Notes (optional)"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          />
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Rule Type</label>
+            <Select
+              value={form.matchType}
+              onValueChange={(v) => setForm({ ...form, matchType: v as BlocklistEntry['matchType'] })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Match type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="STANDALONE_WORD">Contains word</SelectItem>
+                <SelectItem value="NAME_PATTERN">Contains pattern</SelectItem>
+                <SelectItem value="EXACT_NAME">Exact business name</SelectItem>
+                <SelectItem value="EXACT_ADDRESS">Exact address</SelectItem>
+                <SelectItem value="PHONE">Phone number</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Value to Match</label>
+            <Input
+              placeholder="e.g. Firestone or 555-1234"
+              value={form.matchValue}
+              onChange={(e) => setForm({ ...form, matchValue: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Label (For Your Reference)</label>
+            <Input
+              placeholder="e.g. Firestone Auto"
+              value={form.label}
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-zinc-700">Internal Notes</label>
+            <Textarea
+              placeholder="Notes (optional)"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
@@ -1706,8 +1740,7 @@ AI: "Drive safe."`;
               label="1. Greeting & Identification"
               help="How the AI answers and introduces itself."
             >
-              <textarea
-                className="h-24 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={openingBlock}
                 onChange={(e) => setOpeningBlock(e.target.value)}
               />
@@ -1717,8 +1750,7 @@ AI: "Drive safe."`;
               label="2. Purpose of Call"
               help="Stating why the AI is calling."
             >
-              <textarea
-                className="h-24 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={purposeBlock}
                 onChange={(e) => setPurposeBlock(e.target.value)}
               />
@@ -1728,8 +1760,7 @@ AI: "Drive safe."`;
               label="3. Confirm Pickup Location"
               help="Confirming where the customer's vehicle is located."
             >
-              <textarea
-                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={pickupBlock}
                 onChange={(e) => setPickupBlock(e.target.value)}
               />
@@ -1739,8 +1770,7 @@ AI: "Drive safe."`;
               label="4. Confirm Vehicle"
               help="Confirming the make/model/year."
             >
-              <textarea
-                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={vehicleBlock}
                 onChange={(e) => setVehicleBlock(e.target.value)}
               />
@@ -1750,8 +1780,7 @@ AI: "Drive safe."`;
               label="5. Clarify Issue"
               help="Asking what went wrong with the vehicle."
             >
-              <textarea
-                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={issueBlock}
                 onChange={(e) => setIssueBlock(e.target.value)}
               />
@@ -1761,8 +1790,7 @@ AI: "Drive safe."`;
               label="6. Confirm Destination"
               help="Confirming where the vehicle is being towed to."
             >
-              <textarea
-                className="h-20 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={destinationBlock}
                 onChange={(e) => setDestinationBlock(e.target.value)}
               />
@@ -1771,8 +1799,7 @@ AI: "Drive safe."`;
               label="Offer 1 (Convenience & Value)"
               help="The first pitch made when the destination is a competitor repair shop."
             >
-              <textarea
-                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={offer1}
                 onChange={(e) => setOffer1(e.target.value)}
                 placeholder="Leave empty to skip this offer"
@@ -1783,8 +1810,7 @@ AI: "Drive safe."`;
               label="Offer 2 (Urgency & Priority)"
               help="The second pitch made if the customer declines Offer 1."
             >
-              <textarea
-                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={offer2}
                 onChange={(e) => setOffer2(e.target.value)}
                 placeholder="Leave empty to skip this offer"
@@ -1795,8 +1821,7 @@ AI: "Drive safe."`;
               label="Offer 3 (Financial Incentive)"
               help="The final pitch made if the customer declines Offer 2."
             >
-              <textarea
-                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={offer3}
                 onChange={(e) => setOffer3(e.target.value)}
                 placeholder="Leave empty to skip this offer"
@@ -1807,8 +1832,7 @@ AI: "Drive safe."`;
               label="CONVINI App Pitch (Soft Close)"
               help="The final pivot if all offers are declined or if the destination is an auto body shop."
             >
-              <textarea
-                className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              <Textarea
                 value={conviniPitch}
                 onChange={(e) => setConviniPitch(e.target.value)}
                 placeholder="Leave empty to skip this pitch"
@@ -1828,8 +1852,7 @@ AI: "Drive safe."`;
           label="Custom Agent Rules"
           help="Global instructions appended to the protected default AI agent instructions."
         >
-          <textarea
-            className="h-32 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          <Textarea
             placeholder="e.g. CRITICAL PARSING RULES: ..."
             value={customAgentRules}
             onChange={(e) => setCustomAgentRules(e.target.value)}
@@ -1840,8 +1863,7 @@ AI: "Drive safe."`;
           label="Warm Close"
           help="The final goodbye at the very end of the call, after Convini is pitched."
         >
-          <textarea
-            className="h-28 w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+          <Textarea
             value={closeBlock}
             onChange={(e) => setCloseBlock(e.target.value)}
           />

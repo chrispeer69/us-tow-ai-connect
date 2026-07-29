@@ -166,6 +166,25 @@ export class FlipOrchestratorService {
     tenantId: string,
     job: PendingFlipJob,
   ): Promise<boolean> {
+    // Dedup: never enqueue the same job twice across server restarts.
+    if (job.relatedJobId) {
+      const existingCalls = await this.db
+        .select({ id: outboundCalls.id })
+        .from(outboundCalls)
+        .where(
+          and(
+            eq(outboundCalls.tenantId, tenantId),
+            eq(outboundCalls.relatedJobId, job.relatedJobId),
+            eq(outboundCalls.purpose, 'custom')
+          )
+        )
+        .limit(1);
+
+      if (existingCalls.length > 0) {
+        return false;
+      }
+    }
+
     // Pull tenant config + blocklist + our shops in parallel.
     const [config, blocklistRows, ourShops, globalConfig] = await Promise.all([
       this.flipEngine.getConfig(tenantId),
@@ -225,6 +244,7 @@ export class FlipOrchestratorService {
     const decision: FlipDecision = decideFlip({
       source: job.source,
       destinationTag: destination.tag,
+      destinationReason: destination.reason,
       issueSubcategory: issue.subcategory,
       issueConfidence: issue.confidence,
       config: (config.config as Record<string, unknown>) ?? {},
@@ -602,6 +622,35 @@ export class FlipOrchestratorService {
         }),
       },
       relatedJobId: job.id,
+      dedupeRelatedJob: false,
+    });
+  }
+
+  async pingSandbox(tenantId: string, toPhone: string): Promise<void> {
+    const [config, globalConfig] = await Promise.all([
+      this.flipEngine.getConfig(tenantId),
+      this.flipEngine.getGlobalConfig() as Promise<Record<string, unknown>>,
+    ]);
+
+    const cfg = (config.config as Record<string, unknown>) ?? {};
+    const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
+
+    const tenantRows = await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const tenant = tenantRows[0];
+
+    const repName = (cfg.rep_name as string) || (globalCfg.rep_name as string) || 'Emily';
+    const companyName = (cfg.company_name as string) || (globalCfg.company_name as string) || tenant?.companyName || 'Roadside Towing';
+    const callbackNumber = (cfg.callback_number as string) || (globalCfg.callback_number as string) || tenant?.assignedPhoneNumber || '';
+
+    const body = `Hi there! This is ${repName}, an AI agent for ${companyName}. This is a test ping from your support dashboard to verify that your voice settings and telecom routing are fully operational. Everything looks good. Please remember that if anything changes, you can reach us at <say-as interpret-as="telephone">${callbackNumber}</say-as>. Have a great day!`;
+
+    await this.voice.enqueueCall({
+      tenantId,
+      purpose: 'custom',
+      toPhone,
+      toName: 'Sandbox Test',
+      scriptTemplate: 'custom',
+      scriptVariables: { body },
       dedupeRelatedJob: false,
     });
   }

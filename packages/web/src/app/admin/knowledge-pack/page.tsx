@@ -4,11 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { api } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
-const DEFAULT_TENANT_ID =
-  process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID ||
-  '00000000-0000-0000-0000-000000000001';
 
 interface KpDraft {
   identity: {
@@ -54,12 +53,18 @@ export default function KnowledgePackAdminPage() {
   const [draft, setDraft] = useState<KpDraft>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const { token } = useAuth();
+  
+  let tenantId = 'unknown-tenant-id';
+  try {
+    if (token) {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      tenantId = payload.tenantId || tenantId;
+    }
+  } catch (e) {}
 
   useEffect(() => {
-    fetch(`${API_BASE}/v1/admin/knowledge-pack`, {
-      headers: { 'x-tenant-id': DEFAULT_TENANT_ID },
-    })
-      .then((r) => r.json())
+    api<any>('/v1/admin/knowledge-pack')
       .then((d) => {
         setData(d);
         const initial: KpDraft =
@@ -77,13 +82,11 @@ export default function KnowledgePackAdminPage() {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/admin/knowledge-pack/draft`, {
+      const d = await api<any>('/v1/admin/knowledge-pack/draft', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': DEFAULT_TENANT_ID },
-        body: JSON.stringify(draft),
+        json: draft,
       });
-      if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
-      setData(await res.json());
+      setData(d);
       setMsg('Draft saved.');
     } catch (err) {
       setMsg(`Save failed: ${(err as Error).message}`);
@@ -97,12 +100,10 @@ export default function KnowledgePackAdminPage() {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/v1/admin/knowledge-pack/publish`, {
+      const d = await api<any>('/v1/admin/knowledge-pack/publish', {
         method: 'POST',
-        headers: { 'x-tenant-id': DEFAULT_TENANT_ID },
       });
-      if (!res.ok) throw new Error((await res.json()).message ?? `HTTP ${res.status}`);
-      setData(await res.json());
+      setData(d);
       setMsg('Published.');
     } catch (err) {
       setMsg(`Publish failed: ${(err as Error).message}`);
@@ -278,8 +279,8 @@ export default function KnowledgePackAdminPage() {
       <Card>
         <CardHeader><CardTitle>Live URLs (after publish)</CardTitle></CardHeader>
         <CardContent className="space-y-1 text-xs text-zinc-300">
-          <div>Markdown: <code>{API_BASE}/public/knowledge/{DEFAULT_TENANT_ID}/profile.v2.md</code></div>
-          <div>JSON:     <code>{API_BASE}/public/knowledge/{DEFAULT_TENANT_ID}/profile.json</code></div>
+          <div>Markdown: <code>{API_BASE}/public/knowledge/{tenantId}/profile.v2.md</code></div>
+          <div>JSON:     <code>{API_BASE}/public/knowledge/{tenantId}/profile.json</code></div>
           <div className="text-zinc-500">The legacy <code>/profile.md</code> route auto-prefers v2 when published.</div>
         </CardContent>
       </Card>
