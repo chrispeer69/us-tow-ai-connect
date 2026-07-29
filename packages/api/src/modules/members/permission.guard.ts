@@ -46,6 +46,10 @@ export class PermissionGuard implements CanActivate {
     const tenantId = req.tenantId;
     const email = resolveUserEmail(req);
 
+    if (req.user?.platformRole === 'super_admin') {
+      return true;
+    }
+
     if (!email) {
       if (process.env.RBAC_ENFORCE === 'true') {
         throw this.deny('No authenticated user for a permission-gated route');
