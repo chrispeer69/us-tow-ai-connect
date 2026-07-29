@@ -416,7 +416,7 @@ export class AdminService {
     const t = tenantInfo[0];
 
     const results: any[] = [];
-    const addResult = (name: string, status: 'pass' | 'warn' | 'fail', message: string, details?: any) => {
+    const addResult = (name: string, status: 'pass' | 'warn' | 'fail' | 'info', message: string, details?: any) => {
       results.push({ name, status, message, details });
     };
 
@@ -454,21 +454,21 @@ export class AdminService {
       addResult('Phone Routing Rules', 'fail', `Error checking rules: ${err.message}`);
     }
 
-    // 3. Recent Call Health
+    // 3. Recent Call Health (Last 5)
     try {
-      const recentCalls = await this.db.select().from(outboundCallLogs).where(eq(outboundCallLogs.tenantId, tenantId)).orderBy(desc(outboundCallLogs.callTime)).limit(5);
+      const recentCalls = await this.db.select().from(outboundCalls).where(eq(outboundCalls.tenantId, tenantId)).orderBy(desc(outboundCalls.createdAt)).limit(5);
       if (recentCalls.length === 0) {
-        addResult('Recent Call Health', 'warn', 'No outbound calls made recently.');
+        addResult('Recent Call Health (Last 5)', 'info', 'No outbound calls made recently.');
       } else {
         const lastCall = recentCalls[0];
-        if (lastCall.flipOutcome === 'SUCCESS' || lastCall.flipOutcome === 'ACCEPTED') {
-          addResult('Recent Call Health', 'pass', 'Last AI call succeeded.', `Duration: ${lastCall.callDurationSeconds || 0}s`);
+        if (lastCall.status === 'completed') {
+          addResult('Recent Call Health (Last 5)', 'pass', 'Last AI call completed successfully.', `Duration: ${lastCall.durationSeconds || 0}s`);
         } else {
-          addResult('Recent Call Health', 'warn', `Last AI call did not succeed (${lastCall.flipOutcome}).`, `Reason: ${lastCall.noFlipReason || 'Unknown'}`);
+          addResult('Recent Call Health (Last 5)', 'warn', `Last AI call did not complete (${lastCall.status}).`, `Reason: ${lastCall.error || 'Unknown'}`);
         }
       }
     } catch (err: any) {
-      addResult('Recent Call Health', 'fail', `Error checking calls: ${err.message}`);
+      addResult('Recent Call Health (Last 5)', 'fail', `Error checking calls: ${err.message}`);
     }
 
     // 4. Adapter Configured
@@ -560,7 +560,7 @@ export class AdminService {
     if (!scriptBlocksStr) {
       addResult('Custom Scripts', 'pass', 'Using default system script blocks.');
     } else {
-      addResult('Custom Scripts', 'warn', 'Tenant has modified script blocks. AI behavior may vary from defaults.', scriptBlocksStr);
+      addResult('Custom Scripts', 'info', 'Tenant does not follow default script blocks (customized).', scriptBlocksStr);
     }
 
     // 11. Flip Engine Enabled

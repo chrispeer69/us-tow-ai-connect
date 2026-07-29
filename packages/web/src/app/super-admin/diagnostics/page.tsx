@@ -185,6 +185,7 @@ export default function DiagnosticsHubPage() {
               if (r.status === 'pass') badgeColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
               if (r.status === 'warn') badgeColor = 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
               if (r.status === 'fail') badgeColor = 'bg-red-500/10 text-red-500 border-red-500/20';
+              if (r.status === 'info') badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
 
               return (
                 <div key={i} className={`p-4 rounded-md border bg-zinc-950 border-zinc-800`}>
