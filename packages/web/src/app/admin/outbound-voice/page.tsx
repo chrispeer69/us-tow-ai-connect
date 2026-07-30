@@ -43,6 +43,7 @@ interface OutboundCallRow {
   transcript: string | null;
   recordingUrl: string | null;
   outcome: Record<string, unknown> | null;
+  analysisData?: Record<string, unknown> | null;
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -344,6 +345,20 @@ export default function OutboundVoicePage() {
                         >
                           Retry
                         </Button>
+                      )}
+                      {r.status === 'completed' && r.analysisData && (
+                        <div className="flex flex-col items-end gap-1 text-xs">
+                          {r.analysisData.flip_outcome && (
+                            <Badge variant="outline" className="px-1.5 py-0">
+                              {String(r.analysisData.flip_outcome).toUpperCase()}
+                            </Badge>
+                          )}
+                          {(r.analysisData.reason || r.analysisData.no_flip_reason) && (
+                            <span className="text-zinc-500 max-w-[150px] truncate">
+                              {String(r.analysisData.reason || r.analysisData.no_flip_reason)}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>

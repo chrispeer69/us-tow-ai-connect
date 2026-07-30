@@ -1110,7 +1110,6 @@ function DemoCheckingModal({ onClose }: { onClose: () => void }) {
 }
 
 function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
-  const [mode, setMode] = useState('explicit');
   const [scenario, setScenario] = useState('competitor_repair');
   const [toPhone, setToPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -1132,8 +1131,8 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode,
-          scenario: mode === 'explicit' ? scenario : undefined,
+          mode: 'explicit',
+          scenario,
           toPhone,
           customerName: customerName || undefined,
           vehicle: vehicle || undefined,
@@ -1180,17 +1179,7 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <form onSubmit={(event) => void submit(event)} className="space-y-3">
-            <label className="block text-sm font-medium text-zinc-900">
-              Mode
-              <select
-                value={mode}
-                onChange={(event) => setMode(event.target.value)}
-                className="mt-1 block w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-              >
-                <option value="explicit">Explicit Scenario (Fast Test)</option>
-                <option value="live">Live AI Simulation (Full Engine)</option>
-              </select>
-            </label>
+
             <label className="block text-sm font-medium text-zinc-900">
               To Phone (Test Number - required)
               <span className="ml-2 text-xs font-normal text-rose-500">
@@ -1204,13 +1193,12 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
                 required
               />
             </label>
-            {mode === 'explicit' && (
               <label className="block text-sm font-medium text-zinc-900">
                 Scenario
                 <select
                   value={scenario}
                   onChange={(event) => setScenario(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-zinc-200 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-zinc-200 bg-white p-2 text-sm text-zinc-900 focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="competitor_repair">Competitor Repair</option>
                   <option value="auto_body">Auto Body</option>
@@ -1219,7 +1207,6 @@ function DemoTestAgentModal({ onClose }: { onClose: () => void }) {
                   <option value="unknown">Unknown</option>
                 </select>
               </label>
-            )}
             <DemoTenantCallField label="Customer Name (optional)" value={customerName} onChange={setCustomerName} />
             <DemoTenantCallField label="Vehicle (optional)" value={vehicle} onChange={setVehicle} placeholder="e.g. 2020 Honda Civic" />
             <DemoTenantCallField label="Destination (optional)" value={destination} onChange={setDestination} />
