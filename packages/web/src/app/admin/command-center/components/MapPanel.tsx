@@ -70,6 +70,7 @@ export function MapPanel({
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: apiKey ?? '',
     id: 'google-map-script',
+    libraries: ['places'] as ('places')[],
   });
 
   const center = useMemo(() => {

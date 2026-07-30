@@ -346,17 +346,23 @@ export default function OutboundVoicePage() {
                           Retry
                         </Button>
                       )}
-                      {r.status === 'completed' && r.analysisData && (
+                      {r.status === 'completed' && (
                         <div className="flex flex-col items-end gap-1 text-xs">
-                          {r.analysisData.flip_outcome && (
-                            <Badge variant="outline" className="px-1.5 py-0">
-                              {String(r.analysisData.flip_outcome).toUpperCase()}
+                          {r.analysisData?.flip_outcome ? (
+                            <>
+                              <Badge variant="outline" className="px-1.5 py-0">
+                                {String(r.analysisData.flip_outcome).toUpperCase()}
+                              </Badge>
+                              {(r.analysisData.reason || r.analysisData.no_flip_reason) && (
+                                <span className="text-zinc-500 max-w-[150px] truncate">
+                                  {String(r.analysisData.reason || r.analysisData.no_flip_reason)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <Badge variant="outline" className="px-1.5 py-0 text-zinc-400 border-zinc-700">
+                              {r.outcome?.user_hung_up ? 'HUNG UP' : 'COMPLETED'}
                             </Badge>
-                          )}
-                          {(r.analysisData.reason || r.analysisData.no_flip_reason) && (
-                            <span className="text-zinc-500 max-w-[150px] truncate">
-                              {String(r.analysisData.reason || r.analysisData.no_flip_reason)}
-                            </span>
                           )}
                         </div>
                       )}

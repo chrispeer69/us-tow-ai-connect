@@ -59,6 +59,7 @@ export default function DriversLivePage() {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: MAP_KEY,
+    libraries: ['places'] as ('places')[],
   });
 
   const refresh = useCallback(async () => {
