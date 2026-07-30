@@ -6,13 +6,16 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { SuperAdminAuthGuard } from './super-admin-auth.guard';
 import { SuperAdminService } from './super-admin.service';
 import { AdminService } from '../admin/admin.service';
+import { resolveUserEmail } from '../members/current-user';
 import { FlipEngineService } from '../flip-engine/flip-engine.service';
-import { BadRequestException } from '@nestjs/common';
+import { type AdminRequest } from '../../common/guards/admin-auth.guard';
 
 @Controller('v1/super-admin')
 @UseGuards(SuperAdminAuthGuard)
@@ -102,10 +105,29 @@ export class SuperAdminController {
     return this.service.listSupportTickets();
   }
 
+  @Get('tickets/:id')
+  getTicket(@Param('id') id: string) {
+    return this.service.getSupportTicket(id);
+  }
+
   @Patch('tickets/:id/status')
   updateTicketStatus(@Param('id') id: string, @Body() body: { status: string; resolutionMessage?: string }) {
     if (!body.status) throw new BadRequestException('status is required');
     return this.service.updateSupportTicketStatus(id, body.status, body.resolutionMessage);
+  }
+
+  @Post('tickets/:id/reply')
+  async replyToTicket(
+    @Req() req: AdminRequest,
+    @Param('id') id: string,
+    @Body() body: { message: string },
+  ) {
+    const email = resolveUserEmail(req);
+    if (!email) {
+      throw new BadRequestException('User email not found');
+    }
+    if (!body.message) throw new BadRequestException('message is required');
+    return this.service.replyToSupportTicket(id, email, body.message);
   }
 
   // --- Diagnostics ---

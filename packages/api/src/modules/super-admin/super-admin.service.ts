@@ -13,7 +13,7 @@ import {
 } from '../../db/schema';
 import { ImpersonationTokenService } from './impersonation-token.service';
 import { recordAudit } from '../tenant-onboarding/audit-log.helper';
-import { supportTickets } from '../../db/schema';
+import { supportTickets, supportTicketMessages } from '../../db/schema';
 
 @Injectable()
 export class SuperAdminService {
@@ -338,8 +338,38 @@ export class SuperAdminService {
       .orderBy(desc(supportTickets.createdAt));
   }
 
+  async getSupportTicket(id: string) {
+    const [ticket] = await this.db
+      .select({
+        id: supportTickets.id,
+        tenantId: supportTickets.tenantId,
+        companyName: tenants.companyName,
+        subject: supportTickets.subject,
+        description: supportTickets.description,
+        status: supportTickets.status,
+        resolutionMessage: supportTickets.resolutionMessage,
+        createdAt: supportTickets.createdAt,
+        updatedAt: supportTickets.updatedAt,
+      })
+      .from(supportTickets)
+      .leftJoin(tenants, eq(tenants.id, supportTickets.tenantId))
+      .where(eq(supportTickets.id, id));
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    const messages = await this.db
+      .select()
+      .from(supportTicketMessages)
+      .where(eq(supportTicketMessages.ticketId, id))
+      .orderBy(asc(supportTicketMessages.createdAt));
+
+    return { ...ticket, messages };
+  }
+
   async updateSupportTicketStatus(id: string, status: string, resolutionMessage?: string) {
-    if (!['open', 'resolved', 'closed'].includes(status)) {
+    if (!['open', 'in_progress', 'resolved', 'closed'].includes(status)) {
       throw new BadRequestException('Invalid status');
     }
     const setClause: any = { status, updatedAt: new Date() };
@@ -354,6 +384,34 @@ export class SuperAdminService {
       
     if (!result.length) throw new NotFoundException('Ticket not found');
     return result[0];
+  }
+
+  async replyToSupportTicket(id: string, email: string, message: string) {
+    const [ticket] = await this.db
+      .select()
+      .from(supportTickets)
+      .where(eq(supportTickets.id, id));
+    
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    const [newMessage] = await this.db
+      .insert(supportTicketMessages)
+      .values({
+        ticketId: id,
+        senderType: 'super_admin',
+        senderEmail: email,
+        message,
+      })
+      .returning();
+
+    await this.db
+      .update(supportTickets)
+      .set({ updatedAt: new Date() })
+      .where(eq(supportTickets.id, id));
+
+    return newMessage;
   }
 
   private async readPlatformBool(key: string, defaultValue: boolean) {

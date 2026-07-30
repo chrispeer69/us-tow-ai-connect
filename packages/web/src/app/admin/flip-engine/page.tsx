@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -65,7 +66,7 @@ interface BlocklistEntry {
 
 interface FlipEngineConfig {
   enabled: boolean;
-  config: Record<string, unknown>;
+  config: Record<string, unknown> & { max_call_retries?: number };
 }
 
 type Tab = 'shops' | 'blocklist' | 'settings' | 'activity' | 'sandbox';
@@ -826,6 +827,96 @@ function ConfirmDeleteModal({
   );
 }
 
+const PLACES_LIBRARY: ('places')[] = ['places'];
+
+function AddressAutocomplete({
+  placeholder,
+  value,
+  onChange,
+  onSelectPlace,
+}: {
+  placeholder?: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSelectPlace: (place: {
+    addressLine: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    lat: string;
+    lng: string;
+    name: string;
+  }) => void;
+}) {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries: PLACES_LIBRARY,
+  });
+
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  if (!isLoaded) {
+    return <Input placeholder="Loading map..." disabled />;
+  }
+
+  return (
+    <Autocomplete
+      onLoad={setAutocomplete}
+      onPlaceChanged={() => {
+        if (autocomplete !== null) {
+          const place = autocomplete.getPlace();
+          if (!place) return;
+
+          let street_number = '';
+          let route = '';
+          let city = '';
+          let state = '';
+          let postalCode = '';
+
+          if (place.address_components) {
+            for (const component of place.address_components) {
+              const types = component.types;
+              if (types.includes('street_number')) {
+                street_number = component.long_name;
+              } else if (types.includes('route')) {
+                route = component.short_name || component.long_name;
+              } else if (types.includes('locality')) {
+                city = component.long_name;
+              } else if (types.includes('administrative_area_level_1')) {
+                state = component.short_name;
+              } else if (types.includes('postal_code')) {
+                postalCode = component.long_name;
+              }
+            }
+          }
+
+          const addressLine = `${street_number} ${route}`.trim();
+          const lat = place.geometry?.location?.lat()?.toString() || '';
+          const lng = place.geometry?.location?.lng()?.toString() || '';
+
+          onSelectPlace({
+            addressLine: addressLine || place.name || '',
+            city,
+            state,
+            postalCode,
+            lat,
+            lng,
+            name: place.name || '',
+          });
+        }
+      }}
+      options={{ componentRestrictions: { country: 'us' } }}
+    >
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </Autocomplete>
+  );
+}
+
 function AddShopModal({
   onClose,
   onSaved,
@@ -843,6 +934,10 @@ function AddShopModal({
     state: '',
     postalCode: '',
     phone: '',
+    lat: '',
+    lng: '',
+    website: '',
+    notes: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
@@ -851,7 +946,11 @@ function AddShopModal({
     try {
       await api('/v1/admin/flip-engine/shops', {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          lat: form.lat ? Number(form.lat) : null,
+          lng: form.lng ? Number(form.lng) : null,
+        }),
         headers: { 'content-type': 'application/json' },
       });
       await onSaved();
@@ -883,10 +982,22 @@ function AddShopModal({
               <SelectItem value="BODY">Body</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            placeholder="Street address"
+          <AddressAutocomplete
+            placeholder="Street address (Start typing to search)"
             value={form.addressLine}
-            onChange={(e) => setForm({ ...form, addressLine: e.target.value })}
+            onChange={(v) => setForm({ ...form, addressLine: v })}
+            onSelectPlace={(p) => {
+              setForm((prev) => ({
+                ...prev,
+                addressLine: p.addressLine,
+                city: p.city || prev.city,
+                state: p.state || prev.state,
+                postalCode: p.postalCode || prev.postalCode,
+                lat: p.lat || prev.lat,
+                lng: p.lng || prev.lng,
+                notes: p.name && p.name !== p.addressLine ? `Business: ${p.name}\n${prev.notes}`.trim() : prev.notes,
+              }));
+            }}
           />
           <div className="grid grid-cols-3 gap-2">
             <Input
@@ -910,6 +1021,32 @@ function AddShopModal({
             placeholder="Phone (e.g. +16145551212)"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="Latitude (e.g. 39.9612)"
+              type="number"
+              step="any"
+              value={form.lat}
+              onChange={(e) => setForm({ ...form, lat: e.target.value })}
+            />
+            <Input
+              placeholder="Longitude (e.g. -82.9988)"
+              type="number"
+              step="any"
+              value={form.lng}
+              onChange={(e) => setForm({ ...form, lng: e.target.value })}
+            />
+          </div>
+          <Input
+            placeholder="Website (Optional)"
+            value={form.website}
+            onChange={(e) => setForm({ ...form, website: e.target.value })}
+          />
+          <Textarea
+            placeholder="Notes (e.g. Founded 1978. Specialties...)"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
           />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} disabled={submitting}>
@@ -945,6 +1082,10 @@ function EditShopModal({
     state: shop.state || '',
     postalCode: shop.postalCode || '',
     phone: shop.phone || '',
+    lat: shop.lat != null ? String(shop.lat) : '',
+    lng: shop.lng != null ? String(shop.lng) : '',
+    website: shop.website || '',
+    notes: shop.notes || '',
   });
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
@@ -953,7 +1094,11 @@ function EditShopModal({
     try {
       await api(`/v1/admin/flip-engine/shops/${shop.id}`, {
         method: 'PUT',
-        json: form,
+        json: {
+          ...form,
+          lat: form.lat ? Number(form.lat) : null,
+          lng: form.lng ? Number(form.lng) : null,
+        },
       });
       await onSaved();
     } catch (err) {
@@ -984,10 +1129,22 @@ function EditShopModal({
               <SelectItem value="BODY">Body</SelectItem>
             </SelectContent>
           </Select>
-          <Input
-            placeholder="Street address"
+          <AddressAutocomplete
+            placeholder="Street address (Start typing to search)"
             value={form.addressLine}
-            onChange={(e) => setForm({ ...form, addressLine: e.target.value })}
+            onChange={(v) => setForm({ ...form, addressLine: v })}
+            onSelectPlace={(p) => {
+              setForm((prev) => ({
+                ...prev,
+                addressLine: p.addressLine,
+                city: p.city || prev.city,
+                state: p.state || prev.state,
+                postalCode: p.postalCode || prev.postalCode,
+                lat: p.lat || prev.lat,
+                lng: p.lng || prev.lng,
+                notes: p.name && p.name !== p.addressLine ? `Business: ${p.name}\n${prev.notes}`.trim() : prev.notes,
+              }));
+            }}
           />
           <div className="grid grid-cols-3 gap-2">
             <Input
@@ -1011,6 +1168,32 @@ function EditShopModal({
             placeholder="Phone (e.g. +16145551212)"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="Latitude (e.g. 39.9612)"
+              type="number"
+              step="any"
+              value={form.lat}
+              onChange={(e) => setForm({ ...form, lat: e.target.value })}
+            />
+            <Input
+              placeholder="Longitude (e.g. -82.9988)"
+              type="number"
+              step="any"
+              value={form.lng}
+              onChange={(e) => setForm({ ...form, lng: e.target.value })}
+            />
+          </div>
+          <Input
+            placeholder="Website (Optional)"
+            value={form.website}
+            onChange={(e) => setForm({ ...form, website: e.target.value })}
+          />
+          <Textarea
+            placeholder="Notes (e.g. Founded 1978. Specialties...)"
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
           />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={onClose} disabled={submitting}>
@@ -1369,6 +1552,9 @@ function SettingsTab({
   const [diagnosticValue, setDiagnosticValue] = useState<number>(
     Number(config.config?.diagnostic_value ?? 89),
   );
+  const [maxCallRetries, setMaxCallRetries] = useState<number>(
+    Number(config.config?.max_call_retries ?? 0),
+  );
   const DEFAULT_AGENT_RULES = `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.
 - Disclose that you are CONVINIcar's AI towing assistant at the start of the call. Do not deny being an AI if asked.
 - Confirm details first. If the customer corrects something, acknowledge it and move on.
@@ -1479,6 +1665,7 @@ AI: "Drive safe."`;
             custom_agent_rules: customAgentRules,
             max_shop_distance_miles: maxDistanceMiles,
             diagnostic_value: diagnosticValue,
+            max_call_retries: maxCallRetries,
             script_blocks: {
               opening: openingBlock,
               purpose: purposeBlock,
@@ -1612,6 +1799,22 @@ AI: "Drive safe."`;
             onChange={(e) => setDiagnosticValue(Number(e.target.value))}
             className="max-w-[120px]"
           />
+        </SettingsField>
+
+        <SettingsField
+          label="Max Call Retries (No Answer)"
+          help="If a call is not picked up, it will be automatically retried back-to-back up to this many times."
+        >
+          <select
+            value={maxCallRetries}
+            onChange={(e) => setMaxCallRetries(Number(e.target.value))}
+            className="block w-full max-w-[120px] rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          >
+            <option value="0">0 (No retries)</option>
+            <option value="1">1 Retry</option>
+            <option value="2">2 Retries</option>
+            <option value="3">3 Retries</option>
+          </select>
         </SettingsField>
 
         <SettingsField

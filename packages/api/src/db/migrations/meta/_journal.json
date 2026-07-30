@@ -267,6 +267,13 @@
       "when": 1785323450098,
       "tag": "0039_soft_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1785326602682,
+      "tag": "0040_secret_runaways",
+      "breakpoints": true
     }
   ]
 }

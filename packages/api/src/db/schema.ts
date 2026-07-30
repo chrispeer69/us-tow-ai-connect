@@ -1100,6 +1100,27 @@ export const supportTickets = pgTable(
 export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type SupportTicketInsert = typeof supportTickets.$inferInsert;
 
+export const supportTicketMessages = pgTable(
+  'support_ticket_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: 'cascade' }),
+    senderType: varchar('sender_type', { length: 50 }).notNull(), // 'tenant', 'super_admin'
+    senderEmail: varchar('sender_email', { length: 255 }).notNull(),
+    message: text('message').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    ticketIdx: index('support_ticket_messages_ticket_idx').on(t.ticketId),
+    createdAtIdx: index('support_ticket_messages_created_at_idx').on(t.createdAt),
+  }),
+);
+
+export type SupportTicketMessageRow = typeof supportTicketMessages.$inferSelect;
+export type SupportTicketMessageInsert = typeof supportTicketMessages.$inferInsert;
+
 // ============ SYSTEM CONFIGURATION ============
 
 export const platformSettings = pgTable(

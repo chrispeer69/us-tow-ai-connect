@@ -20,9 +20,9 @@ import { Badge } from '@/components/ui/badge';
 import { submitDemoRequest, type ScheduleDemoResult } from './actions';
 
 const inputClass =
-  'w-full h-11 rounded-md bg-background border border-border px-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  'w-full h-11 rounded-md bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 px-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500';
 const labelClass =
-  'block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2';
+  'block text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 mb-2';
 
 const REVENUE_OPTIONS = [
   'Under $500K',

@@ -218,6 +218,7 @@ export class OutboundVoiceService {
         endedAt: null,
         durationSeconds: null,
         error: null,
+        createdAt: new Date(),
         thinkrrCallId: null,
         // retellCallId column is wiped here too via raw SQL below if present
         updatedAt: new Date(),
@@ -548,6 +549,25 @@ export class OutboundVoiceService {
         });
       }
       return { matched: true, previousStatus: existing.status, newStatus: existing.status };
+    }
+
+    const isRetryableFailure = ['failed', 'no_answer', 'busy', 'rejected'].includes(newStatus);
+    const canRetry = existing.attempts < existing.maxAttempts;
+
+    if (isRetryableFailure && canRetry) {
+      this.logger.log(
+        `[outbound-voice] Auto-retrying call ${existing.id} (attempt ${existing.attempts}/${existing.maxAttempts}) after ${newStatus}`,
+      );
+      await this.db
+        .update(outboundCalls)
+        .set({
+          status: 'queued',
+          error: event.error ?? null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(outboundCalls.id, existing.id));
+      return { matched: true, previousStatus: existing.status, newStatus: 'queued' };
     }
 
     const patch: Partial<typeof outboundCalls.$inferInsert> = {
@@ -1052,7 +1072,7 @@ export class OutboundVoiceService {
     const usage = (
       await this.db
         .select({
-          seconds: sql<number>`coalesce(sum(coalesce(${outboundCalls.durationSeconds}, 60)), 0)::int`,
+          seconds: sql<number>`coalesce(sum(case when ${outboundCalls.status} = 'failed' then coalesce(${outboundCalls.durationSeconds}, 0) else coalesce(${outboundCalls.durationSeconds}, 60) end), 0)::int`,
         })
         .from(outboundCalls)
         .where(

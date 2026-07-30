@@ -334,6 +334,7 @@ export class FlipOrchestratorService {
     // 7. Enqueue the outbound call. Custom template + the rendered body
     //    in scriptVariables so OutboundVoiceService.enqueueCall renders
     //    `{{body}}` straight through.
+    const maxRetries = Number(cfg.max_call_retries ?? globalCfg.max_call_retries ?? 0);
     try {
       await this.voice.enqueueCall({
         tenantId,
@@ -343,6 +344,7 @@ export class FlipOrchestratorService {
         scriptTemplate: 'custom',
         scriptVariables: { body: fullBody },
         relatedJobId: job.relatedJobId ?? null,
+        maxAttempts: maxRetries + 1,
       });
       return true;
     } catch (err) {

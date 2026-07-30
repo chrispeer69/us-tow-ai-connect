@@ -17,13 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/utils';
 import { ArrowRight, Activity, Users, PhoneCall, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { useRouter } from 'next/navigation';
 
 const PLAN_OPTIONS = ['FREE', 'TRIAL', 'STARTER', 'PRO', 'ENTERPRISE'];
 
@@ -54,9 +48,8 @@ export default function SuperAdminPage() {
   const [savingDemoSettings, setSavingDemoSettings] = useState(false);
   const [publicDemoCallsEnabled, setPublicDemoCallsEnabled] = useState(false);
   const [capDrafts, setCapDrafts] = useState<Record<string, string>>({});
-  const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
-  const [resolutionMessage, setResolutionMessage] = useState('');
   const { setToken } = useAuth();
+  const router = useRouter();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -355,7 +348,7 @@ export default function SuperAdminPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedTicket(t)}>
+                      <Button variant="outline" size="sm" onClick={() => router.push(`/super-admin/tickets/${t.id}`)}>
                         View
                       </Button>
                       {t.status === 'open' && (
@@ -372,56 +365,7 @@ export default function SuperAdminPage() {
         </Table>
       </Card>
 
-      <Dialog 
-        open={!!selectedTicket} 
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedTicket(null);
-            setResolutionMessage('');
-          }
-        }}
-      >
-        <DialogContent className="bg-zinc-950 border-zinc-800 text-zinc-100">
-          <DialogHeader>
-            <DialogTitle>{selectedTicket?.subject}</DialogTitle>
-            <DialogDescription>
-              From {selectedTicket?.companyName} on {selectedTicket && new Date(selectedTicket.createdAt).toLocaleString()}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="p-4 rounded-md bg-zinc-900 border border-zinc-800 text-sm whitespace-pre-wrap text-zinc-100">
-              {selectedTicket?.description}
-            </div>
-            {selectedTicket?.status !== 'closed' && selectedTicket?.status !== 'resolved' && (
-              <div className="space-y-3 mt-4">
-                <div>
-                  <label className="text-xs font-medium text-zinc-400 mb-1 block">Response to Tenant (Optional)</label>
-                  <textarea
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-md p-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    rows={3}
-                    placeholder="Enter a message to send to the tenant..."
-                    value={resolutionMessage}
-                    onChange={(e) => setResolutionMessage(e.target.value)}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => updateTicketStatus(selectedTicket.id, 'closed', resolutionMessage)}>
-                    Close Ticket
-                  </Button>
-                  {selectedTicket?.status === 'open' && (
-                    <Button variant="outline" onClick={() => updateTicketStatus(selectedTicket.id, 'in_progress', resolutionMessage)}>
-                      Mark In Progress
-                    </Button>
-                  )}
-                  <Button onClick={() => updateTicketStatus(selectedTicket.id, 'resolved', resolutionMessage)}>
-                    Mark as Resolved
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      
     </div>
   );
 
@@ -432,10 +376,6 @@ export default function SuperAdminPage() {
         json: { status, resolutionMessage: msg || undefined }
       });
       setTickets(tickets.map(t => t.id === id ? { ...t, status, resolutionMessage: msg || t.resolutionMessage } : t));
-      if (selectedTicket?.id === id) {
-        setSelectedTicket(null);
-        setResolutionMessage('');
-      }
     } catch (err) {
       setError((err as Error).message);
     }
