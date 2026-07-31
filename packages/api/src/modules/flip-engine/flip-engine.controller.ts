@@ -84,6 +84,7 @@ const ConfigPatchSchema = z.object({
       send_daily_report: z.boolean().optional(),
       mention_rentals: z.boolean().optional(),
       max_shop_distance_miles: z.number().min(1).optional(),
+      max_call_retries: z.number().int().min(0).max(5).optional(),
       diagnostic_value: z.number().min(0).optional(),
       script_blocks: z.object({
         opening: z.string().optional(),

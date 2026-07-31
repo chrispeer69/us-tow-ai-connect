@@ -845,15 +845,44 @@ export class FlipOrchestratorService {
 
       const fullBody = renderCallBody(actualScenario, ctx);
 
-      await this.voice.enqueueCall({
-        tenantId,
-        purpose: 'custom',
-        toPhone: job.callerPhone,
-        toName: job.callerName ?? '',
-        scriptTemplate: 'custom',
-        scriptVariables: { body: fullBody },
-        relatedJobId: job.id,
-      });
+      // Persist log row to Activity tab
+      const [logRow] = await this.db
+        .insert(outboundCallLogs)
+        .values({
+          tenantId,
+          customerName: job.callerName ?? 'Unknown',
+          customerPhone: job.callerPhone,
+          motorClub: null,
+          vehicle: [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel].filter(Boolean).join(' ') || null,
+          issueType: issue.subcategory,
+          originalDestination: job.dropoffAddress ?? null,
+          destinationBusinessName: destination.resolvedName ?? null,
+          destinationType: destination.tag,
+          flipEligible: flipEligible,
+          nearestOurShop: nearestShopName,
+          noFlipReason: flipEligible ? null : (decision.flipEligible ? 'flip_suppressed_no_nearby_shop_within_max_distance' : decision.reasonCode),
+        })
+        .returning({ id: outboundCallLogs.id });
+
+      try {
+        await this.voice.enqueueCall({
+          tenantId,
+          purpose: 'custom',
+          toPhone: job.callerPhone,
+          toName: job.callerName ?? '',
+          scriptTemplate: 'custom',
+          scriptVariables: { body: fullBody },
+          relatedJobId: job.id,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `[flip-orchestrator] enqueue failed for newly created job ${job.id}: ${(err as Error).message}`,
+        );
+        await this.db
+          .update(outboundCallLogs)
+          .set({ flipOutcome: 'ENQUEUE_FAILED' })
+          .where(eq(outboundCallLogs.id, logRow.id));
+      }
     } catch (err) {
       this.logger.warn(
         `[flip-orchestrator] handleNewlyCreatedJob ${job.id} threw: ${(err as Error).message}`,
