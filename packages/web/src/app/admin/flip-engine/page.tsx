@@ -250,10 +250,11 @@ export default function FlipEnginePage() {
         <TabButton label={`Shops (${shops.length})`} active={tab === 'shops'} onClick={() => setTab('shops')} />
         <TabButton label="Sandbox" active={tab === 'sandbox'} onClick={() => setTab('sandbox')} />
         <TabButton
-          label={`AAA Blocklist (${blocklist.length})`}
+          label={`Blocklist (${blocklist.length})`}
           active={tab === 'blocklist'}
           onClick={() => setTab('blocklist')}
         />
+        <TabButton label="Script" active={tab === 'script'} onClick={() => setTab('script')} />
         <TabButton label="Settings" active={tab === 'settings'} onClick={() => setTab('settings')} />
       </div>
 
@@ -269,8 +270,8 @@ export default function FlipEnginePage() {
       {tab === 'blocklist' && (
         <BlocklistTab blocklist={blocklist} reload={loadBlocklist} setError={setError} />
       )}
-      {tab === 'settings' && config && (
-        <SettingsTab config={config} reload={loadConfig} setError={setError} />
+      {(tab === 'settings' || tab === 'script') && config && (
+        <SettingsTab config={config} reload={loadConfig} setError={setError} mode={tab} />
       )}
     </div>
   );
@@ -940,9 +941,11 @@ function AddShopModal({
     notes: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
   const submit = async () => {
     setSubmitting(true);
-    setError(null);
+    setModalError(null);
     try {
       await api('/v1/admin/flip-engine/shops', {
         method: 'POST',
@@ -955,16 +958,27 @@ function AddShopModal({
       });
       await onSaved();
     } catch (err) {
-      setError((err as Error).message);
+      setModalError((err as Error).message);
     } finally {
       setSubmitting(false);
     }
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <Card className="w-full max-w-lg">
+      <Card className="w-full max-w-lg relative">
+        <button 
+          onClick={onClose}
+          className="absolute right-4 top-4 text-zinc-400 hover:text-white"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
         <CardContent className="space-y-3 p-5">
           <h2 className="text-lg font-semibold">Add partner shop</h2>
+          {modalError && (
+            <div className="rounded border border-rose-800 bg-rose-950/30 p-2 text-sm text-rose-100">
+              {modalError}
+            </div>
+          )}
           <Input
             placeholder="Shop name"
             value={form.name}
@@ -1088,30 +1102,44 @@ function EditShopModal({
     notes: shop.notes || '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+
   const submit = async () => {
     setSubmitting(true);
-    setError(null);
+    setModalError(null);
     try {
       await api(`/v1/admin/flip-engine/shops/${shop.id}`, {
         method: 'PUT',
-        json: {
+        body: JSON.stringify({
           ...form,
           lat: form.lat ? Number(form.lat) : null,
           lng: form.lng ? Number(form.lng) : null,
-        },
+        }),
+        headers: { 'content-type': 'application/json' },
       });
       await onSaved();
     } catch (err) {
-      setError((err as Error).message);
+      setModalError((err as Error).message);
     } finally {
       setSubmitting(false);
     }
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <Card className="w-full max-w-lg">
+      <Card className="w-full max-w-lg relative">
+        <button 
+          onClick={onClose}
+          className="absolute right-4 top-4 text-zinc-400 hover:text-white"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
         <CardContent className="space-y-3 p-5">
           <h2 className="text-lg font-semibold">Edit partner shop</h2>
+          {modalError && (
+            <div className="rounded border border-rose-800 bg-rose-950/30 p-2 text-sm text-rose-100">
+              {modalError}
+            </div>
+          )}
           <Input
             placeholder="Shop name"
             value={form.name}
@@ -1525,10 +1553,12 @@ function SettingsTab({
   config,
   reload,
   setError,
+  mode,
 }: {
   config: FlipEngineConfig;
   reload: () => Promise<void>;
   setError: (s: string | null) => void;
+  mode: 'script' | 'settings';
 }) {
   const [enabled, setEnabled] = useState(config.enabled);
   const [repName, setRepName] = useState<string>((config.config?.rep_name as string) || '');
@@ -1708,7 +1738,9 @@ AI: "Drive safe."`;
   return (
     <Card>
       <CardContent className="space-y-4 p-5">
-        <div>
+        {mode === 'settings' && (
+          <>
+            <div>
           <label className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -1720,7 +1752,7 @@ AI: "Drive safe."`;
           </label>
           <p className="ml-7 mt-1 text-xs text-zinc-500">
             When off, the poller skips this tenant entirely. Turn on after
-            verifying your shop list and AAA blocklist.
+            verifying your shop list and blocklist.
           </p>
         </div>
 
@@ -1930,7 +1962,11 @@ AI: "Drive safe."`;
             <span className="text-sm">Pitch CONVINI App on Calls</span>
           </label>
         </div>
+          </>
+        )}
 
+        {mode === 'script' && (
+          <>
         <div className="pt-6">
           <h3 className="text-lg font-semibold text-zinc-800">Script Builder</h3>
           <p className="text-sm text-zinc-500 mb-4">
@@ -2064,15 +2100,152 @@ AI: "Drive safe."`;
 
         <SettingsField
           label="Warm Close"
-          help="The final goodbye at the very end of the call, after Convini is pitched."
-        >
-          <Textarea
-            value={closeBlock}
-            onChange={(e) => setCloseBlock(e.target.value)}
-          />
-        </SettingsField>
+        {mode === 'manual' && (
+          <>
+            <div className="pt-6">
+              <h3 className="text-lg font-semibold text-zinc-800">Script Builder</h3>
+              <p className="text-sm text-zinc-500 mb-4">
+                Customize the exact spoken dialogue for each phase of the pitch. Leave a box empty to automatically skip that step.
+                Available variables: <span className="font-mono text-xs">{'{{customer_first_name}}'}</span>, <span className="font-mono text-xs">{'{{vehicle}}'}</span>, <span className="font-mono text-xs">{'{{pickup_location}}'}</span>, <span className="font-mono text-xs">{'{{destination}}'}</span>, <span className="font-mono text-xs">{'{{issue}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop}}'}</span>, <span className="font-mono text-xs">{'{{nearest_shop_distance}}'}</span>, <span className="font-mono text-xs">{'{{diagnostic_value}}'}</span>.
+              </p>
 
-        <div className="flex justify-end pt-2 gap-4">
+              <div className="space-y-6">
+                <SettingsField
+                  label="1. Greeting & Identification"
+                  help="How the AI answers and introduces itself."
+                >
+                  <Textarea
+                    value={openingBlock}
+                    onChange={(e) => setOpeningBlock(e.target.value)}
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="2. Purpose of Call"
+                  help="Stating why the AI is calling."
+                >
+                  <Textarea
+                    value={purposeBlock}
+                    onChange={(e) => setPurposeBlock(e.target.value)}
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="3. Confirm Pickup Location"
+                  help="Confirming where the customer's vehicle is located."
+                >
+                  <Textarea
+                    value={pickupBlock}
+                    onChange={(e) => setPickupBlock(e.target.value)}
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="4. Confirm Vehicle"
+                  help="Confirming the make/model/year."
+                >
+                  <Textarea
+                    value={vehicleBlock}
+                    onChange={(e) => setVehicleBlock(e.target.value)}
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="5. Clarify Issue"
+                  help="Asking what went wrong with the vehicle."
+                >
+                  <Textarea
+                    value={issueBlock}
+                    onChange={(e) => setIssueBlock(e.target.value)}
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="6. Confirm Destination"
+                  help="Confirming where the vehicle is being towed to."
+                >
+                  <Textarea
+                    value={destinationBlock}
+                    onChange={(e) => setDestinationBlock(e.target.value)}
+                  />
+                </SettingsField>
+                <SettingsField
+                  label="Offer 1 (Convenience & Value)"
+                  help="The first pitch made when the destination is a competitor repair shop."
+                >
+                  <Textarea
+                    value={offer1}
+                    onChange={(e) => setOffer1(e.target.value)}
+                    placeholder="Leave empty to skip this offer"
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="Offer 2 (Urgency & Priority)"
+                  help="The second pitch made if the customer declines Offer 1."
+                >
+                  <Textarea
+                    value={offer2}
+                    onChange={(e) => setOffer2(e.target.value)}
+                    placeholder="Leave empty to skip this offer"
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="Offer 3 (Financial Incentive)"
+                  help="The final pitch made if the customer declines Offer 2."
+                >
+                  <Textarea
+                    value={offer3}
+                    onChange={(e) => setOffer3(e.target.value)}
+                    placeholder="Leave empty to skip this offer"
+                  />
+                </SettingsField>
+
+                <SettingsField
+                  label="CONVINI App Pitch (Soft Close)"
+                  help="The final pivot if all offers are declined or if the destination is an auto body shop."
+                >
+                  <Textarea
+                    value={conviniPitch}
+                    onChange={(e) => setConviniPitch(e.target.value)}
+                    placeholder="Leave empty to skip this pitch"
+                  />
+                </SettingsField>
+              </div>
+            </div>
+
+            <div className="pt-6">
+              <h3 className="text-lg font-semibold text-zinc-800">Advanced Prompt Overrides</h3>
+              <p className="text-sm text-zinc-500 mb-4">
+                Optional tenant-specific rules appended after the protected default guardrails.
+              </p>
+            </div>
+
+            <SettingsField
+              label="Custom Agent Rules"
+              help="Global instructions appended to the protected default AI agent instructions."
+            >
+              <Textarea
+                placeholder="e.g. CRITICAL PARSING RULES: ..."
+                value={customAgentRules}
+                onChange={(e) => setCustomAgentRules(e.target.value)}
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="Warm Close"
+              help="The final goodbye at the very end of the call, after Convini is pitched."
+            >
+              <Textarea
+                value={closeBlock}
+                onChange={(e) => setCloseBlock(e.target.value)}
+              />
+            </SettingsField>
+          </>
+        )}
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
           <Button
             variant="outline"
             onClick={() => setResetConfirmOpen(true)}

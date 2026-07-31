@@ -55,6 +55,10 @@ export async function api<T = any>(
     const text = await res.text().catch(() => '');
     try {
       const parsed = JSON.parse(text);
+      if (parsed.code === 'VALIDATION_ERROR' && Array.isArray(parsed.errors)) {
+        const errorList = parsed.errors.map((e) => `${e.path}: ${e.message}`).join(', ');
+        throw new Error(errorList);
+      }
       const msg = parsed.message || parsed.error;
       if (msg) {
         throw new Error(Array.isArray(msg) ? msg.join(', ') : String(msg));
