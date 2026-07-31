@@ -39,9 +39,10 @@ const ShopCreateSchema = z.object({
     .string()
     .max(20)
     .regex(/^[+0-9 ()\-]+$/)
+    .or(z.literal(''))
     .optional()
     .nullable(),
-  website: z.string().url().optional().nullable(),
+  website: z.string().url().or(z.literal('')).optional().nullable(),
   rentalPickupAvailable: z.boolean().optional(),
   active: z.boolean().optional(),
   specialties: z.array(z.string()).optional(),
