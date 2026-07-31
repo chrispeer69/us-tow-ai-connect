@@ -725,8 +725,6 @@ export class OutboundVoiceService {
       transcript: callPatch.transcript ?? call.transcript ?? null,
     };
     if (typeof analysis.flip_eligible === 'boolean') update.flipEligible = analysis.flip_eligible;
-    if (analysis.destination_type) update.destinationType = trimForColumn(analysis.destination_type, 50);
-    if (analysis.nearest_our_shop) update.nearestOurShop = trimForColumn(analysis.nearest_our_shop, 255);
     if (offer1) update.offer1Result = offer1;
     if (offer2) update.offer2Result = offer2;
     if (offer3) update.offer3Result = offer3;
