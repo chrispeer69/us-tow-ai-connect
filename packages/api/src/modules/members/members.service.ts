@@ -25,6 +25,14 @@ export interface InviteInput {
   role: Role;
   name?: string;
   invitedBy?: string | null;
+  /** When set, provision the login immediately instead of emailing an invite. */
+  password?: string;
+}
+
+/** The JWT-derived caller, as attached by AdminAuthGuard. */
+export interface ActingUser {
+  email?: string | null;
+  platformRole?: string | null;
 }
 
 export interface UpdateInput {
@@ -131,6 +139,38 @@ export class MembersService {
         message: 'A member with that email already exists',
       });
     }
+    // Direct provisioning: the owner typed a password, so skip the invite mail
+    // round-trip entirely and land the member in the state acceptInvite() would
+    // have produced. This is the flow that works while outbound email/SMS
+    // approvals are pending.
+    if (input.password) {
+      const userId = await this.upsertUserPassword(
+        normalizedEmail,
+        input.password,
+        input.name,
+      );
+      const now = new Date();
+      const member = (
+        await this.db
+          .insert(tenantMembers)
+          .values({
+            tenantId,
+            userId,
+            email: normalizedEmail,
+            name: input.name ?? null,
+            role: input.role,
+            status: 'ACTIVE',
+            invitedBy: input.invitedBy ?? null,
+            acceptedAt: now,
+          })
+          .returning()
+      )[0];
+      this.logger.log(
+        `member provisioned with a password: ${normalizedEmail} (${input.role}) tenant=${tenantId} by=${input.invitedBy ?? 'unknown'}`,
+      );
+      return this.redact(member);
+    }
+
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
     const member = (
@@ -152,6 +192,79 @@ export class MembersService {
     await this.sendInviteEmail(tenantId, normalizedEmail, token, input.role);
     // Never leak the raw token in the API response.
     return this.redact(member);
+  }
+
+  /**
+   * Owner-set password for an existing member. Creates the `users` row if the
+   * member never accepted their invite, links it, and retires any outstanding
+   * invite token so the old link can't be replayed.
+   *
+   * A SUSPENDED member stays suspended — resetting a password is not a way to
+   * quietly re-enable revoked access.
+   */
+  async setPassword(
+    tenantId: string,
+    memberId: string,
+    password: string,
+    actorEmail?: string | null,
+  ) {
+    const member = await this.requireMember(tenantId, memberId);
+    const email = member.email.trim().toLowerCase();
+
+    const userId = await this.upsertUserPassword(
+      email,
+      password,
+      member.name ?? undefined,
+    );
+
+    const now = new Date();
+    const updated = (
+      await this.db
+        .update(tenantMembers)
+        .set({
+          userId,
+          status: member.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE',
+          acceptedAt: member.acceptedAt ?? now,
+          inviteToken: null,
+          inviteTokenExpiresAt: null,
+        })
+        .where(eq(tenantMembers.id, memberId))
+        .returning()
+    )[0];
+
+    this.logger.log(
+      `password set for ${email} tenant=${tenantId} by=${actorEmail ?? 'unknown'}`,
+    );
+    return this.redact(updated);
+  }
+
+  /**
+   * Credential management (setting or resetting another person's password) is
+   * OWNER-only, enforced here rather than through PermissionGuard so it can
+   * never be softened by RBAC_ENFORCE being unset. Fails closed when the
+   * caller's identity can't be resolved from the verified JWT.
+   */
+  async assertCanManageCredentials(tenantId: string, actor: ActingUser | undefined) {
+    if (actor?.platformRole === 'super_admin') return;
+
+    const email =
+      typeof actor?.email === 'string' ? actor.email.trim().toLowerCase() : '';
+    if (!email) {
+      throw new ForbiddenException({
+        status: 'error',
+        code: 'FORBIDDEN',
+        message: 'Could not identify the signed-in user',
+      });
+    }
+
+    const member = await this.findMember(tenantId, email);
+    if (!member || member.status !== 'ACTIVE' || member.role !== 'OWNER') {
+      throw new ForbiddenException({
+        status: 'error',
+        code: 'FORBIDDEN',
+        message: 'Only an owner can set or reset member passwords',
+      });
+    }
   }
 
   async update(tenantId: string, memberId: string, input: UpdateInput) {
@@ -275,6 +388,51 @@ export class MembersService {
   }
 
   // ─── helpers ──────────────────────────────────────────────────────────────
+  /**
+   * Write a bcrypt hash onto the platform identity for `email`, creating it if
+   * this person has never had a login. Returns the users.id so the caller can
+   * link the membership.
+   */
+  private async upsertUserPassword(
+    email: string,
+    password: string,
+    name?: string | null,
+  ): Promise<string> {
+    const normalized = email.trim().toLowerCase();
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const existing = (
+      await this.db.select().from(users).where(eq(users.email, normalized)).limit(1)
+    )[0];
+
+    if (existing) {
+      const updated = (
+        await this.db
+          .update(users)
+          .set({
+            passwordHash,
+            name: existing.name ?? name ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existing.id))
+          .returning()
+      )[0];
+      return updated.id;
+    }
+
+    const inserted = (
+      await this.db
+        .insert(users)
+        .values({
+          email: normalized,
+          passwordHash,
+          name: name ?? normalized.split('@')[0],
+        })
+        .returning()
+    )[0];
+    return inserted.id;
+  }
+
   private async requireMember(tenantId: string, memberId: string) {
     const target = (
       await this.db

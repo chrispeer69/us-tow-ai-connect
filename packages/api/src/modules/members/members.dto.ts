@@ -4,12 +4,25 @@ import { ROLES, STATUSES } from './permissions';
 export const RoleSchema = z.enum(ROLES);
 export const StatusSchema = z.enum(STATUSES);
 
+// bcrypt silently truncates past 72 bytes — cap there rather than accept a
+// password whose tail does nothing.
+export const PasswordSchema = z.string().min(8).max(72);
+
 export const InviteMemberSchema = z.object({
   email: z.string().email().max(255),
   role: RoleSchema.default('VIEWER'),
   name: z.string().max(255).optional(),
+  // When present the member is provisioned directly with this password and no
+  // invite email is sent — the path that works while SendGrid/Twilio approvals
+  // are pending. Owner-only; see MembersController.
+  password: PasswordSchema.optional(),
 });
 export type InviteMemberBody = z.infer<typeof InviteMemberSchema>;
+
+export const SetMemberPasswordSchema = z.object({
+  password: PasswordSchema,
+});
+export type SetMemberPasswordBody = z.infer<typeof SetMemberPasswordSchema>;
 
 export const UpdateMemberSchema = z
   .object({
