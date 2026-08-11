@@ -139,33 +139,40 @@ export class SendGridEmailService {
   }
 
   /**
-   * SMTP fallback. Any provider works — Gmail with an app password, Resend,
-   * Postmark, Mailgun, SES — so a dead SendGrid account never blocks delivery.
+   * SMTP fallback, so a dead SendGrid account never blocks delivery.
    *
-   *   SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS
-   *   SMTP_SECURE=true for implicit TLS on 465
+   * Reuses the credentials AuthEmailService already runs on — EMAIL_PASSWORD
+   * against ALERT_EMAIL_FROM over EMAIL_HOST (default smtp.gmail.com) — rather
+   * than asking for a second set. SMTP_* overrides are honoured first for
+   * anyone who wants digests going out through a different provider than
+   * transactional auth mail.
    *
-   * Returns null when SMTP is unconfigured so the caller can fall through to
-   * its existing behaviour.
+   * Returns null when nothing is configured so the caller falls through to its
+   * existing behaviour.
    */
   private async trySmtp(
     params: SendEmailParams,
     rowId: string,
   ): Promise<SendEmailResult | null> {
-    const host = process.env.SMTP_HOST?.trim();
-    const user = process.env.SMTP_USER?.trim();
-    const pass = process.env.SMTP_PASS?.trim();
+    const host = process.env.SMTP_HOST?.trim() || process.env.EMAIL_HOST?.trim() || 'smtp.gmail.com';
+    const user = process.env.SMTP_USER?.trim() || this.fromAddress;
+    const pass = process.env.SMTP_PASS?.trim() || process.env.EMAIL_PASSWORD?.trim();
     if (!host || !user || !pass) return null;
 
     try {
       // Required lazily so a missing optional dep can never break boot.
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
       const nodemailer = require('nodemailer');
-      const port = Number(process.env.SMTP_PORT ?? 587);
+      const port = Number(
+        process.env.SMTP_PORT ?? process.env.EMAIL_PORT ?? 587,
+      );
       const transport = nodemailer.createTransport({
         host,
         port,
-        secure: process.env.SMTP_SECURE === 'true' || port === 465,
+        secure:
+          process.env.SMTP_SECURE === 'true' ||
+          process.env.EMAIL_SECURE === 'true' ||
+          port === 465,
         auth: { user, pass },
       });
 
