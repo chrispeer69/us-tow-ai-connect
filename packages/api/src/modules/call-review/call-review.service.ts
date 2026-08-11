@@ -10,6 +10,13 @@ import {
   type OutboundCallLogRow,
 } from '../../db/schema';
 import { ClaudeClient } from './claude.client';
+import { SendGridEmailService } from '../admin-digest/sendgrid-email.service';
+import {
+  renderReviewEmailHtml,
+  renderReviewEmailSubject,
+  renderReviewEmailText,
+  type ReviewEmailInput,
+} from './call-review-email';
 import type { DailyAnalysis, Recommendation } from './call-review.types';
 
 const WIN = sql`flip_outcome ~* 'WIN|ACCEPTED'`;
@@ -43,6 +50,7 @@ export class CallReviewService {
   constructor(
     @Inject(DB_CLIENT) private readonly db: DbClient,
     private readonly claude: ClaudeClient,
+    private readonly email: SendGridEmailService,
   ) {}
 
   // ─── schedule ─────────────────────────────────────────────────────────────
@@ -167,6 +175,7 @@ export class CallReviewService {
       .where(eq(callReviewRuns.id, run.id));
 
     await this.replaceProposals(tenantId, run.id, analysis.recommendations);
+    await this.sendReviewEmail(tenantId, reviewDate, metrics, analysis, sample.length);
 
     this.logger.log(
       `[call-review] tenant=${tenantId} date=${reviewDate} calls=${rows.length} analyzed=${sample.length} ` +
@@ -174,6 +183,77 @@ export class CallReviewService {
     );
 
     return this.getRun(tenantId, run.id);
+  }
+
+  // ─── email ────────────────────────────────────────────────────────────────
+  /**
+   * Best-effort. A failed send must never fail the review run — the findings
+   * are already persisted and readable via the API by the time this runs.
+   */
+  private async sendReviewEmail(
+    tenantId: string,
+    reviewDate: string,
+    metrics: FunnelMetrics,
+    analysis: DailyAnalysis | null,
+    callsAnalyzed: number,
+  ): Promise<void> {
+    try {
+      const tenant = (
+        await this.db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+      )[0];
+      if (!tenant) return;
+
+      const recipients = Array.isArray(tenant.callReviewEmails)
+        ? (tenant.callReviewEmails as unknown[]).filter(
+            (v): v is string => typeof v === 'string' && /.@./.test(v) && v.length < 320,
+          )
+        : [];
+
+      if (recipients.length === 0) {
+        this.logger.log(
+          `[call-review] tenant=${tenantId} email skipped — no call_review_emails configured`,
+        );
+        return;
+      }
+
+      const input: ReviewEmailInput = {
+        companyName: tenant.companyName,
+        reviewDate,
+        metrics,
+        analysis,
+        callsAnalyzed,
+        webBaseUrl: (process.env.WEB_PUBLIC_URL ?? 'https://www.ustowaiconnect.com').replace(
+          /\/$/,
+          '',
+        ),
+      };
+
+      const subject = renderReviewEmailSubject(input);
+      const html = renderReviewEmailHtml(input);
+      const text = renderReviewEmailText(input);
+
+      for (const to of recipients) {
+        try {
+          await this.email.sendEmail({
+            tenantId,
+            to,
+            subject,
+            html,
+            text,
+            related: { kind: 'call_review', id: reviewDate },
+          });
+        } catch (err) {
+          this.logger.warn(
+            `[call-review] email to ${to} failed: ${(err as Error).message}`,
+          );
+        }
+      }
+      this.logger.log(
+        `[call-review] tenant=${tenantId} date=${reviewDate} emailed ${recipients.length} recipient(s)`,
+      );
+    } catch (err) {
+      this.logger.warn(`[call-review] email step failed: ${(err as Error).message}`);
+    }
   }
 
   // ─── funnel ───────────────────────────────────────────────────────────────

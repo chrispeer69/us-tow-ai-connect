@@ -37,6 +37,9 @@ export const tenants = pgTable('tenants', {
   // Session 26: SaaS hardening (digest + IP allow-list + audit retention)
   digestEmails: jsonb('digest_emails').notNull().default([] as unknown as never),
   digestFrequency: varchar('digest_frequency', { length: 10 }).notNull().default('daily'),
+  // Session 73 — recipients for the daily call-review email. Separate from
+  // digestEmails on purpose: different audience (script owner vs whole team).
+  callReviewEmails: jsonb('call_review_emails').notNull().default([] as unknown as never),
   allowedAdminIps: jsonb('allowed_admin_ips').notNull().default([] as unknown as never),
   auditRetentionDays: integer('audit_retention_days').notNull().default(365),
   // Session 27: white-label branding + Thinkrr partner reconciliation.

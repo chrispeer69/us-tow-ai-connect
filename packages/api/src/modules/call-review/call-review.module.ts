@@ -10,12 +10,16 @@
 // evaluated against the win rate it claims to move.
 
 import { Module } from '@nestjs/common';
+import { AdminDigestModule } from '../admin-digest/admin-digest.module';
 import { CallReviewController } from './call-review.controller';
 import { CallReviewService } from './call-review.service';
 import { ClaudeClient } from './claude.client';
 import { RetellAgentService } from './retell-agent.service';
 
 @Module({
+  // AdminDigestModule exports SendGridEmailService, which the daily email reuses
+  // (same provider, same email_messages audit trail as the ops digest).
+  imports: [AdminDigestModule],
   controllers: [CallReviewController],
   providers: [CallReviewService, ClaudeClient, RetellAgentService],
   exports: [CallReviewService, RetellAgentService],
