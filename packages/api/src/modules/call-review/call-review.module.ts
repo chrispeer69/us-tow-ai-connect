@@ -13,10 +13,11 @@ import { Module } from '@nestjs/common';
 import { CallReviewController } from './call-review.controller';
 import { CallReviewService } from './call-review.service';
 import { ClaudeClient } from './claude.client';
+import { RetellAgentService } from './retell-agent.service';
 
 @Module({
   controllers: [CallReviewController],
-  providers: [CallReviewService, ClaudeClient],
-  exports: [CallReviewService],
+  providers: [CallReviewService, ClaudeClient, RetellAgentService],
+  exports: [CallReviewService, RetellAgentService],
 })
 export class CallReviewModule {}

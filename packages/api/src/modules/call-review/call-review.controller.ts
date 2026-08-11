@@ -13,6 +13,17 @@ import { z } from 'zod';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CallReviewService } from './call-review.service';
+import { RetellAgentService } from './retell-agent.service';
+
+const UpdatePromptSchema = z.object({
+  prompt: z.string().min(50).max(60000),
+});
+type UpdatePromptBody = z.infer<typeof UpdatePromptSchema>;
+
+const UpdatePostCallFieldsSchema = z.object({
+  fields: z.array(z.record(z.unknown())).min(1).max(40),
+});
+type UpdatePostCallFieldsBody = z.infer<typeof UpdatePostCallFieldsSchema>;
 
 const ReviewDecisionSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED', 'LIVE', 'RETIRED']),
@@ -32,7 +43,53 @@ type RunNowBody = z.infer<typeof RunNowSchema>;
 @Controller('v1/admin/call-review')
 @UseGuards(AdminAuthGuard)
 export class CallReviewController {
-  constructor(private readonly reviews: CallReviewService) {}
+  constructor(
+    private readonly reviews: CallReviewService,
+    private readonly retell: RetellAgentService,
+  ) {}
+
+  // ─── Retell draft staging ────────────────────────────────────────────────
+  // Writes reach the DRAFT only; publishing stays a human action in Retell.
+  // Every write refuses while live calls are unpinned — see RetellAgentService.
+
+  /** Agent state + whether production is actually protected from draft edits. */
+  @Get('retell/status')
+  retellStatus() {
+    return this.retell.status();
+  }
+
+  /** Version history — what is published, what is only a draft. */
+  @Get('retell/versions')
+  retellVersions() {
+    return this.retell.versions();
+  }
+
+  /** The draft's current conversation prompt. */
+  @Get('retell/prompt')
+  retellPrompt() {
+    return this.retell.getDraftPrompt();
+  }
+
+  /** Stage a new prompt on the draft. Returns a before/after to diff. */
+  @Post('retell/prompt')
+  updateRetellPrompt(
+    @Req() req: AdminRequest,
+    @Body(new ZodValidationPipe(UpdatePromptSchema)) body: UpdatePromptBody,
+  ) {
+    const actor = (req.user as { email?: string } | undefined)?.email ?? null;
+    return this.retell.updateDraftPrompt(body.prompt, actor);
+  }
+
+  /** Stage post-call analysis field changes on the draft. */
+  @Post('retell/post-call-fields')
+  updateRetellPostCallFields(
+    @Req() req: AdminRequest,
+    @Body(new ZodValidationPipe(UpdatePostCallFieldsSchema))
+    body: UpdatePostCallFieldsBody,
+  ) {
+    const actor = (req.user as { email?: string } | undefined)?.email ?? null;
+    return this.retell.updateDraftPostCallFields(body.fields, actor);
+  }
 
   /** Daily review runs, newest first. */
   @Get('runs')

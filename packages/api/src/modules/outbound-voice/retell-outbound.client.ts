@@ -32,6 +32,7 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
   private readonly agentId: string | null;
   private readonly fromNumber: string | null;
   private readonly baseUrl: string;
+  private readonly agentVersion: string | null;
 
   constructor() {
     const key = process.env.RETELL_API_KEY?.trim() ?? '';
@@ -41,12 +42,34 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     this.agentId = agentId || null;
     this.fromNumber = fromNumber || null;
     this.baseUrl = (process.env.RETELL_API_BASE_URL?.trim() || 'https://api.retellai.com').replace(/\/$/, '');
+    this.agentVersion = process.env.RETELL_AGENT_VERSION?.trim() || null;
+
+    // SAFETY: when override_agent_version is omitted, Retell resolves the call
+    // to the agent's LATEST version — which is the working draft, published or
+    // not. That means every save in the Retell dashboard goes live on the next
+    // call, with no review step and nothing to roll back to.
+    //
+    // Setting RETELL_AGENT_VERSION (a published version number, an environment
+    // tag like "prod", or "latest_published") pins live traffic to a reviewed
+    // version and turns the draft into a real staging area.
+    if (!this.agentVersion) {
+      this.logger.warn(
+        'RETELL_AGENT_VERSION unset — live calls will run the agent\'s LATEST DRAFT. ' +
+          'Any edit saved in the Retell dashboard ships immediately with no review. ' +
+          'Publish a version and set RETELL_AGENT_VERSION to pin production.',
+      );
+    }
 
     if (!this.isConfigured()) {
       this.logger.warn(
         'RETELL_API_KEY / RETELL_AGENT_ID / RETELL_FROM_NUMBER not fully configured — outbound voice calls will be logged-only',
       );
     }
+  }
+
+  /** The version live calls are pinned to, or null when unpinned (unsafe). */
+  pinnedVersion(): string | null {
+    return this.agentVersion;
   }
 
   isConfigured(): boolean {
@@ -121,6 +144,16 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
       from_number: this.fromNumber!,
       to_number: finalToNumber,
       override_agent_id: overrideAgentId,
+      // Omitted when unpinned, which preserves the pre-existing behaviour
+      // (latest draft) rather than silently moving production to a different
+      // version the moment this ships.
+      ...(this.agentVersion
+        ? {
+            override_agent_version: /^\d+$/.test(this.agentVersion)
+              ? Number(this.agentVersion)
+              : this.agentVersion,
+          }
+        : {}),
       retell_llm_dynamic_variables: dynamicVariables,
       metadata: {
         tenant_id: params.tenantId,

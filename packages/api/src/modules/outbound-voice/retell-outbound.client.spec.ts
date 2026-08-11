@@ -65,6 +65,70 @@ describe('RetellOutboundClient', () => {
     expect(body.to_number).toBe('+16145559999');
   });
 
+  // Version pinning. Retell resolves a call with no override_agent_version to
+  // the agent's LATEST version — the working draft — so an unpinned deployment
+  // ships every dashboard edit straight to customers.
+  it('omits override_agent_version when RETELL_AGENT_VERSION is unset', async () => {
+    delete process.env.RETELL_AGENT_VERSION;
+    const client = new RetellOutboundClient();
+
+    await client.placeCall({
+      tenantId: 'tenant-1',
+      callId: 'call-1',
+      toPhone: '+16145551234',
+      toName: 'Chris',
+      scriptTemplate: 'custom',
+      scriptBody: 'Hi Chris',
+      scriptVariables: { body: 'Hi Chris' },
+    });
+
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+
+    expect(body).not.toHaveProperty('override_agent_version');
+    expect(client.pinnedVersion()).toBeNull();
+  });
+
+  it('pins a numeric RETELL_AGENT_VERSION as a number', async () => {
+    process.env.RETELL_AGENT_VERSION = '27';
+    const client = new RetellOutboundClient();
+
+    await client.placeCall({
+      tenantId: 'tenant-1',
+      callId: 'call-1',
+      toPhone: '+16145551234',
+      toName: 'Chris',
+      scriptTemplate: 'custom',
+      scriptBody: 'Hi Chris',
+      scriptVariables: { body: 'Hi Chris' },
+    });
+
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+
+    expect(body.override_agent_version).toBe(27);
+  });
+
+  it('passes a non-numeric RETELL_AGENT_VERSION through as a tag string', async () => {
+    process.env.RETELL_AGENT_VERSION = 'latest_published';
+    const client = new RetellOutboundClient();
+
+    await client.placeCall({
+      tenantId: 'tenant-1',
+      callId: 'call-1',
+      toPhone: '+16145551234',
+      toName: 'Chris',
+      scriptTemplate: 'custom',
+      scriptBody: 'Hi Chris',
+      scriptVariables: { body: 'Hi Chris' },
+    });
+
+    const [, init] = vi.mocked(global.fetch).mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+
+    expect(body.override_agent_version).toBe('latest_published');
+  });
+
   it('refuses tenant test mode calls when no tenant test number is set', async () => {
     const client = new RetellOutboundClient();
 
