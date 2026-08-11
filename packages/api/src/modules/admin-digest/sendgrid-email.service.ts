@@ -95,6 +95,8 @@ export class SendGridEmailService {
     const row = inserted[0];
 
     if (!this.sendgrid) {
+      const viaSmtp = await this.trySmtp(params, row.id);
+      if (viaSmtp) return viaSmtp;
       this.logger.log(
         `[sendgrid-fallback] tenant=${params.tenantId} to=${params.to} subject="${params.subject}"`,
       );
@@ -121,11 +123,72 @@ export class SendGridEmailService {
       this.logger.warn(
         `SendGrid send failed tenant=${params.tenantId} to=${params.to}: ${msg}`,
       );
+
+      // SendGrid is not always recoverable at the account level — a lapsed
+      // trial or an account under review rejects every send regardless of
+      // payload. When SMTP is configured, use it rather than dropping the mail.
+      const viaSmtp = await this.trySmtp(params, row.id);
+      if (viaSmtp) return viaSmtp;
+
       await this.db
         .update(emailMessages)
         .set({ status: 'failed', error: msg })
         .where(eq(emailMessages.id, row.id));
       return { id: row.id, sendgridMessageId: null, status: 'failed' };
+    }
+  }
+
+  /**
+   * SMTP fallback. Any provider works — Gmail with an app password, Resend,
+   * Postmark, Mailgun, SES — so a dead SendGrid account never blocks delivery.
+   *
+   *   SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS
+   *   SMTP_SECURE=true for implicit TLS on 465
+   *
+   * Returns null when SMTP is unconfigured so the caller can fall through to
+   * its existing behaviour.
+   */
+  private async trySmtp(
+    params: SendEmailParams,
+    rowId: string,
+  ): Promise<SendEmailResult | null> {
+    const host = process.env.SMTP_HOST?.trim();
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS?.trim();
+    if (!host || !user || !pass) return null;
+
+    try {
+      // Required lazily so a missing optional dep can never break boot.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+      const nodemailer = require('nodemailer');
+      const port = Number(process.env.SMTP_PORT ?? 587);
+      const transport = nodemailer.createTransport({
+        host,
+        port,
+        secure: process.env.SMTP_SECURE === 'true' || port === 465,
+        auth: { user, pass },
+      });
+
+      const info = await transport.sendMail({
+        from: process.env.SMTP_FROM?.trim() || this.fromAddress,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: params.text ?? stripTags(params.html),
+      });
+
+      await this.db
+        .update(emailMessages)
+        .set({ status: 'sent', sendgridMessageId: info?.messageId ?? null })
+        .where(eq(emailMessages.id, rowId));
+
+      this.logger.log(
+        `[smtp] delivered tenant=${params.tenantId} to=${params.to} via ${host}`,
+      );
+      return { id: rowId, sendgridMessageId: info?.messageId ?? null, status: 'sent' };
+    } catch (err) {
+      this.logger.warn(`[smtp] send failed to=${params.to}: ${(err as Error).message}`);
+      return null;
     }
   }
 }
