@@ -171,12 +171,53 @@ healthy-but-too-long, it is **not being delivered**. Roughly half of declines ne
 Offer 2, which converts at 4.3% — worth about **8–9 wins a month** on its own, entirely
 separate from any wording change.
 
-### And one thing the aggregate hides
+### Correction: `competitor_repair` is not a broken segment
 
-`competitor_repair` shows 0% because it is **95% never pitched** — 309 of 326 eligible calls,
-with a **20-second median duration** on those. Only **17** were ever actually pitched, so we
-can't yet conclude those customers reject flips. The open question is why the calls end so
-early, and that is what the transcripts should answer next.
+An earlier draft of this note claimed `competitor_repair` was a dead segment with 0 wins in
+878 calls and calls "dying at a 20-second median". Both statements were wrong, and the
+transcripts corrected them. Recording the correction because the wrong version was circulated
+briefly.
+
+**The 0% was a labelling artifact.** The destination tag vocabulary shifted mid-period.
+`car_repair` first appears 30 Jun, carries almost every win through July, and then stops being
+emitted entirely after 31 Jul:
+
+| Week of | `competitor_repair` | `car_repair` | Wins |
+|---|---:|---:|---:|
+| 29 Jun | 210 | 3 | 0 |
+| 6 Jul | 100 | 165 | 15 |
+| 13 Jul | 104 | 171 | 15 |
+| 20 Jul | 83 | 98 | 5 |
+| 27 Jul | 111 | 66 | 6 |
+| **3 Aug** | **290** | **0** | **11** |
+| **10 Aug** | **91** | **0** | **1** |
+
+Since 1 August, `competitor_repair` absorbed what used to be tagged `car_repair` — and it
+converts normally. August so far: **282 eligible, 208 pitched (74%), 15 wins.** The July "0
+wins for competitor_repair" was comparing two tags whose meanings changed underneath us, not
+measuring a segment that customers reject.
+
+**The 20-second median was voicemail, not a bad opening.** Splitting the never-pitched
+`competitor_repair` calls by duration:
+
+| Bucket | Calls | Have transcript |
+|---|---:|---:|
+| null duration | 297 | 0 |
+| 0s | 107 | 0 |
+| 1–29s | 51 | 51 |
+| 30–119s | 54 | 54 |
+| **120s+** | **186** | **186** |
+
+404 of those never connected at all, and the short ones are plainly answering machines —
+*"You've reached Jill's voicemail"*, *"the Google Fi wireless subscriber you have called is
+not available"*. Across June–July, **37.5% of all calls never connected** (878 of 2,342).
+That is a contactability problem, not a script problem, and it has already improved sharply:
+August is at **4.5% never-connected**.
+
+**What is left is a genuine defect, and it is narrower than claimed.** 186 calls ran
+**two minutes or longer**, were flip-eligible, and still never made offer 1. Those are real
+conversations with a real opportunity and no pitch. That is the thing worth fixing — not the
+segment, and not the opening.
 
 ### On sample size
 
@@ -192,12 +233,21 @@ sizes and will not hold.
 
 | Item | Est. value | Status |
 |---|---|---|
-| `competitor_repair` calls dying at ~20s, never pitched | ~25 wins/mo | diagnosing |
+| **186 calls of 2min+, eligible, never pitched** — real conversations, no offer 1 | high | needs transcript review |
+| **Why did `car_repair` stop being emitted after 31 Jul?** Deliberate or a side effect? | unknown | **question for Sidd** |
 | Offer ladder abandoned after first decline (201 of 408) | ~8–9 wins/mo | open |
 | `issue_type` unknown on 99.6% of calls; `motor_club` empty on 100% | unknown | open |
 | Retire Offer 3; fold its incentive into Offer 2 | time saved | agreed |
 | Add `named_competitor` tag + soft-seed route | — | agreed |
 | Move prompt rules 17–20 out of Retell into rendered script body | — | proposed |
+| Contactability — 37.5% never connected in Jun–Jul | already improving | monitor (Aug: 4.5%) |
+
+**Sidd — the direct question:** `car_repair` stops appearing in the data after 31 July, and
+`competitor_repair` picks up its volume. The only commit touching the classifier in that
+window is `c58acd8` (29 Jul). Was collapsing the two tags intentional? It matters for two
+reasons: any analysis that segments on `destination_type` across the boundary is comparing
+different things, and the offer routing keys off these tags. Worth five minutes before either
+of us reads more into the July segment numbers.
 
 That last one is the architectural one. "When not to pitch" is currently specified in two
 places — `flip-scripts.ts` and the Retell prompt, which carries 20 numbered rules including
