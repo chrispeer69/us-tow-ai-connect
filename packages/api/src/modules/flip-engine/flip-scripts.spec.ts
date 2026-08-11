@@ -9,6 +9,75 @@ import {
 } from './flip-scripts';
 
 describe('flip-scripts', () => {
+  // Regression: the global-rules block was concatenated into the call body
+  // without interpolation, so `{{callback_number}}` shipped verbatim inside
+  // script_body. Retell substitutes its prompt template once and does not
+  // recurse into the injected body, so live callers heard the literal token.
+  it('leaves no template placeholders anywhere in the rendered call body', () => {
+    const body = renderCallBody('competitor_repair', {
+      repName: 'Emily',
+      companyName: 'Roadside Towing',
+      motorClub: '',
+      callbackNumber: '+15551234567',
+      conviniLink: 'https://convini.live',
+      customerFirstName: 'Pat',
+      vehicle: '2017 Ford Escape',
+      pickupLocation: 'I-70 near exit 101',
+      destination: 'Firestone on Main',
+      issue: 'a flat tire',
+      nearestShop: "Wayne's Westerville",
+      nearestShopDistanceMiles: 2,
+      rentalsAvailable: true,
+    });
+
+    expect(body).not.toMatch(/\{\{[^}]*\}\}/);
+    // The global-rules line that leaked — now carries the real number.
+    expect(body).toContain('+15551234567');
+  });
+
+  it('strips markup fragments pasted into tenant custom rules', () => {
+    const body = renderCallBody('unknown', {
+      repName: 'Emily',
+      companyName: 'Roadside Towing',
+      motorClub: '',
+      callbackNumber: '+15551234567',
+      conviniLink: 'https://convini.live',
+      customerFirstName: 'Pat',
+      vehicle: '2017 Ford Escape',
+      pickupLocation: 'I-70 near exit 101',
+      destination: 'home',
+      issue: 'a flat tire',
+      rentalsAvailable: true,
+      // Exactly the shape that leaked into a live call.
+      customAgentRules:
+        'Always give the callback <parameter name="callback_number_placeholder">value</parameter> politely.',
+    });
+
+    expect(body).not.toContain('<parameter');
+    expect(body).not.toContain('</parameter>');
+    expect(body).toContain('Always give the callback');
+  });
+
+  it('keeps deliberate [AGENT:] and [STEP] directives intact', () => {
+    const body = renderCallBody('competitor_repair', {
+      repName: 'Emily',
+      companyName: 'Roadside Towing',
+      motorClub: '',
+      callbackNumber: '+15551234567',
+      conviniLink: 'https://convini.live',
+      customerFirstName: 'Pat',
+      vehicle: '2017 Ford Escape',
+      pickupLocation: 'I-70 near exit 101',
+      destination: 'Firestone on Main',
+      issue: 'a flat tire',
+      nearestShop: "Wayne's Westerville",
+      nearestShopDistanceMiles: 2,
+      rentalsAvailable: true,
+    });
+
+    expect(body).toContain('[AGENT:');
+  });
+
   it('renders confirm-details with all variables substituted', () => {
     const body = renderConfirmDetails({
       customerName: 'Pat',

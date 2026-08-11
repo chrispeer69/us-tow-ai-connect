@@ -539,7 +539,50 @@ const SCENARIO_RENDERERS: Record<ScenarioKey, (ctx: ScriptContext) => string> = 
 export function renderCallBody(scenario: ScenarioKey, ctx: ScriptContext): string {
   const vars = baseVars(ctx);
   const renderer = SCENARIO_RENDERERS[scenario] ?? scenarioC;
-  return [globalRules(ctx), ``, renderer(ctx)].join('\n');
+
+  // Each scenario block interpolates its own text, but globalRules() did not —
+  // so `{{callback_number}}` shipped verbatim inside script_body, and customers
+  // heard the literal token. Retell substitutes its prompt template exactly
+  // once and does NOT recurse into the value it injects for {{script_body}},
+  // so anything template-shaped that survives to here reaches the caller's ear.
+  //
+  // Interpolating the assembled body is idempotent for the blocks that already
+  // did it (no {{…}} left to match), and closes the gap for everything else.
+  const assembled = interpolate(
+    [globalRules(ctx), ``, renderer(ctx)].join('\n'),
+    vars,
+  );
+
+  return stripTemplateArtifacts(assembled);
+}
+
+/**
+ * Last line of defence before text reaches a live phone call.
+ *
+ * `ctx.customAgentRules` is free text a tenant pastes into config, and one
+ * production call leaked a raw `<parameter name="…">` fragment that way. No
+ * placeholder or markup fragment should ever be speakable, so anything still
+ * template-shaped is removed rather than trusted.
+ *
+ * `[AGENT: …]` and `[STEP …]` are deliberate — the Retell prompt teaches the
+ * agent to treat them as instructions and never read them aloud — so they stay.
+ */
+function stripTemplateArtifacts(text: string): string {
+  return text
+    // Unresolved {{tokens}} — a variable we never supplied a value for.
+    .replace(/\{\{[^}]*\}\}/g, '')
+    // Tool-call / XML fragments pasted into free-text config.
+    .replace(/<\/?parameter\b[^>]*>/gi, '')
+    .replace(/<\/?(?:invoke|function_calls|antml:[a-z_]+)\b[^>]*>/gi, '')
+    // Collapse whitespace the removals leave behind.
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** True when a rendered body still contains something unspeakable. Test seam. */
+export function hasTemplateArtifacts(text: string): boolean {
+  return /\{\{[^}]*\}\}|<\/?parameter\b|<\/?invoke\b/i.test(text);
 }
 
 /** Map a destination tag to the scenario key. Centralized so routing is
