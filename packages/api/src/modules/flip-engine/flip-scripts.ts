@@ -24,6 +24,17 @@
  * reads aloud. Interpolation uses {{name}} straight string replacement.
  */
 
+/**
+ * Session 73 — bump this whenever the rendered wording changes in a way that
+ * could move the win rate. It is stamped onto every outbound_call_logs row, and
+ * it is the only thing that makes "did that change help?" answerable — a script
+ * edit shipped without bumping it silently merges two populations.
+ *
+ * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
+ * the offer ladder), minor for wording inside an existing structure.
+ */
+export const SCRIPT_VERSION = '1.0';
+
 export type ScenarioKey =
   | 'competitor_repair'
   | 'auto_body'

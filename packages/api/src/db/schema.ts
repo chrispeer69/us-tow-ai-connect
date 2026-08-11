@@ -8,6 +8,7 @@ import {
   jsonb,
   integer,
   numeric,
+  date,
   index,
   uniqueIndex,
   primaryKey,
@@ -343,7 +344,94 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
   transcript: text('transcript'),
   managementNotified: boolean('management_notified').notNull().default(false),
   callTime: timestamp('call_time', { withTimezone: true }).notNull().defaultNow(),
+  // Session 73 — script attribution. Stamped by the flip orchestrator at render
+  // time so a win can be tied to the exact script text that produced it.
+  // Without these three, no experiment can be measured.
+  scriptVersion: varchar('script_version', { length: 40 }),
+  scenario: varchar('scenario', { length: 40 }),
+  scriptVariant: varchar('script_variant', { length: 24 }).default('control'),
 });
+export type OutboundCallLogRow = typeof outboundCallLogs.$inferSelect;
+
+// ============ CALL REVIEW (Session 73 — daily analyst loop) ============
+// One row per tenant per day. The daily cron samples yesterday's calls, sends
+// the transcripts to Claude for failure-mode classification, and stores the
+// funnel snapshot next to the narrative so a recommendation can always be
+// traced back to the numbers that motivated it.
+export const callReviewRuns = pgTable(
+  'call_review_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    reviewDate: date('review_date').notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('RUNNING'), // RUNNING | COMPLETE | FAILED | SKIPPED
+    callsConsidered: integer('calls_considered').notNull().default(0),
+    callsAnalyzed: integer('calls_analyzed').notNull().default(0),
+    wins: integer('wins').notNull().default(0),
+    eligible: integer('eligible').notNull().default(0),
+    neverPitched: integer('never_pitched').notNull().default(0),
+    metrics: jsonb('metrics').notNull().default({} as unknown as never),
+    summary: text('summary'),
+    objections: jsonb('objections').notNull().default([] as unknown as never),
+    defects: jsonb('defects').notNull().default([] as unknown as never),
+    model: varchar('model', { length: 60 }),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => ({
+    tenantDateUniq: uniqueIndex('call_review_runs_tenant_date_uniq').on(
+      t.tenantId,
+      t.reviewDate,
+    ),
+  }),
+);
+export type CallReviewRunRow = typeof callReviewRuns.$inferSelect;
+
+// Proposed script edits. The analyst only ever writes PROPOSED rows — nothing
+// reaches a live call until a human approves it. See call-review.service.ts.
+export const scriptRecommendations = pgTable(
+  'script_recommendations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    runId: uuid('run_id').references(() => callReviewRuns.id, { onDelete: 'set null' }),
+    scenario: varchar('scenario', { length: 40 }),
+    /** Which part of the call it touches — e.g. `opening`, `offer_1`, `convini`. */
+    target: varchar('target', { length: 60 }).notNull(),
+    title: varchar('title', { length: 255 }).notNull(),
+    problem: text('problem').notNull(),
+    proposedText: text('proposed_text'),
+    currentText: text('current_text'),
+    rationale: text('rationale').notNull(),
+    /** Verbatim customer quotes backing the claim, as [{callId, quote}]. */
+    evidence: jsonb('evidence').notNull().default([] as unknown as never),
+    // DEFECT items are things that are supposed to work and don't — they ship
+    // without an A/B test. WORDING items must be tested before promotion.
+    kind: varchar('kind', { length: 20 }).notNull().default('WORDING'), // WORDING | DEFECT | TARGETING | DATA_QUALITY
+    confidence: varchar('confidence', { length: 10 }).notNull().default('MEDIUM'), // LOW | MEDIUM | HIGH
+    expectedLift: varchar('expected_lift', { length: 60 }),
+    status: varchar('status', { length: 20 }).notNull().default('PROPOSED'), // PROPOSED | APPROVED | REJECTED | LIVE | RETIRED
+    reviewedBy: varchar('reviewed_by', { length: 255 }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewNote: text('review_note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantStatusIdx: index('script_recommendations_tenant_status_idx').on(
+      t.tenantId,
+      t.status,
+      t.createdAt,
+    ),
+  }),
+);
+export type ScriptRecommendationRow = typeof scriptRecommendations.$inferSelect;
 
 // ============ RELATIONS ============
 export const tenantsRelations = relations(tenants, ({ one, many }) => ({
