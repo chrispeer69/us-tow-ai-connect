@@ -232,9 +232,15 @@ export class CallReviewService {
       const html = renderReviewEmailHtml(input);
       const text = renderReviewEmailText(input);
 
+      // Count what actually left the building, not what we attempted.
+      // SendGridEmailService swallows provider failures and returns a row with
+      // status 'failed' / 'logged_only', so a naive attempt count reports
+      // success while nothing is being delivered.
+      let delivered = 0;
+      let failed = 0;
       for (const to of recipients) {
         try {
-          await this.email.sendEmail({
+          const result = await this.email.sendEmail({
             tenantId,
             to,
             subject,
@@ -242,15 +248,25 @@ export class CallReviewService {
             text,
             related: { kind: 'call_review', id: reviewDate },
           });
+          if (result.status === 'sent') delivered += 1;
+          else failed += 1;
         } catch (err) {
+          failed += 1;
           this.logger.warn(
             `[call-review] email to ${to} failed: ${(err as Error).message}`,
           );
         }
       }
-      this.logger.log(
-        `[call-review] tenant=${tenantId} date=${reviewDate} emailed ${recipients.length} recipient(s)`,
-      );
+      if (failed > 0) {
+        this.logger.warn(
+          `[call-review] tenant=${tenantId} date=${reviewDate} email NOT delivered to ` +
+            `${failed} of ${recipients.length} recipient(s) — findings are still readable via the API`,
+        );
+      } else {
+        this.logger.log(
+          `[call-review] tenant=${tenantId} date=${reviewDate} delivered to ${delivered} recipient(s)`,
+        );
+      }
     } catch (err) {
       this.logger.warn(`[call-review] email step failed: ${(err as Error).message}`);
     }
