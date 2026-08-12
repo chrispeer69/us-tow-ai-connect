@@ -38,7 +38,17 @@ interface FunnelMetrics {
   offer2Accepted: number;
   offer3Reached: number;
   offer3Accepted: number;
+  pitched: number;
   wins: number;
+  /**
+   * Three denominators on purpose. `eligible` changed meaning on 2026-08-12
+   * (collision and glass work is no longer flip-eligible), so a win rate over
+   * eligible is not comparable across that date and looks inflated after it.
+   * Wins per call and wins per pitched call are stable, and are what the email
+   * leads with.
+   */
+  winRateOfCalls: number;
+  winRateOfPitched: number;
   winRateOfEligible: number;
   byScenario: Array<{ scenario: string; calls: number; eligible: number; wins: number }>;
 }
@@ -278,6 +288,7 @@ export class CallReviewService {
     const attempted = (v: string | null) => v != null && v !== 'NOT_ATTEMPTED';
 
     const eligibleRows = rows.filter((r) => r.flipEligible);
+    const pitchedRows = rows.filter((r) => attempted(r.offer1Result));
     const wins = rows.filter(isWin).length;
 
     const byScenarioMap = new Map<
@@ -304,7 +315,14 @@ export class CallReviewService {
       offer2Accepted: rows.filter((r) => r.offer2Result === 'ACCEPTED').length,
       offer3Reached: rows.filter((r) => attempted(r.offer3Result)).length,
       offer3Accepted: rows.filter((r) => r.offer3Result === 'ACCEPTED').length,
+      pitched: pitchedRows.length,
       wins,
+      winRateOfCalls:
+        rows.length > 0 ? Number(((wins / rows.length) * 100).toFixed(1)) : 0,
+      winRateOfPitched:
+        pitchedRows.length > 0
+          ? Number(((wins / pitchedRows.length) * 100).toFixed(1))
+          : 0,
       winRateOfEligible:
         eligibleRows.length > 0
           ? Number(((wins / eligibleRows.length) * 100).toFixed(1))

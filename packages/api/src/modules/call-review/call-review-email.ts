@@ -21,7 +21,10 @@ export interface ReviewEmailInput {
     offer2Accepted: number;
     offer3Reached: number;
     offer3Accepted: number;
+    pitched: number;
     wins: number;
+    winRateOfCalls: number;
+    winRateOfPitched: number;
     winRateOfEligible: number;
     byScenario: Array<{ scenario: string; calls: number; eligible: number; wins: number }>;
   };
@@ -42,7 +45,7 @@ export function renderReviewEmailSubject(input: ReviewEmailInput): string {
   const { metrics, reviewDate } = input;
   const defects = input.analysis?.defects.length ?? 0;
   const flag = defects > 0 ? ` · ${defects} defect${defects === 1 ? '' : 's'}` : '';
-  return `Call review ${reviewDate}: ${metrics.wins} win${metrics.wins === 1 ? '' : 's'} of ${metrics.eligible} eligible (${metrics.winRateOfEligible}%)${flag}`;
+  return `Call review ${reviewDate}: ${metrics.wins} win${metrics.wins === 1 ? '' : 's'} from ${metrics.calls} calls (${metrics.winRateOfCalls}%)${flag}`;
 }
 
 export function renderReviewEmailText(input: ReviewEmailInput): string {
@@ -50,9 +53,15 @@ export function renderReviewEmailText(input: ReviewEmailInput): string {
   const lines = [
     `CALL REVIEW — ${reviewDate}`,
     '',
-    `Wins: ${metrics.wins} of ${metrics.eligible} eligible (${metrics.winRateOfEligible}%)`,
-    `Calls placed: ${metrics.calls}`,
+    `Wins: ${metrics.wins}`,
+    `  ${metrics.winRateOfCalls}% of all ${metrics.calls} calls`,
+    `  ${metrics.winRateOfPitched}% of the ${metrics.pitched} calls that got a pitch`,
+    `  ${metrics.winRateOfEligible}% of ${metrics.eligible} flip-eligible (see note)`,
     `Never pitched: ${metrics.neverPitched} eligible calls where offer 1 was never made`,
+    ``,
+    `NOTE: "flip-eligible" got stricter on 2026-08-12 — collision and glass work is`,
+    `no longer eligible. Percentages of eligible are NOT comparable across that date`,
+    `and will read high after it. Use wins per call or per pitched call.`,
     `Ladder: offer1 ${metrics.offer1Accepted} accepted / ${metrics.offer1Declined} declined · ` +
       `offer2 ${metrics.offer2Accepted} of ${metrics.offer2Reached} · ` +
       `offer3 ${metrics.offer3Accepted} of ${metrics.offer3Reached}`,
@@ -160,9 +169,9 @@ export function renderReviewEmailHtml(input: ReviewEmailInput): string {
 
     <table style="width:100%;border-collapse:separate;border-spacing:8px 0"><tr>
       ${kpi('Wins', String(metrics.wins), true)}
-      ${kpi('Of eligible', `${metrics.winRateOfEligible}%`)}
+      ${kpi('Per call', `${metrics.winRateOfCalls}%`)}
+      ${kpi('Per pitched', `${metrics.winRateOfPitched}%`)}
       ${kpi('Calls', String(metrics.calls))}
-      ${kpi('Never pitched', String(metrics.neverPitched))}
     </tr></table>
 
     ${
@@ -170,6 +179,16 @@ export function renderReviewEmailHtml(input: ReviewEmailInput): string {
         ? `<p style="font-size:15px;line-height:1.6;margin:22px 0 0">${esc(analysis.summary)}</p>`
         : '<p style="color:#6b7280;font-size:14px;margin-top:22px">Transcript analysis did not run for this date.</p>'
     }
+
+    <p style="font-size:13px;color:#6b7280;margin:14px 0 0">
+      ${metrics.eligible} flip-eligible · ${metrics.pitched} pitched · ${metrics.neverPitched} eligible calls never pitched
+      · ${metrics.winRateOfEligible}% of eligible
+    </p>
+    <p style="font-size:12px;color:#92400e;background:#fffbeb;border-left:3px solid #f59e0b;padding:8px 10px;margin:8px 0 0;border-radius:0 4px 4px 0">
+      "Flip-eligible" got stricter on 12 Aug 2026 — collision and glass work is no longer eligible.
+      Percentages of eligible are not comparable across that date and read high after it.
+      Compare on wins per call or per pitched call.
+    </p>
 
     <h3 style="font-size:14px;margin:24px 0 8px">Offer ladder</h3>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
