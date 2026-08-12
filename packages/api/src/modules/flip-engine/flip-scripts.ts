@@ -33,7 +33,11 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.0';
+export const SCRIPT_VERSION = '2.1';
+// 2.1 (2026-08-12) — body, collision and glass jobs are still called, and now
+//   get a present-tense SOFT REFERRAL to our own body shops instead of the
+//   generic no-offer script. Explicitly not an offer: no discount, no
+//   diagnostic, no ask to switch, and the original destination is reaffirmed.
 // 2.0 (2026-08-12) — 2026-08-11 review: front-loaded offer 1; offer 2 becomes a
 //   reason-finding question; honest distance phrasing; offers hard-gated on a
 //   named shop and on non-collision work; explicit consent required before a
@@ -188,6 +192,14 @@ const COLLISION_SUBCATEGORIES = new Set([
   'collision_kw',
   'crash',
 ]);
+
+/** Glass-specific wording. Shared so the pattern is written exactly once. */
+const GLASS_RE = /\b(glass|windshield|windscreen|window|rock chip)\b/i;
+
+/** True when the job is specifically glass rather than general body work. */
+function isGlassJob(ctx: ScriptContext): boolean {
+  return GLASS_RE.test(`${ctx.issue ?? ''} ${ctx.issueSubcategory ?? ''}`);
+}
 
 /**
  * True when the job is body/collision/glass work. Four customers on 2026-08-11
@@ -516,9 +528,20 @@ function scenarioB(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
   const vars = baseVars(ctx);
   const bodyShops = [ctx.bodyShop1, ctx.bodyShop2].filter(Boolean);
-  const bodyShopMention = bodyShops.length
-    ? `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area, like ${bodyShops.join(' and ')}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`
-    : `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`;
+  const shopList = bodyShops.length ? `, like ${bodyShops.join(' and ')}` : '';
+
+  // Session 74 — a SOFT REFERRAL, not a flip. Body and glass work is refused a
+  // repair-shop offer (wrong shop, wrong diagnostic), but these jobs are still
+  // worth calling and the customer should know we own body shops. The whole
+  // difference from an offer: no discount, no free diagnostic, no "want me to
+  // switch", and the original destination is reaffirmed in the same breath so
+  // there is nothing to decline.
+  const isActiveDamageJob = isCollisionOrGlass(ctx);
+  const glass = isGlassJob(ctx);
+
+  const bodyShopMention = isActiveDamageJob
+    ? `AI: "Understood — that sounds like ${glass ? 'glass work' : 'body work'}. Just so you know, {{customer_first_name}}, we own our own body shops here in the area${shopList}. We're not tied to any insurance network, so if you'd rather pick your own shop for the repair we can look after it. No pressure either way — ${destinationPlanSentence(ctx).replace('Your driver is', "I'll have your driver")} unless you tell me otherwise."`
+    : `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area${shopList}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`;
 
   const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [
@@ -528,7 +551,8 @@ function scenarioB(ctx: ScriptContext): string {
   ];
 
   return [
-    `# SCENARIO B — AUTO BODY SHOP (SOFT MENTION)`,
+    `# SCENARIO B — AUTO BODY / GLASS (SOFT REFERRAL, NEVER A FLIP OFFER)`,
+    `[AGENT: This is body, collision or glass work. Mention our body shops ONCE, as information. This is NOT an offer: do not quote a discount, do not mention a free diagnostic, do not ask to switch the drop-off, and do not repeat the mention if they do not take it up. If the customer asks to use our shop, say you'll pass it to dispatch to arrange — do not promise a price or a timescale.]`,
     `[AGENT: The destination is an auto body shop. Confirm details, then gently mention our body shops before moving to the Convini pitch.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,

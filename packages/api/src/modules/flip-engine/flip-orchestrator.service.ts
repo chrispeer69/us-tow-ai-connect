@@ -62,6 +62,24 @@ function issuePhrase(subcategory: string | null | undefined): string {
   }
 }
 
+/**
+ * Session 74 — where a call goes when it is not flip-eligible.
+ *
+ * Body and glass work is deliberately refused a flip offer, but it must still
+ * get the body-shop soft referral rather than the generic residence/unknown
+ * script, which says nothing about our shops at all. Chris's call: these jobs
+ * are worth calling, they are just not worth pitching a mechanical flip at.
+ */
+function scenarioForNonEligible(
+  destinationTag: string,
+  decision: { bodyShopSoftMention?: boolean },
+): ReturnType<typeof scenarioForDestinationTag> {
+  if (decision.bodyShopSoftMention) return 'auto_body';
+  return destinationTag === 'competitor_repair'
+    ? scenarioForDestinationTag('unknown')
+    : scenarioForDestinationTag(destinationTag);
+}
+
 function firstNameOf(full: string | null | undefined): string {
   const n = (full ?? '').trim();
   if (!n) return 'there';
@@ -289,7 +307,7 @@ export class FlipOrchestratorService {
 
     // If we have a competitor_repair tag but couldn't find a nearest shop within max distance, fallback to Convini
     const flipEligible = decision.flipEligible && !!nearestShopName;
-    const actualScenario = flipEligible ? scenario : (destination.tag === 'competitor_repair' ? scenarioForDestinationTag('unknown') : scenario);
+    const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
 
     const ctx: ScriptContext = {
       repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
@@ -464,7 +482,7 @@ export class FlipOrchestratorService {
 
     const scenario = scenarioForDestinationTag(destination.tag);
     const flipEligible = decision.flipEligible && !!nearestShopName;
-    const actualScenario = flipEligible ? scenario : (destination.tag === 'competitor_repair' ? scenarioForDestinationTag('unknown') : scenario);
+    const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
     const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
     const bodyShops = pickTwoBodyShops(ourShops);
     const ctx: ScriptContext = {
@@ -824,7 +842,7 @@ export class FlipOrchestratorService {
 
       const scenario = scenarioForDestinationTag(destination.tag);
       const flipEligible = decision.flipEligible && !!nearestShopName;
-      const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
+      const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
       const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
 
       const ctx: ScriptContext = {
@@ -1025,7 +1043,7 @@ export class FlipOrchestratorService {
     
     // If we have a car_repair tag but couldn't find a nearest shop, fallback to Convini
     const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
-    const actualScenario = flipEligible ? scenario : scenarioForDestinationTag('unknown');
+    const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
 
     const ctx: ScriptContext = {
       repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
