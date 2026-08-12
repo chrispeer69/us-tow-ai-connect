@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, BadRequestException, Inject, Logger 
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
-import { eq, or, desc } from 'drizzle-orm';
+import { eq, or, desc, sql } from 'drizzle-orm';
 import { users, tenantMembers, tenants, passwordResetOtps, UserRow } from '../../db/schema';
 import { DB_CLIENT, DbClient } from '../../db/db.module';
 import { AuthEmailService } from './auth-email.service';
@@ -34,11 +34,26 @@ export class AuthService {
   }
 
   async login(user: UserRow) {
-    // Find their default tenant member profile — first by userId, then by email
+    // Find their default tenant member profile — first by userId, then by email.
+    //
+    // Session 74 — this used to be `.limit(1)` with no ordering, so a user who
+    // belongs to more than one tenant landed in whichever row Postgres happened
+    // to return. That is not stable between logins: the same person could see a
+    // different company's data on consecutive sign-ins.
+    //
+    // Deterministic rule: an ACTIVE membership always wins over a non-active
+    // one, and among those the most recently granted wins — being added to a
+    // tenant is the most recent statement of where someone is meant to be
+    // working. Multi-tenant users need a real tenant switcher; until then this
+    // at least stops the choice being random.
     let [member] = await this.db
       .select()
       .from(tenantMembers)
       .where(eq(tenantMembers.userId, user.id))
+      .orderBy(
+        sql`CASE WHEN ${tenantMembers.status} = 'ACTIVE' THEN 0 ELSE 1 END`,
+        desc(tenantMembers.invitedAt),
+      )
       .limit(1);
 
     // DATA MIGRATION: If no membership found by userId, try by email and auto-link.
