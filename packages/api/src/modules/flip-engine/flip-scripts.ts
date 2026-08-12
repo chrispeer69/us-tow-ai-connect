@@ -33,7 +33,9 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.1';
+export const SCRIPT_VERSION = '2.2';
+// 2.2 (2026-08-12) — body/glass referral reworded by Chris: names the insurance
+//   commitment and respects it out loud, so there is nothing to push back on.
 // 2.1 (2026-08-12) — body, collision and glass jobs are still called, and now
 //   get a present-tense SOFT REFERRAL to our own body shops instead of the
 //   generic no-offer script. Explicitly not an offer: no discount, no
@@ -539,9 +541,19 @@ function scenarioB(ctx: ScriptContext): string {
   const isActiveDamageJob = isCollisionOrGlass(ctx);
   const glass = isGlassJob(ctx);
 
+  // Wording is Chris's, 2026-08-12. The move that makes it work: it names the
+  // insurance commitment and respects it out loud, so there is no pressure to
+  // push back against and nothing to decline. Do not turn this into an offer.
+  const damageKind = glass ? 'auto glass work' : 'auto body work';
+  const closingLine = `${destinationPlanSentence(ctx).replace('Your driver is', "I'll have your driver")} shortly`;
+  // Only claim they have a shop commitment when a real destination is on file.
+  const insuranceLine = hasSeparateDestination(ctx)
+    ? ` We know you have a commitment with the insurance company to go to the current shop listed and we respect that.`
+    : ``;
+
   const bodyShopMention = isActiveDamageJob
-    ? `AI: "Understood — that sounds like ${glass ? 'glass work' : 'body work'}. Just so you know, {{customer_first_name}}, we own our own body shops here in the area${shopList}. We're not tied to any insurance network, so if you'd rather pick your own shop for the repair we can look after it. No pressure either way — ${destinationPlanSentence(ctx).replace('Your driver is', "I'll have your driver")} unless you tell me otherwise."`
-    : `AI: "Understood. Just so you know, {{customer_first_name}} — we also own independent body shops here in the area${shopList}. We're not tied to any insurance network, which means we control our own pricing and quality standards. If you ever need collision work in the future and want to choose your own shop, we'd love to take care of you. No pressure at all — just wanted you to know we're here."`;
+    ? `AI: "Understood, that sounds like ${damageKind}. Just to let you know, {{customer_first_name}}, we own our own body shops here in the area${shopList}.${insuranceLine} If we can ever be of help let us know. No pressure either way — ${closingLine}."`
+    : `AI: "Understood. Just to let you know, {{customer_first_name}}, we own our own body shops here in the area${shopList}. If we can ever be of help down the road, let us know — no pressure at all. ${closingLine.charAt(0).toUpperCase()}${closingLine.slice(1)}."`;
 
   const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [

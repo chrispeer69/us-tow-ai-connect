@@ -83,7 +83,9 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
 
   it('mentions our body shops in the present tense on a live collision job', () => {
     const body = renderCallBodyB({ ...base });
-    expect(body).toContain('that sounds like body work');
+    expect(body).toContain('that sounds like auto body work');
+    expect(body).toContain('commitment with the insurance company to go to the current shop listed');
+    expect(body).toContain('If we can ever be of help let us know');
     expect(body).toContain('Alpha Collision');
     expect(body).toContain('Westerville Body');
     expect(body).toContain("we own our own body shops");
@@ -95,8 +97,8 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
       issue: 'glass or windshield damage',
       issueSubcategory: 'glass_damage',
     });
-    expect(body).toContain('that sounds like glass work');
-    expect(body).not.toContain('sounds like body work');
+    expect(body).toContain('that sounds like auto glass work');
+    expect(body).not.toContain('auto body work');
   });
 
   it('is a referral, not an offer — no discount, no diagnostic, no switch ask', () => {
@@ -112,7 +114,7 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
 
   it('reaffirms the original destination so there is nothing to decline', () => {
     const body = renderCallBodyB({ ...base });
-    expect(body).toContain('unless you tell me otherwise');
+    expect(body).toContain('as planned shortly');
     expect(body).toContain('Crash Champions');
   });
 
@@ -122,6 +124,6 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
       issue: 'a mechanical issue',
       issueSubcategory: 'mechanical',
     });
-    expect(body).toContain('If you ever need collision work in the future');
+    expect(body).toContain('If we can ever be of help down the road');
   });
 });
