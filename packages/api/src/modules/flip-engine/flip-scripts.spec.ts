@@ -8,6 +8,125 @@ import {
   renderOffer3,
 } from './flip-scripts';
 
+describe('flip-scripts — 2026-08-11 review fixes', () => {
+  const base = {
+    repName: 'Emily',
+    companyName: 'Roadside Towing',
+    motorClub: '',
+    callbackNumber: '+15551234567',
+    conviniLink: 'https://convini.live',
+    customerFirstName: 'Pat',
+    vehicle: '2017 Ford Escape',
+    pickupLocation: 'I-70 near exit 101',
+    destination: 'Firestone on Main',
+    issue: 'a check engine light',
+    nearestShop: "Wayne's Westerville",
+    nearestShopDistanceMiles: 2,
+    rentalsAvailable: true,
+  };
+
+  it('never says "just zero miles away"', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      nearestShopDistanceMiles: 0,
+    });
+    expect(body).not.toMatch(/just 0 miles/i);
+    expect(body).not.toMatch(/0 miles away/i);
+    expect(body).toContain("Wayne's Westerville");
+  });
+
+  it('says "about N miles" rather than "just N miles" for distant shops', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      nearestShopDistanceMiles: 9,
+    });
+    expect(body).toContain('about 9 miles');
+    expect(body).not.toMatch(/just 9 miles/i);
+  });
+
+  it('keeps "just" for a genuinely close shop', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('just 2 miles');
+  });
+
+  it('asks for the destination instead of improvising when it is missing', () => {
+    const body = renderCallBody('competitor_repair', { ...base, destination: '' });
+    expect(body).toContain('can you tell me the name or address of the shop this is going to?');
+    expect(body).toContain('DESTINATION IS MISSING');
+    expect(body).not.toMatch(/\{\{[^}]*\}\}/);
+  });
+
+  it('suppresses every offer when no partner shop is on file', () => {
+    const body = renderCallBody('competitor_repair', { ...base, nearestShop: null });
+    expect(body).toContain('There is NO partner shop on file');
+    // Assert the OFFER is absent, not the words — the suppression instruction
+    // itself legitimately names the things the agent must not say.
+    expect(body).not.toContain('one quick option and then');
+    expect(body).not.toContain('10 percent off the repair');
+    expect(body).not.toContain("can I ask what's taking you to");
+    expect(body).not.toContain('50 dollar credit');
+  });
+
+  it('suppresses the mechanical-diagnostic offer on collision work', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      issueSubcategory: 'collision',
+      issue: 'a collision',
+    });
+    expect(body).toContain('collision, body or glass work');
+    expect(body).not.toContain('10 percent off the repair');
+  });
+
+  it('suppresses the offer on glass damage even without a subcategory', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      issue: 'a cracked windshield',
+    });
+    expect(body).toContain('collision, body or glass work');
+  });
+
+  it('front-loads offer 1 with the ask before the terms', () => {
+    const body = renderCallBody('competitor_repair', base);
+    const offerIdx = body.indexOf('one quick option and then');
+    const termsIdx = body.indexOf('10 percent off the repair');
+    expect(offerIdx).toBeGreaterThan(-1);
+    expect(offerIdx).toBeLessThan(termsIdx);
+    expect(body).toContain('Want me to send the driver there instead, or keep Firestone on Main?');
+  });
+
+  it('makes offer 2 a reason-finding question, not a restatement', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain("can I ask what's taking you to Firestone on Main?");
+    expect(body).toContain('This is a question, not a second pitch');
+  });
+
+  it('requires explicit consent before a destination change', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('is that a yes to sending the driver to');
+    expect(body).toContain('Only log a destination change on an explicit yes');
+  });
+
+  it('avoids greeting the customer with an unusable name field', () => {
+    const coords = renderCallBody('competitor_repair', {
+      ...base,
+      customerFirstName: '39.9612,-82.9988',
+    });
+    expect(coords).toContain('Am I speaking with the owner of the vehicle?');
+    expect(coords).not.toContain('39.9612');
+
+    const named = renderCallBody('competitor_repair', base);
+    expect(named).toContain('Am I speaking with Pat?');
+  });
+
+  it('carries the global rules that stop invented shops and spoken scaffolding', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('THE SCRIPT DECIDES WHETHER TO PITCH, NOT YOU');
+    expect(body).toContain('never tell a customer they can ride in the tow truck');
+    expect(body).toContain('Never say "AI"');
+    expect(body).toContain('Never read a raw latitude/longitude pair aloud');
+  });
+});
+
 describe('flip-scripts', () => {
   // Regression: the global-rules block was concatenated into the call body
   // without interpolation, so `{{callback_number}}` shipped verbatim inside
@@ -181,6 +300,7 @@ describe('flip-scripts', () => {
       destination: 'your location',
       issue: 'a stuck or off-road recovery',
       issueSubcategory: 'winch_out',
+      pitchConvini: true,
       rentalsAvailable: true,
     });
 
@@ -207,6 +327,7 @@ describe('flip-scripts', () => {
       destination: 'your destination',
       issue: 'a jump start',
       issueSubcategory: 'jump_start',
+      pitchConvini: true,
       rentalsAvailable: true,
     });
 

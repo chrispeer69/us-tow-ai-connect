@@ -33,7 +33,12 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '1.0';
+export const SCRIPT_VERSION = '2.0';
+// 2.0 (2026-08-12) — 2026-08-11 review: front-loaded offer 1; offer 2 becomes a
+//   reason-finding question; honest distance phrasing; offers hard-gated on a
+//   named shop and on non-collision work; explicit consent required before a
+//   destination change; ask for a missing destination instead of improvising.
+// 1.0 — baseline at the time attribution was introduced.
 
 export type ScenarioKey =
   | 'competitor_repair'
@@ -153,6 +158,69 @@ function destinationPlanSentence(ctx: ScriptContext): string {
 }
 
 /** Base variable map shared by every scenario. */
+/**
+ * Session 74 — how far away the partner shop is, phrased honestly.
+ *
+ * Review of 2026-08-11 found a pitch saying "just zero miles away" for a shop in
+ * a different suburb (the value rounds to 0 below half a mile), and shops 7–10
+ * miles out described with the word "just". A distance claim the customer can
+ * disprove by looking out of the window costs the whole pitch.
+ *
+ * Under 0.5 mi the rounded number is meaningless, so no distance is claimed at
+ * all. "just" is reserved for genuinely near.
+ */
+function shopDistanceClause(miles: number | null | undefined): string {
+  if (miles == null || !Number.isFinite(miles) || miles <= 0) return '';
+  if (miles <= 3) return `, a certified shop just ${miles} miles away`;
+  return `, a certified shop about ${miles} miles away`;
+}
+
+/** Bare "N miles from you" form, or '' when there is no usable distance. */
+function shopDistanceShort(miles: number | null | undefined): string {
+  if (miles == null || !Number.isFinite(miles) || miles <= 0) return '';
+  return miles <= 3 ? `just ${miles} miles from you` : `about ${miles} miles from you`;
+}
+
+/** Collision, glass and airbag work — a mechanical diagnostic is the wrong pitch. */
+const COLLISION_SUBCATEGORIES = new Set([
+  'accident',
+  'accident_minor',
+  'accident_with_airbags',
+  'airbag',
+  'airbag_kw',
+  'collision',
+  'collision_kw',
+  'crash',
+]);
+
+/**
+ * True when the job is body/collision/glass work. Four customers on 2026-08-11
+ * were pitched a free MECHANICAL diagnostic at a brake shop for collision or
+ * glass damage; all declined instantly and two had said "body shop" a turn
+ * earlier. Checks the free-text issue too, since glass has no subcategory.
+ */
+function isCollisionOrGlass(ctx: ScriptContext): boolean {
+  if (ctx.issueSubcategory && COLLISION_SUBCATEGORIES.has(ctx.issueSubcategory)) {
+    return true;
+  }
+  return /\b(glass|windshield|windscreen|body work|bodywork|body shop|collision|accident|rear[- ]?end)\b/i.test(
+    ctx.issue ?? '',
+  );
+}
+
+/**
+ * A name we should not say out loud. The dial list carries coordinate strings
+ * and junk values in the name field; greeting someone as "39.9612" ends the
+ * call before it starts.
+ */
+function isUnusableName(name: string | null | undefined): boolean {
+  const n = (name ?? '').trim();
+  if (n.length < 2) return true;
+  if (/\d/.test(n) && /[.,-]/.test(n)) return true; // coordinate-ish
+  if (/^[\d\s.,+-]+$/.test(n)) return true; // all digits/punctuation
+  return /^(unknown|n\/?a|null|undefined|customer|caller|test)$/i.test(n);
+}
+
 function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
     rep_name: ctx.repName,
@@ -162,7 +230,11 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
     convini_link: ctx.conviniLink,
     diagnostic_value:
       ctx.diagnosticValue != null ? String(ctx.diagnosticValue) : '89',
-    customer_first_name: ctx.customerFirstName,
+    // Sanitised at the variable, not just at the greeting — an unusable name
+    // otherwise still reaches the CONVINI close ("You're all set, 39.9612").
+    customer_first_name: isUnusableName(ctx.customerFirstName)
+      ? 'there'
+      : ctx.customerFirstName,
     vehicle: ctx.vehicle,
     pickup_location: ctx.pickupLocation,
     destination: ctx.destination,
@@ -180,9 +252,16 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
 /** Opening + purpose, shared verbatim by all scenarios.
  *  "on behalf of {{motor_club}}" is dropped when no motor club is present. */
 function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
+  // Two calls on 2026-08-11 greeted the customer with an unusable name field —
+  // a coordinate string in one case. Better to ask who we're speaking to than
+  // to read junk at them.
+  const identify = isUnusableName(ctx.customerFirstName)
+    ? `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with the owner of the vehicle?"`
+    : `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"`;
+
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
-AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"
-[AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call.]`;
+${identify}
+[AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call. If you reach an automated menu, a switchboard, or a business greeting rather than a person, do not work through the menu — leave the brief message if you can and end the call.]`;
 
   const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
 AI: "Thanks. I'll keep this quick and start with your pickup details."
@@ -284,6 +363,14 @@ function globalRules(ctx: ScriptContext): string {
       `- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.`,
     ] : []),
     `- Never invent prices, times, names, or addresses — use only what's provided here.`,
+    // Session 74 — from the 2026-08-11 review. Each of these is a behaviour that
+    // actually happened on a live call, not a hypothetical.
+    `- THE SCRIPT DECIDES WHETHER TO PITCH, NOT YOU. If this script contains a repair-shop offer, make it. If it does not, there is no offer to make — do not construct one because the job "sounds like" a flip, and do not skip a written offer because you judge the customer unlikely to accept.`,
+    `- If no partner shop is named anywhere in this script, we have no shop for this job. Never refer to "a partner shop", "a shop nearby", or "a shop that specializes in that" without a name from this script.`,
+    `- Never promise anything about the tow itself that is not written here — in particular never tell a customer they can ride in the tow truck.`,
+    `- Speak only the words inside the quotation marks after "AI:". Never say "AI", never read the quotation marks, and never read a step label, a bracketed instruction, or any placeholder in double braces.`,
+    `- Ask one question at a time. After a question, stop and wait for the answer — never run a question and a sign-off together.`,
+    `- Never read a raw latitude/longitude pair aloud. If a location is only coordinates, say "the location we have on file" and ask the customer to describe it.`,
     `- The ONLY phone number you may give the customer is {{callback_number}}. Never read out the caller ID or any other number.`,
     ...(ctx.pitchConvini ? [
       `- When you offer the app, say "I'm texting you the link now" — do not ask permission, do not read the link aloud, and do not ask whether it came through.`,
@@ -309,40 +396,91 @@ function globalRules(ctx: ScriptContext): string {
 function scenarioA(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened? For example, is the engine light on, is it overheating, or did it just not start?"`;
   const vars = baseVars(ctx);
-  const shopDistancePhrase = ctx.nearestShopDistanceMiles != null
-    ? `, a certified shop just {{nearest_shop_distance}} miles away`
-    : `, a certified shop`;
-  const destinationIntent = `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
+  const shopDistancePhrase = shopDistanceClause(ctx.nearestShopDistanceMiles);
+  const distanceShort = shopDistanceShort(ctx.nearestShopDistanceMiles);
+
+  // A blank destination used to render as "I have the destination as ." — six
+  // calls on 2026-08-11 spoke the raw placeholder or covered the gap with an
+  // improvised phrase, and one agent could not answer when the customer asked
+  // where the car was going. Ask for it outright instead of bluffing.
+  const destinationIntent = hasSeparateDestination(ctx)
+    ? `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
 AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
-[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`;
-  const defaultOffer1 = `Before I confirm the drop-off — just so you know, {{nearest_shop}}${shopDistancePhrase}, they're certified, and I could get you a free diagnostic, normally around \${{diagnostic_value}}, plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to {{nearest_shop}}?`;
-  const defaultOffer2 = `Totally fair. Here's the difference though — for today's tow, {{nearest_shop}} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
+[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`
+    : `[STEP 6 — DESTINATION IS MISSING: ASK, DO NOT GUESS]
+AI: "I want to make sure I have the right drop-off for you — can you tell me the name or address of the shop this is going to?"
+[AGENT: You do NOT have a destination on file for this job. Never state or imply one, never say a placeholder, and never improvise a vague phrase like "the shop you mentioned". Capture what the customer says and use it for the rest of the call. If they cannot give one, say you'll have dispatch confirm the drop-off and continue.]`;
+
+  // Front-loaded: four customers cut the previous pitch off mid-sentence, so the
+  // decline was to the length of the monologue rather than to the offer. Ask
+  // first, justify second, and name the alternative so "no" is a real choice.
+  const defaultOffer1 =
+    `Before I confirm the drop-off — one quick option and then I'll let you go. We work with {{nearest_shop}}` +
+    (distanceShort ? `, ${distanceShort}` : ``) +
+    `: they include the diagnostic at no charge, normally around \${{diagnostic_value}}, and take 10 percent off the repair. ` +
+    (hasSeparateDestination(ctx)
+      ? `Want me to send the driver there instead, or keep {{destination}}?`
+      : `Want me to send the driver there instead?`);
+
+  // Offer 2 previously restated the same benefits the customer had just turned
+  // down; it went 0 for 11. Ask why instead — if the reason is a regular shop or
+  // an insurer, there is no offer to make and pushing only costs goodwill.
+  const defaultOffer2 = hasSeparateDestination(ctx)
+    ? `Totally fair — can I ask what's taking you to {{destination}}? If that's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, {{nearest_shop}} would include the diagnostic and 10 percent off the repair, and I'd sort the change out with the driver.`
+    : `Totally fair — can I ask what's taking you to that shop? If it's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, {{nearest_shop}} would include the diagnostic and 10 percent off the repair, and I'd sort the change out with the driver.`;
+
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
+
+  // One of two wins on 2026-08-11 rested on a reply given amid unrelated, partly
+  // unintelligible speech. A destination change is not something to infer.
+  const consentGate = `[AGENT: Before you treat any reply as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to {{nearest_shop}} instead?" Only log a destination change on an explicit yes.]`;
   const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
-  const flipBlock = !!ctx.nearestShop ? [
+  // Two gates, both hard. No partner shop on file means there is nothing
+  // truthful to offer — on 2026-08-11 an agent with no shop invented "a partner
+  // shop that specializes in that kind of work" and promised a ride in the tow
+  // truck. Collision and glass work should never be met with an offer of a
+  // mechanical diagnostic at a brake shop.
+  const offersAllowed = !!ctx.nearestShop && !isCollisionOrGlass(ctx);
+
+  const flipBlock = offersAllowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_1 ?? ctx.globalScriptBlocks?.offer_1 ?? defaultOffer1, vars),
         ``,
+        interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
         `[AGENT: If they give a soft objection like "I already have a shop" -> make Offer 2. If they give a hard decline -> stop pitching, keep the original destination, and jump to the CONVINI close.]`,
       ] : [];
 
-  const offer2Block = !!ctx.nearestShop ? [
+  const offer2Block = offersAllowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
+        `[AGENT: This is a question, not a second pitch. LISTEN to the reason. If they name a regular shop, a dealership, an insurer, or a warranty -> accept it, say "That makes sense, I'll leave it as it is", and go to the CONVINI close. Do NOT continue to Offer 3.]`,
+        interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: If they hesitate or remain unsure -> make Offer 3. If they give a hard decline -> stop pitching, keep the original destination, and jump to the CONVINI close.]`,
+        `[AGENT: Only if the reason is genuinely "it's just what was on the ticket" AND they are still undecided -> make Offer 3. Otherwise stop pitching and jump to the CONVINI close.]`,
       ] : [];
 
-  const offer3Block = !!ctx.nearestShop ? [
+  const offer3Block = offersAllowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_3 ?? ctx.globalScriptBlocks?.offer_3 ?? defaultOffer3, vars),
         ``,
+        interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Then jump to the CONVINI close.]`,
         `[AGENT: If they say NO or hard decline -> say "Understood. I'll keep your original destination and focus on getting the driver routed." Then jump to the CONVINI close.]`,
       ] : [];
+
+  // When offers are suppressed, say so explicitly. An empty PHASE 2 previously
+  // left the agent to fill the silence, which is how the invented shop happened.
+  const noOfferNote = offersAllowed
+    ? []
+    : [
+        ``,
+        !ctx.nearestShop
+          ? `[AGENT: There is NO partner shop on file for this job. You have nothing to offer. Do not mention a partner shop, a nearby shop, a discount, a free diagnostic, or a ride in the tow truck. Confirm the details and go straight to the CONVINI close.]`
+          : `[AGENT: This is collision, body or glass work. Do NOT offer a mechanical repair shop or a free mechanical diagnostic — it does not apply to this damage. Confirm the details and go straight to the CONVINI close.]`,
+      ];
 
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
@@ -364,6 +502,7 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
     destinationIntent,
     ``,
     `=== PHASE 2: THE 3-TIER FLIP ===`,
+    ...noOfferNote,
     ...flipBlock,
     ...offer2Block,
     ...offer3Block,
