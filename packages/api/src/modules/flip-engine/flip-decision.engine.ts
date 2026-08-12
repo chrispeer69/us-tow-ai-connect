@@ -30,6 +30,25 @@ const DEFAULT_NO_FLIP_CATEGORIES: IssueSubcategory[] = [
   'accident_with_airbags',
 ];
 
+/**
+ * Session 74 — body and glass work, refused REGARDLESS of classifier confidence.
+ *
+ * From the 2026-08-11 review: four customers with collision or glass damage were
+ * offered a free MECHANICAL diagnostic at a brake shop; all declined instantly
+ * and two had said "body shop" a turn earlier. Adding these to the ordinary
+ * no-flip list was not enough — that list is confidence-gated at 0.85 and the
+ * collision classifier only emits 0.70, so the rule never fired.
+ *
+ * Deliberately unconditional and not tenant-overridable: pitching mechanical
+ * repair on a wrecked or glass-damaged car is wrong at any confidence, and the
+ * cost of a rare missed flip is far below the cost of that conversation.
+ */
+const ALWAYS_NO_FLIP_CATEGORIES: readonly string[] = [
+  'accident_minor',
+  'accident_with_airbags',
+  'glass_damage',
+];
+
 export function decideFlip(input: FlipDecisionInput): FlipDecision {
   // Hard rule 1: AAA-branded / Blocklist → never flip.
   if (input.destinationTag === 'aaa_branded') {
@@ -68,6 +87,17 @@ export function decideFlip(input: FlipDecisionInput): FlipDecision {
       conviniIntensity: 'hard',
       bodyShopSoftMention: false,
       reasonCode: `destination_${input.destinationTag}`,
+    };
+  }
+
+  // Body / glass work: refused regardless of confidence. See
+  // ALWAYS_NO_FLIP_CATEGORIES for why this cannot be confidence-gated.
+  if (ALWAYS_NO_FLIP_CATEGORIES.includes(input.issueSubcategory)) {
+    return {
+      flipEligible: false,
+      conviniIntensity: 'medium',
+      bodyShopSoftMention: true,
+      reasonCode: `no_flip_body_or_glass_${input.issueSubcategory}`,
     };
   }
 

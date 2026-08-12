@@ -9,6 +9,7 @@ export type IssueSubcategory =
   | 'winch_out'
   | 'accident_with_airbags'
   | 'accident_minor'
+  | 'glass_damage'
   | 'mechanical'
   | 'unknown';
 
@@ -108,6 +109,14 @@ export class IssueClassifierService {
     if (has('accident', 'collision', 'rear-ended', 'fender bender', 'crash')) {
       signals.push('collision_kw');
       return { subcategory: 'accident_minor', confidence: 0.7, signals };
+    }
+    // Session 74 — glass had no subcategory at all, so a cracked-windshield job
+    // fell through to `unknown`, stayed flip-eligible, and got pitched a free
+    // MECHANICAL diagnostic at a brake shop. Must sit after the collision check:
+    // a crash that also broke glass is a collision first.
+    if (has('glass', 'windshield', 'windscreen', 'window', 'rock chip')) {
+      signals.push('glass_kw');
+      return { subcategory: 'glass_damage', confidence: 0.85, signals };
     }
     if (
       has('wont start', "won't start", 'no start', 'engine', 'transmission', 'brake',

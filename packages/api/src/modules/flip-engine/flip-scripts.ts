@@ -169,16 +169,12 @@ function destinationPlanSentence(ctx: ScriptContext): string {
  * Under 0.5 mi the rounded number is meaningless, so no distance is claimed at
  * all. "just" is reserved for genuinely near.
  */
-function shopDistanceClause(miles: number | null | undefined): string {
-  if (miles == null || !Number.isFinite(miles) || miles <= 0) return '';
-  if (miles <= 3) return `, a certified shop just ${miles} miles away`;
-  return `, a certified shop about ${miles} miles away`;
-}
-
-/** Bare "N miles from you" form, or '' when there is no usable distance. */
 function shopDistanceShort(miles: number | null | undefined): string {
-  if (miles == null || !Number.isFinite(miles) || miles <= 0) return '';
-  return miles <= 3 ? `just ${miles} miles from you` : `about ${miles} miles from you`;
+  if (miles == null || !Number.isFinite(miles) || miles < 0.5) return '';
+  const unit = miles === 1 ? 'mile' : 'miles';
+  return miles <= 3
+    ? `just ${miles} ${unit} from you`
+    : `about ${miles} ${unit} from you`;
 }
 
 /** Collision, glass and airbag work — a mechanical diagnostic is the wrong pitch. */
@@ -396,7 +392,6 @@ function globalRules(ctx: ScriptContext): string {
 function scenarioA(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened? For example, is the engine light on, is it overheating, or did it just not start?"`;
   const vars = baseVars(ctx);
-  const shopDistancePhrase = shopDistanceClause(ctx.nearestShopDistanceMiles);
   const distanceShort = shopDistanceShort(ctx.nearestShopDistanceMiles);
 
   // A blank destination used to render as "I have the destination as ." — six
@@ -415,7 +410,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // decline was to the length of the monologue rather than to the offer. Ask
   // first, justify second, and name the alternative so "no" is a real choice.
   const defaultOffer1 =
-    `Before I confirm the drop-off — one quick option and then I'll let you go. We work with {{nearest_shop}}` +
+    `Before I confirm the drop-off — one quick option and then I'll let you go. We work with a certified shop, {{nearest_shop}}` +
     (distanceShort ? `, ${distanceShort}` : ``) +
     `: they include the diagnostic at no charge, normally around \${{diagnostic_value}}, and take 10 percent off the repair. ` +
     (hasSeparateDestination(ctx)
@@ -581,6 +576,13 @@ function scenarioC(ctx: ScriptContext): string {
   return [
     `# SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI)`,
     `[AGENT: The destination is a residence or unknown. Confirm details and push the CONVINI app hard.]`,
+    // Session 74 — this scenario is where the orchestrator lands every job that
+    // is NOT flip-eligible, including jobs with no partner shop and collision /
+    // glass work. It is therefore where an agent with nothing to offer actually
+    // stands, and on 2026-08-11 one filled that silence by inventing "a partner
+    // shop that specializes in that kind of work" and promising a ride in the
+    // tow truck. Say the quiet part explicitly.
+    `[AGENT: THERE IS NO REPAIR-SHOP OFFER ON THIS CALL. Do not mention a partner shop, a nearby shop, a certified shop, a discount, a free diagnostic, or switching the drop-off — not even in passing, and not as a suggestion for "next time". Do not tell the customer they can ride in the tow truck. Confirm the details, pitch CONVINI, and close.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
     openingBlock(ctx, vars),

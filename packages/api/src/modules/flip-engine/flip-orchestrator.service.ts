@@ -33,9 +33,15 @@ type ManualCallScriptType =
 
 function issuePhrase(subcategory: string | null | undefined): string {
   switch (subcategory) {
+    // Session 74 — these two must NOT share a phrase. A single flat tire is a
+    // roadside tyre change and is on the no-flip list; a full set is genuine
+    // shop work and IS flip-eligible. Rendering both as "a flat tire" made the
+    // agent read a flip-eligible job as one the rules told it never to pitch,
+    // which is how it talked itself out of legitimate offers.
     case 'single_tire_issue':
-    case 'full_tire_set':
       return 'a flat tire';
+    case 'full_tire_set':
+      return 'tire damage needing replacement';
     case 'jump_start':
       return 'a battery or no-start issue';
     case 'lockout':
@@ -47,6 +53,8 @@ function issuePhrase(subcategory: string | null | undefined): string {
     case 'accident_with_airbags':
     case 'accident_minor':
       return 'an accident';
+    case 'glass_damage':
+      return 'glass or windshield damage';
     case 'mechanical':
       return 'a mechanical issue';
     default:

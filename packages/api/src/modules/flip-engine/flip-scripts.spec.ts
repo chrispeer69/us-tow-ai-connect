@@ -118,6 +118,41 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(named).toContain('Am I speaking with Pat?');
   });
 
+  // Second round — found by adversarial review of the first round.
+  it('says "1 mile", never "1 miles"', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      nearestShopDistanceMiles: 1,
+    });
+    expect(body).toContain('just 1 mile from you');
+    expect(body).not.toContain('1 miles');
+  });
+
+  it('claims no distance at all below half a mile', () => {
+    for (const miles of [0.4, 0.1]) {
+      const body = renderCallBody('competitor_repair', {
+        ...base,
+        nearestShopDistanceMiles: miles,
+      });
+      expect(body).not.toContain(`${miles} mile`);
+      expect(body).toContain("Wayne's Westerville");
+    }
+  });
+
+  it('keeps the certified credibility marker in offer 1', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('a certified shop');
+  });
+
+  it('tells the agent plainly there is no offer in the no-flip scenario', () => {
+    // Scenario C is where the orchestrator lands every non-eligible job — the
+    // one place an agent with nothing to offer actually stands.
+    const body = renderCallBody('unknown', { ...base, nearestShop: null });
+    expect(body).toContain('THERE IS NO REPAIR-SHOP OFFER ON THIS CALL');
+    expect(body).toContain('ride in the tow truck');
+    expect(body).not.toContain('one quick option and then');
+  });
+
   it('carries the global rules that stop invented shops and spoken scaffolding', () => {
     const body = renderCallBody('competitor_repair', base);
     expect(body).toContain('THE SCRIPT DECIDES WHETHER TO PITCH, NOT YOU');
