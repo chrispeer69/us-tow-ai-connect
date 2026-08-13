@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
+import { resolveRetellTenantConfig } from '../../common/utils/retell-tenant-config';
 import {
   callInteractions,
   interactionLogs,
@@ -218,6 +219,13 @@ export class SuperAdminService {
           'free_trial_call_minutes',
           15,
         ),
+        // Raw per-tenant Retell overrides (null = inherits the deployment
+        // default) plus what those actually resolve to for this tenant, so the
+        // operator sees the effective agent without reading env vars.
+        retellAgentId: readConfigScalar(outboundConfig, 'retell_outbound_agent_id'),
+        retellAgentVersion: readConfigScalar(outboundConfig, 'retell_agent_version'),
+        retellFromNumber: readConfigScalar(outboundConfig, 'retell_from_number'),
+        retellEffective: resolveRetellTenantConfig(outboundConfig),
       },
       stats: {
         callsLast24h: callsLast24h[0]?.count ?? 0,
@@ -256,6 +264,11 @@ export class SuperAdminService {
       freeTrialCallMinutes?: number;
       testModeEnabled?: boolean;
       testOverrideNumber?: string | null;
+      // Per-tenant Retell overrides. `null` clears the override and returns the
+      // tenant to the deployment default; `undefined` leaves it untouched.
+      retellAgentId?: string | null;
+      retellAgentVersion?: string | null;
+      retellFromNumber?: string | null;
       plan?: string;
     },
   ) {
@@ -297,7 +310,46 @@ export class SuperAdminService {
       ...(patch.testOverrideNumber !== undefined
         ? { test_override_number: normalizeOptionalPhone(patch.testOverrideNumber) }
         : {}),
+      ...(patch.retellAgentId !== undefined
+        ? { retell_outbound_agent_id: normalizeOptionalText(patch.retellAgentId) }
+        : {}),
+      ...(patch.retellAgentVersion !== undefined
+        ? { retell_agent_version: normalizeOptionalText(patch.retellAgentVersion) }
+        : {}),
+      ...(patch.retellFromNumber !== undefined
+        ? { retell_from_number: normalizeOptionalPhone(patch.retellFromNumber) }
+        : {}),
     };
+
+    // Moving a tenant to a different agent invalidates any pinned version:
+    // version numbers are scoped to an agent, so carrying the old number over
+    // would pin the new agent to an unrelated script or to nothing at all.
+    // Clear it unless this same patch supplies the new agent's version.
+    const previousAgentId = readConfigScalar(current, 'retell_outbound_agent_id');
+    const nextAgentId = readConfigScalar(next, 'retell_outbound_agent_id');
+    const agentChanged = previousAgentId !== nextAgentId;
+    if (agentChanged && patch.retellAgentVersion === undefined) {
+      next.retell_agent_version = null;
+    }
+
+    // Not an error — an operator legitimately points a tenant at its agent
+    // first and pins after publishing — but the tenant is running unpinned
+    // until they do, and that is worth saying out loud.
+    const effective = resolveRetellTenantConfig(next);
+    const warnings: string[] = [];
+    if (effective.agentId && !effective.agentVersion) {
+      warnings.push(
+        `Retell agent ${effective.agentId} is UNPINNED for this tenant — live calls will run its ` +
+          'latest draft, and script edits will be refused. Publish a version and set it here.',
+      );
+    }
+    if (agentChanged && patch.retellAgentVersion === undefined && previousAgentId) {
+      warnings.push(
+        `Cleared the pinned version because the agent changed from ${previousAgentId} to ` +
+          `${nextAgentId ?? 'the deployment default'}.`,
+      );
+    }
+
     if (patch.demoMode === false) {
       next.demo_calls_enabled = false;
     }
@@ -318,7 +370,8 @@ export class SuperAdminService {
     if (patch.plan !== undefined) {
       await this.upsertBillingPlan(tenantId, patch.plan);
     }
-    return this.getTenant(tenantId);
+    const result = await this.getTenant(tenantId);
+    return warnings.length ? { ...result, warnings } : result;
   }
 
   async listSupportTickets() {
@@ -494,6 +547,25 @@ function readConfigString(
   const cfg = config as Record<string, unknown> | null | undefined;
   const value = cfg?.[key];
   return typeof value === 'string' ? value : fallback;
+}
+
+/**
+ * Like readConfigString but also accepts a number, so a Retell version written
+ * as `31` in jsonb still renders in the form instead of showing blank and being
+ * silently cleared on the next save.
+ */
+function readConfigScalar(config: unknown, key: string): string | null {
+  const cfg = config as Record<string, unknown> | null | undefined;
+  const value = cfg?.[key];
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+/** Trim to a value or to null — an empty box in the UI means "no override". */
+function normalizeOptionalText(value: string | null): string | null {
+  if (value === null) return null;
+  return value.trim() || null;
 }
 
 function normalizeOptionalPhone(value: string | null): string | null {

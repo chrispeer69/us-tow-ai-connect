@@ -33,6 +33,42 @@ warning, so deploying the change did not silently move production to a different
 Numeric values are sent as numbers; anything else (an environment tag, or
 `latest_published`) passes through as a string.
 
+### 1b. Per-tenant Retell config (Session 74)
+
+`RETELL_AGENT_ID` / `RETELL_AGENT_VERSION` / `RETELL_FROM_NUMBER` are process-wide, which
+is fine with one customer and wrong with two: a script change could not ship to one company
+without moving every company on the deployment at the same time. All three now live on
+`tenants.outbound_voice_config`, with the env vars kept as the fallback:
+
+| Key | Falls back to | Meaning |
+|---|---|---|
+| `retell_outbound_agent_id` | `RETELL_AGENT_ID` | Retell agent this tenant's calls run |
+| `retell_agent_version` | `RETELL_AGENT_VERSION` *(only when the tenant uses the default agent)* | published version live calls are pinned to |
+| `retell_from_number` | `RETELL_FROM_NUMBER` | E.164 caller-ID this tenant dials from |
+
+Nothing needs migrating — a tenant that sets none of these behaves exactly as before.
+
+**Agent and version are a pair.** A Retell version number is scoped to its agent: version 31
+of agent A and version 31 of agent B are unrelated scripts, and agent B may have no version
+31 at all. So a tenant running its own agent never inherits `RETELL_AGENT_VERSION`; it must
+pin its own. `resolveRetellTenantConfig` (`common/utils/retell-tenant-config.ts`) enforces
+this, `RetellOutboundClient` enforces it again on the wire, and the super-admin patch clears
+a stale pinned version whenever the agent id changes.
+
+A tenant with its own agent and no version set is therefore **unpinned** — Retell serves its
+latest draft to live calls. That is the same unsafe state the env path warns about: the call
+client logs it per call, the tenant page flags it, and draft writes are refused until a
+version is pinned.
+
+Edit it at **super-admin → tenant → Retell voice agent**, or
+`PATCH /v1/super-admin/tenants/:id/call-controls` with `retellAgentId`, `retellAgentVersion`,
+`retellFromNumber` (`null` clears an override, an absent key leaves it alone). The tenant
+detail response carries `retellEffective`, which shows the resolved values and whether each
+came from the tenant or the env.
+
+Every `/v1/admin/call-review/retell/*` endpoint is tenant-scoped off the caller's JWT, so
+staging a prompt edit for one company cannot reach another company's agent.
+
 ---
 
 ## 2. Versions published today

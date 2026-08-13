@@ -35,7 +35,23 @@ interface TenantDetail {
     testModeEnabled: boolean;
     testOverrideNumber: string | null;
     freeTrialCallMinutes: number;
+    // Per-tenant Retell overrides. Null means "inherit the deployment default";
+    // retellEffective is what the tenant's calls actually use.
+    retellAgentId: string | null;
+    retellAgentVersion: string | null;
+    retellFromNumber: string | null;
+    retellEffective: {
+      agentId: string | null;
+      agentVersion: string | null;
+      fromNumber: string | null;
+      source: {
+        agentId: 'tenant' | 'env' | 'unset';
+        agentVersion: 'tenant' | 'env' | 'unset';
+        fromNumber: 'tenant' | 'env' | 'unset';
+      };
+    };
   };
+  warnings?: string[];
   stats: {
     callsLast24h: number;
     callsLast7d: number;
@@ -72,6 +88,8 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   const [savingControls, setSavingControls] = useState(false);
   const [minutesDraft, setMinutesDraft] = useState('15');
   const [testNumberDraft, setTestNumberDraft] = useState('');
+  const [retellDraft, setRetellDraft] = useState({ agentId: '', agentVersion: '', fromNumber: '' });
+  const [notices, setNotices] = useState<string[]>([]);
   const email = typeof window !== 'undefined' ? (localStorage.getItem('superAdminEmail') ?? '') : '';
 
   useEffect(() => {
@@ -88,6 +106,11 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
         setData(fresh);
         setMinutesDraft(String(fresh.tenant.freeTrialCallMinutes ?? 15));
         setTestNumberDraft(fresh.tenant.testOverrideNumber ?? '');
+        setRetellDraft({
+          agentId: fresh.tenant.retellAgentId ?? '',
+          agentVersion: fresh.tenant.retellAgentVersion ?? '',
+          fromNumber: fresh.tenant.retellFromNumber ?? '',
+        });
       })
       .catch((e) => setErr((e as Error).message));
   }, [id, email]);
@@ -105,9 +128,13 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     freeTrialCallMinutes?: number;
     testModeEnabled?: boolean;
     testOverrideNumber?: string | null;
+    retellAgentId?: string | null;
+    retellAgentVersion?: string | null;
+    retellFromNumber?: string | null;
   }) {
     setSavingControls(true);
     setErr(null);
+    setNotices([]);
     try {
       const res = await fetch(`${API_BASE}/v1/super-admin/tenants/${id}/call-controls`, {
         method: 'PATCH',
@@ -119,6 +146,14 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
       setData(fresh);
       setMinutesDraft(String(fresh.tenant.freeTrialCallMinutes ?? 15));
       setTestNumberDraft(fresh.tenant.testOverrideNumber ?? '');
+      // Re-read rather than keep the draft: the server clears a stale pinned
+      // version when the agent changes, and the box must show that.
+      setRetellDraft({
+        agentId: fresh.tenant.retellAgentId ?? '',
+        agentVersion: fresh.tenant.retellAgentVersion ?? '',
+        fromNumber: fresh.tenant.retellFromNumber ?? '',
+      });
+      setNotices(fresh.warnings ?? []);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -154,6 +189,95 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
           ) : (
             <div>Version: <b>Free</b></div>
           )}
+        </CardContent>
+      </Card>
+      {notices.length > 0 && (
+        <div className="rounded-md border border-amber-800 bg-amber-950/50 p-3 text-sm text-amber-200">
+          {notices.map((n) => (
+            <div key={n}>{n}</div>
+          ))}
+        </div>
+      )}
+      <Card>
+        <CardHeader><CardTitle>Retell voice agent</CardTitle></CardHeader>
+        <CardContent className="space-y-4 text-sm text-zinc-300">
+          <p className="text-zinc-400">
+            Which Retell agent this tenant's outbound calls run, and which published version they
+            are pinned to. Leave a field blank to inherit the deployment default.
+          </p>
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="text-xs uppercase tracking-wide text-zinc-500">Agent ID</span>
+                <input
+                  value={retellDraft.agentId}
+                  onChange={(event) =>
+                    setRetellDraft((d) => ({ ...d, agentId: event.target.value }))
+                  }
+                  placeholder="inherit default"
+                  className="mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  in use: {t.retellEffective.agentId ?? 'none'} ({t.retellEffective.source.agentId})
+                </span>
+              </label>
+              <label className="block">
+                <span className="text-xs uppercase tracking-wide text-zinc-500">Pinned version</span>
+                <input
+                  value={retellDraft.agentVersion}
+                  onChange={(event) =>
+                    setRetellDraft((d) => ({ ...d, agentVersion: event.target.value }))
+                  }
+                  placeholder="e.g. 31"
+                  className="mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  in use: {t.retellEffective.agentVersion ?? 'UNPINNED'} (
+                  {t.retellEffective.source.agentVersion})
+                </span>
+              </label>
+              <label className="block">
+                <span className="text-xs uppercase tracking-wide text-zinc-500">Caller ID</span>
+                <input
+                  value={retellDraft.fromNumber}
+                  onChange={(event) =>
+                    setRetellDraft((d) => ({ ...d, fromNumber: event.target.value }))
+                  }
+                  placeholder="inherit default"
+                  className="mt-1 h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100"
+                />
+                <span className="mt-1 block text-xs text-zinc-500">
+                  in use: {t.retellEffective.fromNumber ?? 'none'} (
+                  {t.retellEffective.source.fromNumber})
+                </span>
+              </label>
+            </div>
+            {t.retellEffective.agentId && !t.retellEffective.agentVersion && (
+              <p className="mt-3 text-xs text-amber-300">
+                Unpinned — live calls run this agent's latest draft, so any dashboard edit ships
+                immediately. Publish a version in Retell and set it here.
+              </p>
+            )}
+            <div className="mt-3 flex items-center gap-3">
+              {/* Saved together on purpose: agent and version are a pair, and
+                  changing the agent alone clears the pin server-side. */}
+              <Button
+                disabled={savingControls}
+                onClick={() =>
+                  void updateCallControls({
+                    retellAgentId: retellDraft.agentId.trim() || null,
+                    retellAgentVersion: retellDraft.agentVersion.trim() || null,
+                    retellFromNumber: retellDraft.fromNumber.trim() || null,
+                  })
+                }
+              >
+                Save Retell config
+              </Button>
+              <span className="text-xs text-zinc-500">
+                A version number only applies to its own agent — change both together.
+              </span>
+            </div>
+          </div>
         </CardContent>
       </Card>
       <Card>

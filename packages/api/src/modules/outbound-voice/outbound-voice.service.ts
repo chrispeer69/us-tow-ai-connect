@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
+import { resolveRetellTenantConfig } from '../../common/utils/retell-tenant-config';
 import {
   alphaShops,
   outboundCallLogs,
@@ -326,9 +327,17 @@ export class OutboundVoiceService {
     }
 
     const callbackUrl = buildCallbackUrl(this.provider.providerName);
-    const agentId = this.provider.providerName === 'retell'
-      ? readConfigString(tenant, 'retell_outbound_agent_id', null) ?? undefined
-      : readConfigString(tenant, 'thinkrr_outbound_agent_id', null) ?? undefined;
+    // Retell agent / version / caller-ID are per-tenant, env-defaulted. The
+    // resolver keeps agent and version paired — see retell-tenant-config.ts.
+    const retell =
+      this.provider.providerName === 'retell'
+        ? resolveRetellTenantConfig(
+            tenant.outboundVoiceConfig as Record<string, unknown> | null,
+          )
+        : null;
+    const agentId = retell
+      ? (readConfigString(tenant, 'retell_outbound_agent_id', null) ?? undefined)
+      : (readConfigString(tenant, 'thinkrr_outbound_agent_id', null) ?? undefined);
     const tenantTestModeEnabled = readConfigBool(tenant, 'test_mode_enabled', false);
     const tenantTestOverrideNumber = readConfigString(tenant, 'test_override_number', null);
     if (tenantTestModeEnabled && !tenantTestOverrideNumber?.trim()) {
@@ -355,6 +364,8 @@ export class OutboundVoiceService {
       callId: call.id,
       tenantId: call.tenantId,
       agentId,
+      agentVersion: retell?.agentVersion ?? undefined,
+      fromNumber: retell?.fromNumber ?? undefined,
       callbackUrl,
       testModeEnabled: tenantTestModeEnabled,
       testOverrideNumber: tenantTestOverrideNumber,
@@ -1182,6 +1193,7 @@ export class OutboundVoiceService {
       throw new BadRequestException('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
     const cfg = (tenant.outboundVoiceConfig as Record<string, unknown> | null) || {};
+    const demoRetell = resolveRetellTenantConfig(cfg);
     const tenantTestModeEnabled = readConfigBool(tenant, 'test_mode_enabled', false);
     const tenantTestOverrideNumber = readConfigString(tenant, 'test_override_number', null);
     if (tenantTestModeEnabled && !tenantTestOverrideNumber?.trim()) {
@@ -1240,7 +1252,11 @@ export class OutboundVoiceService {
         scriptVariables: { body: fullBody },
         callId: call.id,
         tenantId,
-        agentId: undefined,
+        // Same per-tenant Retell resolution as the dispatch path, so a manual
+        // or demo call exercises the agent the tenant's real calls will use.
+        agentId: readConfigString(tenant, 'retell_outbound_agent_id', null) ?? undefined,
+        agentVersion: demoRetell.agentVersion ?? undefined,
+        fromNumber: demoRetell.fromNumber ?? undefined,
         callbackUrl: buildCallbackUrl(this.provider.providerName),
         testModeEnabled: tenantTestModeEnabled,
         testOverrideNumber: tenantTestOverrideNumber,

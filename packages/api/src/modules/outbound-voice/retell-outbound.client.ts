@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { encodeAgentVersion } from '../../common/utils/retell-tenant-config';
 import type {
   OutboundVoiceProvider,
   PlaceCallParams,
@@ -8,10 +9,15 @@ import type {
 /**
  * Session 68 — Retell outbound HTTP wrapper.
  *
- * Reads at construction:
+ * Reads at construction the DEPLOYMENT DEFAULTS:
  *   RETELL_API_KEY         — Bearer token (required for live calls)
  *   RETELL_AGENT_ID        — override_agent_id sent on each call
  *   RETELL_FROM_NUMBER     — E.164 caller-ID provisioned in Retell
+ *
+ * Session 74 — agent id, pinned version and caller-ID are now per-tenant.
+ * OutboundVoiceService resolves them from the tenant's outbound_voice_config
+ * (see common/utils/retell-tenant-config.ts) and passes them on each call; the
+ * env vars above remain the fallback for tenants that set none.
  *
  * Endpoint: POST https://api.retellai.com/v2/create-phone-call
  * Cancel:   POST https://api.retellai.com/v2/end-call (call_id in body)
@@ -67,26 +73,52 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     }
   }
 
-  /** The version live calls are pinned to, or null when unpinned (unsafe). */
+  /**
+   * The version the DEPLOYMENT DEFAULT agent is pinned to, or null when
+   * unpinned (unsafe). A tenant running its own agent pins separately — read
+   * that off the tenant config, not here.
+   */
   pinnedVersion(): string | null {
     return this.agentVersion;
   }
 
+  /**
+   * True when the deployment defaults alone can place a call. Used for provider
+   * selection at boot, where no tenant is in scope. A tenant that supplies its
+   * own agent id and caller-ID can still call while this is false — placeCall
+   * checks the effective values, not these.
+   */
   isConfigured(): boolean {
     return Boolean(this.apiKey && this.agentId && this.fromNumber);
   }
 
   async placeCall(params: PlaceCallParams): Promise<PlaceCallResult | null> {
-    if (!this.isConfigured()) {
+    // Per-call values win over the deployment defaults.
+    const overrideAgentId = params.agentId ?? this.agentId;
+    const fromNumber = params.fromNumber ?? this.fromNumber;
+
+    // Agent and version are a pair. A version number is scoped to its agent, so
+    // a tenant on its own agent may NOT inherit the env version — that number
+    // belongs to a different agent and would pin the wrong script, or 404.
+    // Resolved the same way in retell-tenant-config.ts; repeated here so a
+    // caller that bypasses the resolver still cannot mispair them.
+    const agentVersion = params.agentId
+      ? (params.agentVersion ?? null)
+      : (params.agentVersion ?? this.agentVersion);
+
+    if (!this.apiKey || !overrideAgentId || !fromNumber) {
       this.logger.warn(
         `[outbound-voice] Retell unconfigured — skipping placeCall for ${params.callId} (tenant ${params.tenantId})`,
       );
       return null;
     }
 
-    // Per-call override agent id wins over the env default. Useful for
-    // per-tenant agents once we onboard more customers.
-    const overrideAgentId = params.agentId ?? this.agentId!;
+    if (!agentVersion) {
+      this.logger.warn(
+        `[outbound-voice] Retell call ${params.callId} (tenant ${params.tenantId}) is UNPINNED on agent ` +
+          `${overrideAgentId} — it will run that agent's latest draft. Publish a version and set it on the tenant.`,
+      );
+    }
 
     // Retell expects dynamic variables as a flat string map. Coerce here so
     // the script renderer can still pass numbers / objects upstream without
@@ -141,19 +173,13 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     }
 
     const body = {
-      from_number: this.fromNumber!,
+      from_number: fromNumber,
       to_number: finalToNumber,
       override_agent_id: overrideAgentId,
       // Omitted when unpinned, which preserves the pre-existing behaviour
       // (latest draft) rather than silently moving production to a different
       // version the moment this ships.
-      ...(this.agentVersion
-        ? {
-            override_agent_version: /^\d+$/.test(this.agentVersion)
-              ? Number(this.agentVersion)
-              : this.agentVersion,
-          }
-        : {}),
+      ...(agentVersion ? { override_agent_version: encodeAgentVersion(agentVersion) } : {}),
       retell_llm_dynamic_variables: dynamicVariables,
       metadata: {
         tenant_id: params.tenantId,

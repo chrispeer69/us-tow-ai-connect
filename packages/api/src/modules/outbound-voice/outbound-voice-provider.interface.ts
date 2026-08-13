@@ -33,6 +33,16 @@ export interface PlaceCallParams {
   callId: string;
   tenantId: string;
   agentId?: string | null;
+  /**
+   * Retell only. Published version to pin this call to, resolved per tenant.
+   *
+   * Paired with `agentId`: a version number only means something on the agent
+   * it belongs to. When `agentId` is supplied, this must be that agent's own
+   * version — never the deployment default. See retell-tenant-config.ts.
+   */
+  agentVersion?: string | null;
+  /** Retell only. Per-tenant E.164 caller-ID; falls back to the env default. */
+  fromNumber?: string | null;
   callbackUrl?: string;
   testModeEnabled?: boolean;
   testOverrideNumber?: string | null;

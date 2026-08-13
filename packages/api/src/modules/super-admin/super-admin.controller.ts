@@ -71,6 +71,9 @@ export class SuperAdminController {
       freeTrialCallMinutes?: number;
       testModeEnabled?: boolean;
       testOverrideNumber?: string | null;
+      retellAgentId?: string | null;
+      retellAgentVersion?: string | null;
+      retellFromNumber?: string | null;
       plan?: string;
     },
   ) {
@@ -95,6 +98,20 @@ export class SuperAdminController {
       testOverrideNumber:
         typeof body.testOverrideNumber === 'string' || body.testOverrideNumber === null
           ? body.testOverrideNumber
+          : undefined,
+      // Per-tenant Retell overrides. Explicit null clears the override; an
+      // absent key leaves the current value alone.
+      retellAgentId:
+        typeof body.retellAgentId === 'string' || body.retellAgentId === null
+          ? body.retellAgentId
+          : undefined,
+      retellAgentVersion:
+        typeof body.retellAgentVersion === 'string' || body.retellAgentVersion === null
+          ? body.retellAgentVersion
+          : undefined,
+      retellFromNumber:
+        typeof body.retellFromNumber === 'string' || body.retellFromNumber === null
+          ? body.retellFromNumber
           : undefined,
       plan: typeof body.plan === 'string' ? body.plan : undefined,
     });

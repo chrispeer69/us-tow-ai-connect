@@ -51,23 +51,27 @@ export class CallReviewController {
   // ─── Retell draft staging ────────────────────────────────────────────────
   // Writes reach the DRAFT only; publishing stays a human action in Retell.
   // Every write refuses while live calls are unpinned — see RetellAgentService.
+  //
+  // All of these act on the CALLER'S TENANT agent, resolved from the tenant's
+  // outbound_voice_config with the deployment env as fallback. One company's
+  // script edit can never reach another company's agent.
 
   /** Agent state + whether production is actually protected from draft edits. */
   @Get('retell/status')
-  retellStatus() {
-    return this.retell.status();
+  retellStatus(@Req() req: AdminRequest) {
+    return this.retell.status(req.tenantId);
   }
 
   /** Version history — what is published, what is only a draft. */
   @Get('retell/versions')
-  retellVersions() {
-    return this.retell.versions();
+  retellVersions(@Req() req: AdminRequest) {
+    return this.retell.versions(req.tenantId);
   }
 
   /** The draft's current conversation prompt. */
   @Get('retell/prompt')
-  retellPrompt() {
-    return this.retell.getDraftPrompt();
+  retellPrompt(@Req() req: AdminRequest) {
+    return this.retell.getDraftPrompt(req.tenantId);
   }
 
   /** Stage a new prompt on the draft. Returns a before/after to diff. */
@@ -77,7 +81,7 @@ export class CallReviewController {
     @Body(new ZodValidationPipe(UpdatePromptSchema)) body: UpdatePromptBody,
   ) {
     const actor = (req.user as { email?: string } | undefined)?.email ?? null;
-    return this.retell.updateDraftPrompt(body.prompt, actor);
+    return this.retell.updateDraftPrompt(req.tenantId, body.prompt, actor);
   }
 
   /** Stage post-call analysis field changes on the draft. */
@@ -88,7 +92,7 @@ export class CallReviewController {
     body: UpdatePostCallFieldsBody,
   ) {
     const actor = (req.user as { email?: string } | undefined)?.email ?? null;
-    return this.retell.updateDraftPostCallFields(body.fields, actor);
+    return this.retell.updateDraftPostCallFields(req.tenantId, body.fields, actor);
   }
 
   /** Daily review runs, newest first. */

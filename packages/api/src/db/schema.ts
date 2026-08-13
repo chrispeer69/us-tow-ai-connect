@@ -56,7 +56,16 @@ export const tenants = pgTable('tenants', {
   //     dispatch_interval_seconds?: number,
   //     require_consent?: boolean,                       // default true
   //     enabled_purposes?: string[],                     // subset of the 6 purposes
-  //     thinkrr_outbound_agent_id?: string
+  //     thinkrr_outbound_agent_id?: string,
+  //     // Session 74 — per-tenant Retell. Each falls back to the matching env
+  //     // var (RETELL_AGENT_ID / RETELL_AGENT_VERSION / RETELL_FROM_NUMBER)
+  //     // when unset. agent id and version are a PAIR: a tenant on its own
+  //     // agent never inherits the env version, because a Retell version
+  //     // number only means something on the agent it belongs to.
+  //     // See common/utils/retell-tenant-config.ts.
+  //     retell_outbound_agent_id?: string,
+  //     retell_agent_version?: string,                   // published version or tag
+  //     retell_from_number?: string                      // E.164 caller-ID
   //   }
   outboundVoiceEnabled: boolean('outbound_voice_enabled').notNull().default(false),
   outboundVoiceConfig: jsonb('outbound_voice_config').notNull().default({} as unknown as never),
