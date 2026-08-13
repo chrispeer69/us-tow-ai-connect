@@ -346,7 +346,10 @@ describe('flip-scripts', () => {
     expect(body).toContain('Do not ask for or assume a delivery destination on winch-out calls');
     expect(body).not.toContain('is there anywhere else it needs to be towed');
     expect(body).not.toContain('headed to your location as planned');
-    expect(body).toContain('headed to the service location as planned');
+    // 2.3 — the close names the pickup leg explicitly. A winch-out has no
+    // second leg, so it must stop there and never imply a tow destination.
+    expect(body).toContain('coming to you at I-70 near exit 101');
+    expect(body).not.toContain('then taking the vehicle to');
   });
 
   it('does not confirm a delivery destination when no separate destination exists', () => {
@@ -369,7 +372,8 @@ describe('flip-scripts', () => {
     expect(body).toContain('I do not have a separate tow destination listed');
     expect(body).toContain('service at 123 Main St');
     expect(body).not.toContain('vehicle being towed to your destination');
-    expect(body).toContain('headed to the service location as planned');
+    expect(body).toContain('coming to you at 123 Main St');
+    expect(body).not.toContain('then taking the vehicle to');
   });
 
   it('treats matching pickup and destination as one service location', () => {

@@ -117,7 +117,16 @@ export class OutboundPollerCron {
       originalDestination: job.destination,
       destinationBusinessName: classification.businessName || null,
       destinationType: classification.type,
-      flipEligible: decision.flipEligible,
+      // Gate eligibility on actually having a shop to name, matching
+      // FlipOrchestrator (`decision.flipEligible && !!nearestShopName`). This
+      // path used to record eligible=true with no shop, which is a state no
+      // call can act on — twilio-outbound.service already refuses to pitch
+      // without one. Those rows inflated `eligible` and `never_pitched` in the
+      // daily review and made the agent look like it was skipping pitches it
+      // never had. Logging defect only: no call behaviour changes here.
+      flipEligible: decision.flipEligible && !!decision.nearestShop,
+      noFlipReason:
+        decision.flipEligible && !decision.nearestShop ? 'no_partner_shop_in_range' : null,
       nearestOurShop: decision.nearestShop,
       conviniSellType: decision.conviniSellType,
       callRecordingUrl: callSid ? `pending:${callSid}` : null,

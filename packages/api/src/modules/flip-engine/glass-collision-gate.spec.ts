@@ -114,7 +114,10 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
 
   it('reaffirms the original destination so there is nothing to decline', () => {
     const body = renderCallBodyB({ ...base });
-    expect(body).toContain('as planned shortly');
+    // 2.3 — both legs are named so the customer does not think the truck is
+    // heading to the body shop instead of to them.
+    expect(body).toContain('come to you at');
+    expect(body).toContain('shortly');
     expect(body).toContain('Crash Champions');
   });
 

@@ -33,7 +33,13 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.2';
+export const SCRIPT_VERSION = '2.3';
+// 2.3 (2026-08-13) — two objections the agent had been answering off-script now
+//   have authorized answers, both confirmed as policy by Chris: Roadside absorbs
+//   an onward tow if the repair does not go ahead, and the office will check an
+//   aftermarket policy with the insurer. Kept out of Offer 2 on purpose — it is
+//   a diagnostic question, and stacking reassurances onto it reproduces the
+//   density failure the 08-12 review found. Defect fix, not a copy experiment.
 // 2.2 (2026-08-12) — body/glass referral reworded by Chris: names the insurance
 //   commitment and respects it out loud, so there is nothing to push back on.
 // 2.1 (2026-08-12) — body, collision and glass jobs are still called, and now
@@ -158,9 +164,13 @@ function hasSeparateDestination(ctx: ScriptContext): boolean {
 }
 
 function destinationPlanSentence(ctx: ScriptContext): string {
+  // "Your driver is headed to {{destination}}" reads as the truck's next stop,
+  // and seven sampled customers on 2026-08-12 heard it as the truck skipping
+  // them. Naming both legs in one sentence removes the panic and the 30-90s of
+  // rework it caused, including one case that interrupted the CONVINI pitch.
   return hasSeparateDestination(ctx)
-    ? 'Your driver is headed to {{destination}} as planned'
-    : 'Your driver is headed to the service location as planned';
+    ? 'Your driver is coming to you at {{pickup_location}} first, then taking the vehicle to {{destination}}'
+    : 'Your driver is coming to you at {{pickup_location}}';
 }
 
 /** Base variable map shared by every scenario. */
@@ -378,6 +388,9 @@ function globalRules(ctx: ScriptContext): string {
     `- THE SCRIPT DECIDES WHETHER TO PITCH, NOT YOU. If this script contains a repair-shop offer, make it. If it does not, there is no offer to make — do not construct one because the job "sounds like" a flip, and do not skip a written offer because you judge the customer unlikely to accept.`,
     `- If no partner shop is named anywhere in this script, we have no shop for this job. Never refer to "a partner shop", "a shop nearby", or "a shop that specializes in that" without a name from this script.`,
     `- Never promise anything about the tow itself that is not written here — in particular never tell a customer they can ride in the tow truck.`,
+    // Applies everywhere, not just Scenario A: money and coverage are the two
+    // subjects where an invented answer becomes a commitment we have to honour.
+    `- Never tell a customer whether their insurance or warranty covers something, what it will cost them, or who will pay. If they ask and this script has no written answer, say you'll have the office confirm and move on.`,
     `- Speak only the words inside the quotation marks after "AI:". Never say "AI", never read the quotation marks, and never read a step label, a bracketed instruction, or any placeholder in double braces.`,
     `- Ask one question at a time. After a question, stop and wait for the answer — never run a question and a sign-off together.`,
     `- Never read a raw latitude/longitude pair aloud. If a location is only coordinates, say "the location we have on file" and ask the customer to describe it.`,
@@ -480,6 +493,27 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         `[AGENT: If they say NO or hard decline -> say "Understood. I'll keep your original destination and focus on getting the driver routed." Then jump to the CONVINI close.]`,
       ] : [];
 
+  // Two objections now have authorized answers, both confirmed as real policy by
+  // the operator on 2026-08-13. They exist because the agent reached for both on
+  // a live call and had to invent the wording — the content was broadly right,
+  // the authorization was not.
+  //
+  // Deliberately NOT folded into Offer 2. Offer 2 is a diagnostic question
+  // ("what's taking you there?") and stacking reassurances onto it recreates the
+  // density failure the 2026-08-12 review found, where a customer could not
+  // parse the offer until the agent restated it more plainly. These are
+  // responses to a stated objection, usable at whichever rung it comes up.
+  const authorizedAnswers = offersAllowed
+    ? [
+        ``,
+        `=== AUTHORIZED ANSWERS (use ONLY when the customer raises these; never volunteer them) ===`,
+        // Roadside Towing absorbs the second tow. Any recovery from the vendor
+        // afterwards is internal and must never reach the call.
+        `[AGENT: If the customer worries about being stuck at our shop, or asks what happens if the repair does not go ahead -> "You're not stuck there. If the repair isn't something you want to go ahead with, we'll tow it on to {{destination}} at no cost to you." Do not put a time or a day on that onward tow, and never discuss who pays us or why a repair was not approved.]`,
+        `[AGENT: If the customer asks whether their insurance or warranty covers it -> "Our partner shops take most aftermarket repair policies. I can note down who you're insured with and have our office team check your coverage with them directly. The diagnostic itself is free either way, so you'd know what you're dealing with before spending anything." Take the provider NAME only — never ask for a policy number, member id, or date of birth. Do not say the office will call "right now" or give any timeframe, and never state that a specific policy is or is not covered.]`,
+      ]
+    : [];
+
   // When offers are suppressed, say so explicitly. An empty PHASE 2 previously
   // left the agent to fill the silence, which is how the invented shop happened.
   const noOfferNote = offersAllowed
@@ -515,6 +549,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     ...flipBlock,
     ...offer2Block,
     ...offer3Block,
+    ...authorizedAnswers,
     ``,
     ...conviniBlock,
     ``,
@@ -545,7 +580,12 @@ function scenarioB(ctx: ScriptContext): string {
   // insurance commitment and respects it out loud, so there is no pressure to
   // push back against and nothing to decline. Do not turn this into an offer.
   const damageKind = glass ? 'auto glass work' : 'auto body work';
-  const closingLine = `${destinationPlanSentence(ctx).replace('Your driver is', "I'll have your driver")} shortly`;
+  // Written out rather than string-replacing destinationPlanSentence: now that
+  // the plan names both legs, patching "Your driver is" into "I'll have your
+  // driver" produced "…coming to you at X first, then taking … shortly".
+  const closingLine = hasSeparateDestination(ctx)
+    ? `I'll have your driver come to you at {{pickup_location}} first, then take the vehicle to {{destination}} shortly`
+    : `I'll have your driver come to you at {{pickup_location}} shortly`;
   // Only claim they have a shop commitment when a real destination is on file.
   const insuranceLine = hasSeparateDestination(ctx)
     ? ` We know you have a commitment with the insurance company to go to the current shop listed and we respect that.`
