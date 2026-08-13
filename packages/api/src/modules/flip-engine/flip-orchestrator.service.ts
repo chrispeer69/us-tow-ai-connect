@@ -532,6 +532,19 @@ export class FlipOrchestratorService {
     const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
     const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
     const bodyShops = pickTwoBodyShops(ourShops);
+    // Resolved here too so the sandbox preview is the script production would
+    // actually render. A preview that quietly omits the conditional offer is
+    // worse than no preview — it is what an operator checks before trusting it.
+    const conditional = await this.resolveConditionalShop({
+      tenantId,
+      destinationTag: destination.tag,
+      flipEligible,
+      pickupLat: job.pickupLat,
+      pickupLng: job.pickupLng,
+      maxDistanceMiles: Number(
+        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+      ),
+    });
     const ctx: ScriptContext = {
       repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
       companyName:
@@ -550,6 +563,9 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      conditionalShop: conditional.name,
+      conditionalShopDistanceMiles:
+        conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
@@ -1106,6 +1122,17 @@ export class FlipOrchestratorService {
     const flipEligible = destination.tag === 'competitor_repair' && !!nearestShopName;
     const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
 
+    const conditional = await this.resolveConditionalShop({
+      tenantId,
+      destinationTag: destination.tag,
+      flipEligible,
+      pickupLat: geocoded?.lat ?? null,
+      pickupLng: geocoded?.lng ?? null,
+      maxDistanceMiles: Number(
+        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+      ),
+    });
+
     const ctx: ScriptContext = {
       repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
       companyName: (cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing',
@@ -1121,6 +1148,9 @@ export class FlipOrchestratorService {
       issueSubcategory: issue.subcategory,
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles: flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      conditionalShop: conditional.name,
+      conditionalShopDistanceMiles:
+        conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
