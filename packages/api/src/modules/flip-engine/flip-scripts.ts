@@ -33,7 +33,13 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.4';
+export const SCRIPT_VERSION = '2.5';
+// 2.5 (2026-08-13) — single flat tires are flip-eligible again, on Chris's
+//   call. Low value is not no value: the job still lands at somebody's shop and
+//   we were handing those over. `full_tire_set` was always eligible; this only
+//   changes genuine single-tire jobs. Paired with agent v33, which removes the
+//   matching self-suppression rule from the prompt — the code gate and the
+//   prompt rule have to move together or the agent keeps refusing on its own.
 // 2.4 (2026-08-13) — the conditional offer. Calls whose destination could not
 //   be resolved before dialling now carry an offer the agent may make ONLY
 //   after the customer confirms a repair destination. 142 calls in the previous
@@ -401,7 +407,10 @@ function globalRules(ctx: ScriptContext): string {
     `- Confirm details first. If the customer corrects something, acknowledge it and move on.`,
     `- Do not ask "is now a good time?" The customer already requested service; keep the call brief and useful.`,
     `- Only pitch a repair-shop flip when the call is repairable and the destination is not already our shop or a protected destination.`,
-    `- Do not pitch repair-shop offers for lockout, fuel delivery, single flat tire, jump-start-only, or winch-out-only calls.`,
+    // Tire jobs came off this list on 2026-08-13 — see flip-decision.engine.ts.
+    // They are low-value, not no-value, and they were being given away.
+    `- Do not pitch repair-shop offers for lockout, fuel delivery, jump-start-only, or winch-out-only calls.`,
+    `- A flat tire IS a repair job. If the vehicle is being towed somewhere and this script contains an offer, make it — a tire arriving at a competitor's shop is still a customer we handed over.`,
     `- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.`,
     `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
     ...(ctx.pitchConvini ? [

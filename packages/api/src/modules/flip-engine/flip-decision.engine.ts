@@ -22,7 +22,18 @@ export interface FlipDecision {
 
 const DEFAULT_NO_FLIP_THRESHOLD = 0.85;
 const DEFAULT_NO_FLIP_CATEGORIES: IssueSubcategory[] = [
-  'single_tire_issue',
+  // 'single_tire_issue' was here until 2026-08-13. Removed on Chris's call.
+  //
+  // The reasoning it encoded — one tire is not worth much — was about the
+  // VALUE of the job, not about whether an offer belongs on the call. Those are
+  // different questions. A single tire still arrives at somebody's shop, and
+  // giving that away for free was the actual cost: the 08-11 review found the
+  // agent suppressing tire calls unprompted, and one of that day's two wins was
+  // a tire blowout it pitched anyway.
+  //
+  // Note the classifier already splits `full_tire_set` out separately, and that
+  // was never on this list — so removing this only affects genuine single-tire
+  // jobs, which are exactly the ones being handed to competitors.
   'jump_start',
   'lockout',
   'fuel_delivery',

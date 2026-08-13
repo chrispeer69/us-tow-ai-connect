@@ -64,8 +64,13 @@ describe('collision + glass never reach a mechanical flip', () => {
     expect(flip('full_tire_set', 0.92).flipEligible).toBe(true);
   });
 
-  it('still refuses a single flat tire', () => {
-    expect(flip('single_tire_issue').flipEligible).toBe(false);
+  // 2026-08-13 — tires moved out of the no-flip defaults on Chris's call. The
+  // point of this file is that COLLISION and GLASS stay refused regardless;
+  // a flat tire is ordinary mechanical work and belongs on the ladder.
+  it('flips a single flat tire — collision and glass are the guardrail, not tires', () => {
+    expect(flip('single_tire_issue').flipEligible).toBe(true);
+    expect(flip('accident_minor').flipEligible).toBe(false);
+    expect(flip('glass_damage').flipEligible).toBe(false);
   });
 });
 

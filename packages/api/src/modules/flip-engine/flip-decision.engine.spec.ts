@@ -51,36 +51,55 @@ describe('decideFlip', () => {
     expect(r.conviniIntensity).toBe('hard');
   });
 
-  it('skips flip when issue is single_tire and confidence is high (default 0.85 threshold)', () => {
+  // Policy change, 2026-08-13 (Chris): a single flat tire is low value, not no
+  // value, and suppressing it handed the job to a competitor's shop for free.
+  // `full_tire_set` was always eligible; this only moves genuine single-tire
+  // jobs. See DEFAULT_NO_FLIP_CATEGORIES.
+  it('flips a single flat tire even at high classifier confidence', () => {
     const r = decideFlip({
       source: 'TOWBOOK',
       destinationTag: 'competitor_repair',
       issueSubcategory: 'single_tire_issue',
+      issueConfidence: 0.95,
+      config: {},
+    });
+    expect(r.flipEligible).toBe(true);
+  });
+
+  // The confidence gate itself must still work — it just has one fewer category
+  // in it. Proven with a category that is still on the list.
+  it('still skips flip for jump_start at high confidence', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'jump_start',
       issueConfidence: 0.9,
       config: {},
     });
     expect(r.flipEligible).toBe(false);
-    expect(r.reasonCode).toContain('no_flip_category_single_tire_issue');
-  });
-
-  it('proceeds with flip when issue is single_tire but confidence is low', () => {
-    const r = decideFlip({
-      source: 'TOWBOOK',
-      destinationTag: 'competitor_repair',
-      issueSubcategory: 'single_tire_issue',
-      issueConfidence: 0.5,
-      config: {},
-    });
-    expect(r.flipEligible).toBe(true);
+    expect(r.reasonCode).toContain('no_flip_category_jump_start');
   });
 
   it('respects per-tenant confidence threshold override', () => {
     const r = decideFlip({
       source: 'TOWBOOK',
       destinationTag: 'competitor_repair',
-      issueSubcategory: 'single_tire_issue',
+      issueSubcategory: 'jump_start',
       issueConfidence: 0.7,
       config: { no_flip_confidence_threshold: 0.6 },
+    });
+    expect(r.flipEligible).toBe(false);
+  });
+
+  // A tenant that genuinely wants tires suppressed can still say so, without a
+  // code change — the default list is only a default.
+  it('lets a tenant put single_tire_issue back on its own no-flip list', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'single_tire_issue',
+      issueConfidence: 0.9,
+      config: { no_flip_categories: ['single_tire_issue'] },
     });
     expect(r.flipEligible).toBe(false);
   });
