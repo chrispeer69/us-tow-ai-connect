@@ -189,6 +189,39 @@ export class FlipOrchestratorService {
   /**
    * Process a single job: classify, decide, render, enqueue, log.
    */
+  /**
+   * Session 74 — the conditional offer for calls whose destination the pre-call
+   * map lookup could not resolve. See ScriptContext.conditionalShop.
+   *
+   * Returns a shop ONLY for `unknown` destinations that are otherwise
+   * ineligible. Collision, glass, residence, our-shop and no-shop-in-range calls
+   * all return null and keep their hard no-offer script — the point is to
+   * recover the calls we simply did not know about, not to reopen a rule.
+   */
+  private async resolveConditionalShop(args: {
+    tenantId: string;
+    destinationTag: string;
+    flipEligible: boolean;
+    pickupLat: number | null | undefined;
+    pickupLng: number | null | undefined;
+    maxDistanceMiles: number;
+  }): Promise<{ name: string | null; distanceMiles: number | null }> {
+    const none = { name: null, distanceMiles: null };
+    if (args.flipEligible || args.destinationTag !== 'unknown') return none;
+    if (args.pickupLat == null || args.pickupLng == null) return none;
+
+    const pick = await this.flipEngine.pickNearestShop({
+      tenantId: args.tenantId,
+      pickupLat: args.pickupLat,
+      pickupLng: args.pickupLng,
+      shopType: 'REPAIR',
+    });
+    if (!pick.shop || pick.distanceMiles == null || pick.distanceMiles > args.maxDistanceMiles) {
+      return none;
+    }
+    return { name: pick.shop.name, distanceMiles: pick.distanceMiles };
+  }
+
   async handleJob(
     tenantId: string,
     job: PendingFlipJob,
@@ -307,6 +340,17 @@ export class FlipOrchestratorService {
 
     // If we have a competitor_repair tag but couldn't find a nearest shop within max distance, fallback to Convini
     const flipEligible = decision.flipEligible && !!nearestShopName;
+
+    const conditional = await this.resolveConditionalShop({
+      tenantId,
+      destinationTag: destination.tag,
+      flipEligible,
+      pickupLat: job.pickupLat,
+      pickupLng: job.pickupLng,
+      maxDistanceMiles: Number(
+        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+      ),
+    });
     const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
 
     const ctx: ScriptContext = {
@@ -327,6 +371,9 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      conditionalShop: conditional.name,
+      conditionalShopDistanceMiles:
+        conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
       bodyShop1: decision.bodyShopSoftMention ? bodyShops?.shop1 ?? null : null,
       bodyShop2: decision.bodyShopSoftMention ? bodyShops?.shop2 ?? null : null,
       rentalsAvailable: mentionRentals,
@@ -845,6 +892,17 @@ export class FlipOrchestratorService {
       const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
       const mentionRentals = (cfg.mention_rentals ?? globalCfg.mention_rentals ?? true) !== false;
 
+      const conditional = await this.resolveConditionalShop({
+        tenantId,
+        destinationTag: destination.tag,
+        flipEligible,
+        pickupLat: job.pickupLat != null ? Number(job.pickupLat) : null,
+        pickupLng: job.pickupLng != null ? Number(job.pickupLng) : null,
+        maxDistanceMiles: Number(
+          cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+        ),
+      });
+
       const ctx: ScriptContext = {
         repName: (cfg.rep_name as string) || (globalCfg.rep_name as string) || '',
         companyName: (cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing',
@@ -864,6 +922,9 @@ export class FlipOrchestratorService {
         nearestShop: flipEligible ? nearestShopName : null,
         nearestShopDistanceMiles:
           flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+        conditionalShop: conditional.name,
+        conditionalShopDistanceMiles:
+          conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
         bodyShop1: null,
         bodyShop2: null,
         rentalsAvailable: mentionRentals,

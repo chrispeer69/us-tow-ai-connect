@@ -57,7 +57,45 @@ and wins per offer made are, and those are the two columns to watch.
 
 ---
 
+> ## ⚠️ Correction issued later the same day
+>
+> **Section 3 below was wrong, and the error mattered.** It reported an
+> "eligibility collapse" and attributed it to the 12 August rule changes. Both
+> the number and the cause were artefacts of a measurement bug.
+>
+> `flip_eligible` in the database was being **overwritten after every call** by
+> Retell's post-call extractor, which re-answers "was a flip genuinely
+> appropriate?" from the transcript. The pre-call engine's decision — and the
+> reason it recorded — were erased. Every "eligible" and "never pitched" figure
+> in this report and its predecessors was therefore reading *the agent's opinion
+> of its own call*, not the gate.
+>
+> Reading `scenario` instead, which is stamped when the script is rendered and
+> is never overwritten, gives the true picture:
+>
+> | | Calls | Script contained an offer | Connected 45s+ | Offer actually made | **Offer written but never made** |
+> |---|---:|---:|---:|---:|---:|
+> | Aug 11 | 96 | 48 (50%) | 36 | 23 | **13 (36%)** |
+> | Aug 12 | 83 | 45 (54%) | 31 | 17 | **14 (45%)** |
+> | Aug 13 | 65 | 40 (**62%**) | 24 | 12 | **12 (50%)** |
+>
+> **Eligibility never fell. It rose.** The gate put an offer into 62% of calls on
+> 13 August, the highest of the three days. What is falling is delivery: half of
+> all connected calls carrying a written offer never received it. At the observed
+> 35–41% acceptance rate that is roughly **4–5 wins a day being left on the
+> table**, and it is the single largest recoverable loss in the programme.
+>
+> This is the same behaviour as recommendation #1 in the 12 August review — the
+> agent skipping offers it was given — now measured rather than inferred. Agent
+> rule 22, published in v32 on 13 August, targets exactly this. Tomorrow is the
+> first clean test of it.
+>
+> Both the measurement bug and the largest remaining gap are fixed in the same
+> release; see section 6.
+
 ## 3. The eligibility collapse — the thing to look at
+
+> **Superseded — see the correction above.** Retained for the record.
 
 Restricted to `competitor_repair` destinations that had a partner shop available,
 so this is like-for-like:
@@ -190,6 +228,24 @@ production-risk event.
 
 **Data** — Wayne's Auto Repair Westerville had the Columbus phone number on file;
 corrected to (614) 891-6368.
+
+**Script 2.4 and the measurement fix (second release, same day)**
+
+- **The post-call extractor no longer overwrites `flip_eligible`.** This is the
+  bug behind the correction at the top of this report. The pre-call decision and
+  its reason are now preserved; where the extractor disagrees, that is recorded
+  as `agent_judged_flip_not_appropriate` alongside rather than on top. Every
+  funnel figure from this release onward measures the gate, not the agent's
+  self-assessment. **Figures before 13 August are not comparable.**
+- **The conditional offer.** Calls whose destination could not be resolved before
+  dialling now carry an offer the agent may make *only after the customer
+  confirms a repair destination*. Previously the script asked "is it a repair
+  shop, body shop, your home, or somewhere else?" and then had nothing to do with
+  a "repair shop" answer, because eligibility had been locked before the phone
+  rang and the agent was under standing orders never to invent an offer. That was
+  142 calls in 10 days — 17% of all volume, at a 4% eligibility rate. Every other
+  no-offer route (collision, glass, residence, our own shop, no shop in range)
+  keeps its hard refusal unchanged, and six regression tests hold that line.
 
 ---
 

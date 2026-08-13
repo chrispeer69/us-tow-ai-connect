@@ -33,7 +33,13 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.3';
+export const SCRIPT_VERSION = '2.4';
+// 2.4 (2026-08-13) — the conditional offer. Calls whose destination could not
+//   be resolved before dialling now carry an offer the agent may make ONLY
+//   after the customer confirms a repair destination. 142 calls in the previous
+//   10 days (17% of volume) had an unresolved destination and a 4% eligibility
+//   rate; the script was already asking the question and had nothing to do with
+//   the answer. Every other non-eligible route keeps its hard no-offer text.
 // 2.3 (2026-08-13) — two objections the agent had been answering off-script now
 //   have authorized answers, both confirmed as policy by Chris: Roadside absorbs
 //   an onward tow if the repair does not go ahead, and the office will check an
@@ -83,6 +89,25 @@ export interface ScriptContext {
   // Flip data (Scenario A)
   nearestShop?: string | null;
   nearestShopDistanceMiles?: number | null;
+
+  /**
+   * Session 74 — the conditional offer, for calls whose destination could not
+   * be resolved before dialling.
+   *
+   * Eligibility is decided pre-call from a map lookup, but the truth is learned
+   * mid-call: the script already asks "is it a repair shop, body shop, your
+   * home, or somewhere else?". When the lookup returned `unknown` we rendered a
+   * script with no offer in it at all, so a customer answering "repair shop"
+   * hit an agent that had nothing to offer and was under standing orders not to
+   * invent one. Over the 10 days to 2026-08-13 that was 142 calls, 17% of all
+   * volume, with a 4% eligibility rate.
+   *
+   * These fields carry a shop the agent may offer ONLY after the customer
+   * confirms a repair destination. The pre-call gate stays honest — the call is
+   * still logged ineligible — but the offer is available if the call earns it.
+   */
+  conditionalShop?: string | null;
+  conditionalShopDistanceMiles?: number | null;
 
   // Body-shop soft mention (Scenario B)
   bodyShop1?: string | null;
@@ -649,6 +674,29 @@ function scenarioC(ctx: ScriptContext): string {
     `[AGENT: If YES -> confirm you'll text the link, then warm close. If NO -> accept gracefully.]`,
   ] : [];
 
+  // Session 74 — the conditional offer. Only ever set when the destination
+  // could not be resolved before dialling AND a partner shop is in range; every
+  // other route into Scenario C (collision, glass, no shop, residence) leaves it
+  // null and keeps the hard no-offer rule below, unchanged.
+  //
+  // This exists because the gate ran before the call and the answer arrives
+  // during it. The script already asks whether the destination is a repair shop;
+  // until now a customer who said yes met an agent with nothing to offer.
+  const conditional = ctx.conditionalShop?.trim() ? ctx.conditionalShop.trim() : null;
+  const conditionalDistance = shopDistanceShort(ctx.conditionalShopDistanceMiles);
+  const conditionalBlock = conditional
+    ? [
+        `[AGENT: THE DESTINATION ON FILE IS UNCONFIRMED, so there is no offer yet. Ask the destination question as written and LISTEN. Do not mention any shop, discount or diagnostic before the customer has answered it.]`,
+        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance}, and I could get you a free diagnostic plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?"]`,
+        `[AGENT: If they say anything else — home, a body shop, a dealership they chose, a residence, or they are unsure — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
+        `[AGENT: Take a YES only if it is unambiguous. If the answer is unclear or arrives amid other speech, ask "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Never infer a destination change.]`,
+        `[AGENT: If they decline, accept it and move to the CONVINI close. Do not make a second or third offer on this call.]`,
+      ]
+    : [
+        // Unchanged behaviour for every other non-eligible route.
+        `[AGENT: THERE IS NO REPAIR-SHOP OFFER ON THIS CALL. Do not mention a partner shop, a nearby shop, a certified shop, a discount, a free diagnostic, or switching the drop-off — not even in passing, and not as a suggestion for "next time". Do not tell the customer they can ride in the tow truck. Confirm the details, pitch CONVINI, and close.]`,
+      ];
+
   return [
     `# SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI)`,
     `[AGENT: The destination is a residence or unknown. Confirm details and push the CONVINI app hard.]`,
@@ -658,7 +706,7 @@ function scenarioC(ctx: ScriptContext): string {
     // stands, and on 2026-08-11 one filled that silence by inventing "a partner
     // shop that specializes in that kind of work" and promising a ride in the
     // tow truck. Say the quiet part explicitly.
-    `[AGENT: THERE IS NO REPAIR-SHOP OFFER ON THIS CALL. Do not mention a partner shop, a nearby shop, a certified shop, a discount, a free diagnostic, or switching the drop-off — not even in passing, and not as a suggestion for "next time". Do not tell the customer they can ride in the tow truck. Confirm the details, pitch CONVINI, and close.]`,
+    ...conditionalBlock,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
     openingBlock(ctx, vars),

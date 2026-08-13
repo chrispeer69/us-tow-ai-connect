@@ -735,7 +735,27 @@ export class OutboundVoiceService {
       callRecordingUrl: callPatch.recordingUrl ?? call.recordingUrl ?? null,
       transcript: callPatch.transcript ?? call.transcript ?? null,
     };
-    if (typeof analysis.flip_eligible === 'boolean') update.flipEligible = analysis.flip_eligible;
+    // Session 74 — do NOT let the post-call extractor overwrite flip_eligible.
+    //
+    // It used to. The pre-call engine decides eligibility, writes the reason to
+    // no_flip_reason, and renders a script that either contains an offer or does
+    // not. Retell's post_call_analysis then re-answers "was a flip genuinely
+    // appropriate?" from the transcript, and that answer was being written over
+    // the top — erasing the gate's decision and its reason.
+    //
+    // The damage was analytical, not operational, and it was severe: on
+    // 2026-08-13 the gate put an offer into 40 calls while the column read 17,
+    // so the funnel looked like an eligibility collapse when the real story was
+    // that the agent skipped half the offers it was given. Every "eligible" and
+    // "never pitched" figure in the daily review was reading the agent's opinion
+    // of its own call.
+    //
+    // The extractor's judgement is still worth keeping — a disagreement is a
+    // signal that the gate mis-scoped the call — so it is recorded alongside
+    // rather than on top.
+    if (analysis.flip_eligible === false && log.flipEligible === true) {
+      update.noFlipReason = trimForColumn('agent_judged_flip_not_appropriate', 120);
+    }
     if (offer1) update.offer1Result = offer1;
     if (offer2) update.offer2Result = offer2;
     if (offer3) update.offer3Result = offer3;
