@@ -1307,7 +1307,7 @@ export class OutboundVoiceService {
       motorClub: input.motorClub || 'Agero Motor Club',
       callbackNumber: (cfg.callback_number as string) || process.env.RETELL_CALLBACK_NUMBER || '',
       conviniLink: (cfg.convini_link as string) || 'https://convini.live',
-      diagnosticValue: Number(cfg.diagnostic_value ?? 89),
+      diagnosticValue: Number(cfg.diagnostic_value ?? 179),
       customerFirstName: input.customerName?.split(' ')[0] || 'John',
       vehicle: input.vehicle || '2019 Honda Civic',
       pickupLocation: input.pickupLocation || '123 Main Street',

@@ -734,7 +734,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   const singleShopOffer1 =
     `${offerPreamble}We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
     (distanceShort ? `, ${distanceShort}` : ``) +
-    `: they include the diagnostic at no charge, normally around \${{diagnostic_value}}, and take 10 percent off the repair. ` +
+    `: they include a full hour of diagnostic time at no charge, normally a \${{diagnostic_value}} value, and take 10 percent off the repair. ` +
     (hasSeparateDestination(ctx)
       ? `Want me to send the driver there instead, or keep {{destination}}?`
       : `Want me to send the driver there instead?`);
@@ -764,8 +764,8 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
 
   const multiShopOffer1 =
     `${offerPreamble}` +
-    `We work with several certified partner shops in your area, and they all include the diagnostic at no charge, ` +
-    `normally around \${{diagnostic_value}}, plus 10 percent off the repair for new customers. ` +
+    `We work with several certified partner shops in your area, and they all include a full hour of diagnostic time ` +
+    `at no charge — normally a \${{diagnostic_value}} value — plus 10 percent off the repair for new customers. ` +
     `The closest to you are ${choiceList}. ` +
     (hasSeparateDestination(ctx)
       ? `Would one of those work instead of {{destination}}, or would you like me to just send the driver to the closest one?`
