@@ -569,9 +569,17 @@ function confirmBlock(
 AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
 [AGENT: If the customer corrects the location, acknowledge the correction warmly and confirm the corrected version back to them. This correction will be saved to the job notes.]`;
 
+  // Color and drivetrain are asked OPEN, not confirmed. The motor club ticket
+  // carries them at roughly 50% accuracy (Chris, 2026-08-14), and at a coin flip
+  // a confirm question is close to worthless — a customer standing on a highway
+  // says yes to anything. Year/make/model is ~90% and still gets a confirm.
+  // Drivetrain earns its seconds: AWD put on dollies is damage, not an
+  // inconvenience.
   const defaultVehicle = `[STEP 4 — CONFIRM VEHICLE DETAILS]
 AI: "And I have a {{vehicle}}. Is that right?"
-[AGENT: If they correct the vehicle, acknowledge and confirm the corrected details.]`;
+[AGENT: If they correct the vehicle, acknowledge and confirm the corrected details.]
+AI: "What color is it? And do you happen to know if it's front-wheel, rear-wheel or all-wheel drive?"
+[AGENT: Ask both openly — do NOT read the color or drivetrain off the ticket and ask them to confirm it, because the ticket is wrong about half the time and a confirm invites a reflexive yes. "I don't know" is a perfectly good answer on drivetrain: accept it, note it as unknown, and move on. Never guess.]`;
 
   const defaultIssue = `[STEP 5 — CLARIFY THE ISSUE]
 ${clarifyIssueLine}
@@ -600,10 +608,16 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   // asks intent without locking it), which is why it is injected rather than
   // always taken from the default.
   const destinationBlock = options.destinationOverride ?? interpolate(destination, vars);
+
+  // Dispatch intake runs on BOTH A/B arms and in the same position in each.
+  // It has nothing to do with what the 3.0 experiment is measuring, and putting
+  // it in one arm only would confound the comparison it is not part of.
+  const intake = dispatchIntakeBlock();
+
   if (isReframe(ctx)) {
     const blocks = [interpolate(pickup, vars)];
     if (includeDestination) blocks.push(``, destinationBlock);
-    blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars));
+    blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars), ``, intake);
     return blocks.join('\n');
   }
 
@@ -617,7 +631,47 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   if (includeDestination) {
     blocks.push(``, destinationBlock);
   }
+  blocks.push(``, intake);
   return blocks.join('\n');
+}
+
+/**
+ * Session 75 — dispatch intake. The questions that produce the AI Notes block.
+ *
+ * Chris, 2026-08-14: the motor club's notes are deleted on arrival because they
+ * carry a lot of data that means nothing in the field. The dispatcher then
+ * rebuilds them by talking to the customer. The AI is now the one talking to
+ * the customer, so it should be the one building the note.
+ *
+ * Three questions, in the order they matter to a driver:
+ *
+ *  1. ACCESS — where it sits and which way it faces. Decides approach, and
+ *     sometimes whether the truck fits at all.
+ *  2. CONDITION — tires and whether it rolls. This is the EQUIPMENT question.
+ *     "All four full of air" and "left rear completely flat" are different
+ *     trucks, and the ticket cannot tell us which.
+ *  3. KEYS — a GATE, not a note. Chris's rule: the customer must be present
+ *     with the keys or we do not tow, unless they leave the keys and sign a
+ *     release. This is the only question on the call that can prevent a truck
+ *     rolling to a job that cannot be done.
+ *
+ * Kept deliberately short. These sit on every call, and call length is not free.
+ */
+function dispatchIntakeBlock(): string {
+  return [
+    `[STEP 7 — DISPATCH INTAKE: WHAT THE DRIVER NEEDS TO ARRIVE READY]`,
+    `[AGENT: Ask these three briskly, one at a time, and wait for each answer. Accept "I don't know" and move on — an unknown recorded honestly is worth more than a guess. Never answer any of these from the ticket; if the customer does not say it, we do not know it.]`,
+    ``,
+    `AI: "Just a couple of quick things so the driver turns up ready. Whereabouts is the vehicle sitting — a driveway, the street, a parking lot? And is it nose-in or nose-out?"`,
+    `[AGENT: Capture it the way they say it — "on the curb in front of the house", "nose out", "front open and accessible", "tight turn to get in". Note anything that would stop a truck getting to it: a low garage, a narrow lane, a locked gate, a parking structure.]`,
+    ``,
+    `AI: "And are all four tires up, or is any of them flat?"`,
+    `[AGENT: This decides what equipment rolls, so get it clearly. If a tire is flat, capture WHICH one. If they mention the vehicle will not roll, will not steer, or will not come out of park, capture that too — it matters as much as the tires.]`,
+    ``,
+    `AI: "Last thing — will you be there to meet the driver with the keys?"`,
+    `[AGENT: GATE. If YES, note that they will be on scene with the keys and move on.]`,
+    `[AGENT: If NO, or if they say they will leave the keys somewhere — capture exactly what they said, for example "keys left in my mailbox". Then do NOT improvise what happens next. Do not promise we will tow without them, do not describe a release form, a signature, a waiver or photographs, and do not quote any policy. Say: "Thanks — I'll note that, and our office will call you to confirm the details before the driver heads over." Then continue. Committing us to a tow we cannot legally make, or turning one away that we could have done, are both worse than a callback.]`,
+  ].join('\n');
 }
 
 function issueGuidanceBlock(ctx: ScriptContext): string {

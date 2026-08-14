@@ -95,6 +95,50 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('Want me to send the driver there instead, or keep Firestone on Main?');
   });
 
+  // Session 75 — dispatch intake. These questions produce the AI Notes block a
+  // driver actually reads, replacing motor-club notes that get deleted on
+  // arrival.
+  it('asks the three intake questions the driver needs', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('nose-in or nose-out');
+    expect(body).toContain('are all four tires up, or is any of them flat');
+    expect(body).toContain('will you be there to meet the driver with the keys');
+  });
+
+  it('asks color and drivetrain open rather than confirming them', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('What color is it?');
+    expect(body).toContain('front-wheel, rear-wheel or all-wheel drive');
+    // The ticket is ~50% accurate on these, so a confirm invites a reflexive yes.
+    expect(body).toContain('do NOT read the color or drivetrain off the ticket');
+  });
+
+  // The keys answer can stop a truck rolling. It must not be answered with
+  // invented policy — the agent has improvised policy on live calls before.
+  it('treats keys as a gate and forbids improvising the release process', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('GATE');
+    expect(body).toContain('do NOT improvise what happens next');
+    expect(body).toContain('do not describe a release form');
+    expect(body).toContain('our office will call you to confirm the details');
+  });
+
+  it('runs intake on both arms, so it cannot confound the 3.0 experiment', () => {
+    for (const scriptVariant of ['control', 'reframe'] as const) {
+      const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
+      expect(body).toContain('DISPATCH INTAKE');
+      expect(body).toContain('nose-in or nose-out');
+    }
+  });
+
+  it('asks intake before pitching the offer', () => {
+    const body = renderCallBody('competitor_repair', base);
+    const keys = body.indexOf('meet the driver with the keys');
+    const offer = body.indexOf('We work with');
+    expect(keys).toBeGreaterThan(-1);
+    expect(offer).toBeGreaterThan(keys);
+  });
+
   // 3.0 A/B split.
   it('splits variants stably and roughly evenly', () => {
     // Same seed must always give the same arm — a retry that switched arms
