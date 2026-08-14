@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  pickScriptVariant,
   renderCallBody,
   renderConfirmDetails,
   renderConviniPitch,
@@ -92,6 +93,67 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(offerIdx).toBeGreaterThan(-1);
     expect(offerIdx).toBeLessThan(termsIdx);
     expect(body).toContain('Want me to send the driver there instead, or keep Firestone on Main?');
+  });
+
+  // 3.0 A/B split.
+  it('splits variants stably and roughly evenly', () => {
+    // Same seed must always give the same arm — a retry that switched arms
+    // would count one conversation under two scripts.
+    expect(pickScriptVariant('job-abc')).toBe(pickScriptVariant('job-abc'));
+    expect(pickScriptVariant('')).toBe('control');
+    expect(pickScriptVariant(null)).toBe('control');
+
+    let reframe = 0;
+    const n = 2000;
+    for (let i = 0; i < n; i++) {
+      if (pickScriptVariant(`0f8b2c1e-4a7d-4c2b-9e11-${String(i).padStart(12, '0')}`) === 'reframe') {
+        reframe++;
+      }
+    }
+    // Not exactly 50/50, but nowhere near a degenerate split.
+    expect(reframe).toBeGreaterThan(n * 0.4);
+    expect(reframe).toBeLessThan(n * 0.6);
+  });
+
+  it('control arm is unchanged by the 3.0 split', () => {
+    const body = renderCallBody('competitor_repair', { ...base, scriptVariant: 'control' });
+    expect(body).toContain("I'm the AI assistant helping confirm the details");
+    expect(body).toContain('CONVINIcar app link');
+    expect(body).not.toContain('Roadside Emergency Management App');
+    expect(body).not.toContain('a few great offers');
+  });
+
+  it('reframe arm pre-frames the offer, states it, and closes on the new app', () => {
+    const body = renderCallBody('competitor_repair', { ...base, scriptVariant: 'reframe' });
+    // Told up front that an offer is coming.
+    expect(body).toContain('I can also save you some money at one of our partner repair shops');
+    // Introduced as a statement, never a permission question.
+    expect(body).toContain('Now I would like to mention a few great offers from our in-network partner shops');
+    expect(body).toContain('Do NOT turn it into a question');
+    expect(body).not.toContain('Would you like to hear');
+    // New close.
+    expect(body).toContain('Roadside Emergency Management App');
+    expect(body).toContain('24/7 access to all our partner towing companies');
+    expect(body).not.toContain('CONVINIcar app link');
+    // AI disclosure survives the rewrite.
+    expect(body).toContain("I'm an AI assistant");
+  });
+
+  it('reframe arm confirms the destination before the vehicle', () => {
+    const body = renderCallBody('competitor_repair', { ...base, scriptVariant: 'reframe' });
+    const dest = body.indexOf('I have the destination as');
+    const vehicle = body.indexOf('And I have a');
+    expect(dest).toBeGreaterThan(-1);
+    expect(vehicle).toBeGreaterThan(-1);
+    expect(dest).toBeLessThan(vehicle);
+  });
+
+  it('keeps the consent gate and guardrails in both arms', () => {
+    for (const scriptVariant of ['control', 'reframe'] as const) {
+      const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
+      expect(body).toContain('Only log a destination change on an explicit yes');
+      expect(body).toContain('let them finish');
+    }
   });
 
   // 2.9. A test call on 2026-08-14 offered one shop and then told the customer

@@ -21,7 +21,9 @@ import {
   renderCallBody,
   scenarioForDestinationTag,
   SCRIPT_VERSION,
+  pickScriptVariant,
   type ScriptContext,
+  type ScriptVariant,
 } from './flip-scripts';
 import { GeocoderService } from '../command-center/geocoder.service';
 
@@ -424,6 +426,11 @@ export class FlipOrchestratorService {
     }
 
     // 3. Decide.
+    // 3.0 A/B — seeded on the job id so a retry stays in the arm it started in.
+    const scriptVariant: ScriptVariant = pickScriptVariant(
+      job.relatedJobId ?? job.jobId ?? job.customerPhone,
+    );
+
     const decision: FlipDecision = decideFlip({
       source: job.source,
       destinationTag: destination.tag,
@@ -498,6 +505,7 @@ export class FlipOrchestratorService {
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
         : null,
+      scriptVariant,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -532,6 +540,7 @@ export class FlipOrchestratorService {
         // Attribution: which script text actually produced this call.
         scriptVersion: SCRIPT_VERSION,
         scenario: actualScenario,
+        scriptVariant,
       })
       .returning({ id: outboundCallLogs.id });
 
@@ -694,6 +703,7 @@ export class FlipOrchestratorService {
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
         : null,
+      scriptVariant: pickScriptVariant(job.relatedJobId ?? job.jobId ?? job.customerPhone),
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -904,6 +914,9 @@ export class FlipOrchestratorService {
     opts: { automatic?: boolean } = {},
   ): Promise<void> {
     const automatic = opts.automatic ?? true;
+    // 3.0 A/B — same seed rule as handleJob: stable per job, so this path and a
+    // later retry of the same job land in the same arm.
+    const jobScriptVariant: ScriptVariant = pickScriptVariant(job.id ?? job.callerPhone);
     const seenKey = `welcome:${tenantId}:${job.id}`;
     if (automatic && this.seen.has(seenKey)) return;
 
@@ -1073,6 +1086,7 @@ export class FlipOrchestratorService {
         alternateShops: flipEligible
           ? alternateShopsFor(ourShops, Number(job.pickupLat), Number(job.pickupLng), nearestShopName)
           : null,
+        scriptVariant: jobScriptVariant,
         conditionalShop: conditional.name,
         conditionalShopDistanceMiles:
           conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -1106,6 +1120,7 @@ export class FlipOrchestratorService {
           // Attribution: which script text actually produced this call.
           scriptVersion: SCRIPT_VERSION,
           scenario: actualScenario,
+          scriptVariant: jobScriptVariant,
         })
         .returning({ id: outboundCallLogs.id });
 

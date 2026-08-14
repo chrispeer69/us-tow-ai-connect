@@ -33,7 +33,92 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.9';
+export type ScriptVariant = 'control' | 'reframe';
+
+/**
+ * Session 75 — the 3.0 A/B split, Chris's call on 2026-08-14.
+ *
+ * Assign from a STABLE seed (the job id), never a coin flip at render time. A
+ * retried call must land in the arm it started in, or one conversation gets
+ * counted twice under two different scripts and the comparison is worthless.
+ *
+ * FNV-1a over the seed, then parity. Even → control, odd → reframe, which is
+ * the "every other call" Chris asked for without depending on call ordering.
+ */
+export function pickScriptVariant(seed: string | null | undefined): ScriptVariant {
+  const s = (seed ?? '').trim();
+  if (!s) return 'control';
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash % 2 === 0 ? 'control' : 'reframe';
+}
+
+function isReframe(ctx: ScriptContext): boolean {
+  return ctx.scriptVariant === 'reframe';
+}
+
+/**
+ * The app close, shared by every scenario. Was five identical copies of the
+ * same string, which is how a wording change gets applied to four of them.
+ *
+ * 'reframe' leads with what the app DOES — 24/7 access to partner towing
+ * companies and repair shops — and names it the Roadside Emergency Management
+ * App, per Chris on 2026-08-14.
+ *
+ * NOTE: the link itself is unchanged and still resolves to the CONVINI URL. The
+ * script never reads a URL aloud, so this is only visible when the customer
+ * opens the text. Renaming the destination is an operator decision, not a
+ * script one.
+ */
+function conviniCloseFor(ctx: ScriptContext): string {
+  if (isReframe(ctx)) {
+    return (
+      `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. ` +
+      `One last thing — we've built a free app that gives you 24/7 access to all our partner towing companies ` +
+      `and repair shops. It's called the Roadside Emergency Management App, and I've just texted you a link to it. ` +
+      `Take a look, and let us know if you have any questions. Thanks again for using {{company_name}}.`
+    );
+  }
+  return (
+    `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. ` +
+    `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`
+  );
+}
+
+export const SCRIPT_VERSION = '3.0';
+// 3.0 (2026-08-14) — A/B split, not a replacement. Chris's call: run the new
+//   call structure against the current one on alternating calls rather than
+//   cutting over, so the comparison is not confounded by day-of-week, weather,
+//   or which motor club happened to be busy.
+//
+//   'control' is the 2.9 flow, byte-identical. 'reframe' is Chris's restructure:
+//
+//   - Opening says up front that an offer is coming ("I'll confirm your tow
+//     details, and I can also save you some money at one of our partner repair
+//     shops"), so the offer later is a promise kept rather than an ambush.
+//   - Destination is confirmed BEFORE the vehicle, matching how Chris reads the
+//     job out loud: pickup, drop-off, car, problem.
+//   - The offer is introduced with a STATEMENT — "Now I would like to mention a
+//     few great offers from our in-network partner shops" — not a permission
+//     question. An explicit "would you like to hear about it?" adds a second
+//     decline point in front of the one we already have and converts the
+//     undecided middle into a clean no. That was the one piece of the original
+//     draft I argued against and Chris agreed to drop.
+//   - Close renames the app to the Roadside Emergency Management App and leads
+//     with 24/7 access to partner towing companies and repair shops.
+//
+//   Assignment is per JOB and stable across retries — see pickScriptVariant.
+//   Stamped onto outbound_call_logs.script_variant, which existed since 2.0 but
+//   had never been written: every historical row says 'control' by default, so
+//   only rows from 3.0 onward carry a real arm.
+//
+//   MEASUREMENT REALITY: ~20-25 offers/day split two ways is ~10-12 per arm.
+//   Detecting a real difference in wins per offer needs weeks, not days. Read
+//   offers-made and reached-the-offer first — those move faster and will show
+//   an own-goal early if the reframe suppresses the pitch.
 // 2.9 (2026-08-14) — offer 1 offers a CHOICE of shops, and "that's too far" has
 //   an answer. Chris's call after a test call went wrong.
 //
@@ -199,6 +284,20 @@ export interface ScriptContext {
    * block.
    */
   alternateShops?: Array<{ name: string; distanceMiles: number | null }> | null;
+
+  /**
+   * Session 75 — which arm of the 3.0 A/B split this call is in.
+   *
+   * 'control'  — the 2.9 flow, unchanged.
+   * 'reframe'  — Chris's restructure: say up front that an offer is coming,
+   *              confirm destination before the vehicle, name the offer with a
+   *              statement rather than asking permission, and close on the
+   *              Roadside Emergency Management App.
+   *
+   * Assigned per job, not per render, so a retried call stays in the arm it
+   * started in. Stamped onto `outbound_call_logs.script_variant`.
+   */
+  scriptVariant?: ScriptVariant | null;
 
   /**
    * Session 74 — the conditional offer, for calls whose destination could not
@@ -428,15 +527,24 @@ function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string 
   // Two calls on 2026-08-11 greeted the customer with an unusable name field —
   // a coordinate string in one case. Better to ask who we're speaking to than
   // to read junk at them.
+  const reframe = isReframe(ctx);
   const identify = isUnusableName(ctx.customerFirstName)
-    ? `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with the owner of the vehicle?"`
-    : `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"`;
+    ? reframe
+      ? `AI: "Hi, this is {{rep_name}} from {{company_name}} — I'm an AI assistant, and I'm calling about your tow request. Am I speaking with the owner of the vehicle?"`
+      : `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with the owner of the vehicle?"`
+    : reframe
+      ? `AI: "Hi, is that {{customer_first_name}}? This is {{rep_name}} from {{company_name}} — I'm an AI assistant, and I'm calling about your tow request."`
+      : `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"`;
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
 ${identify}
 [AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call. If you reach an automated menu, a switchboard, or a business greeting rather than a person, do not work through the menu — leave the brief message if you can and end the call.]`;
 
-  const defaultPurpose = `[STEP 2 — PURPOSE OF CALL]
+  const defaultPurpose = reframe
+    ? `[STEP 2 — PURPOSE OF CALL]
+AI: "I'll confirm your tow details, and I can also save you some money at one of our partner repair shops. Let's get the details out of the way first."
+[AGENT: This sentence is the whole point of the reframe arm — it tells the customer up front that an offer is coming, so the offer later is a promise kept rather than a surprise. Say it in full. Do not ask whether now is a good time, and do not ask permission to make the offer later. Proceed directly into pickup confirmation unless the customer interrupts.]`
+    : `[STEP 2 — PURPOSE OF CALL]
 AI: "Thanks. I'll keep this quick and start with your pickup details."
 [AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
@@ -452,7 +560,7 @@ function confirmBlock(
   ctx: ScriptContext,
   vars: Record<string, string>,
   clarifyIssueLine: string,
-  options: { includeDestination?: boolean } = {},
+  options: { includeDestination?: boolean; destinationOverride?: string } = {},
 ): string {
   const includeDestination = options.includeDestination ?? true;
   const isWinchOut = ctx.issueSubcategory === 'winch_out';
@@ -467,7 +575,7 @@ AI: "And I have a {{vehicle}}. Is that right?"
 
   const defaultIssue = `[STEP 5 — CLARIFY THE ISSUE]
 ${clarifyIssueLine}
-[AGENT: Listen to their answer and acknowledge it in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`;
+[AGENT: Ask this, then STOP TALKING and let them finish. Do not speak over them, do not start the next sentence while they are still describing the problem, and do not move on during a pause — wait until they have clearly finished. If they ask you to hold, wait; never end the call because they went quiet for a moment. Then acknowledge what they said in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`;
 
   const defaultDestination = isWinchOut
     ? `[STEP 6 — CONFIRM WINCH-OUT SERVICE LOCATION]
@@ -486,6 +594,19 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   const issue = ctx.scriptBlocks?.clarify_issue ?? ctx.globalScriptBlocks?.clarify_issue ?? defaultIssue;
   const destination = ctx.scriptBlocks?.confirm_destination ?? ctx.globalScriptBlocks?.confirm_destination ?? defaultDestination;
 
+  // 3.0 'reframe' reads the job back in the order Chris says it out loud:
+  // pickup, drop-off, car, problem. Control keeps pickup, car, problem,
+  // drop-off. The destination slot may be supplied by the scenario (scenario A
+  // asks intent without locking it), which is why it is injected rather than
+  // always taken from the default.
+  const destinationBlock = options.destinationOverride ?? interpolate(destination, vars);
+  if (isReframe(ctx)) {
+    const blocks = [interpolate(pickup, vars)];
+    if (includeDestination) blocks.push(``, destinationBlock);
+    blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars));
+    return blocks.join('\n');
+  }
+
   const blocks = [
     interpolate(pickup, vars),
     ``,
@@ -494,7 +615,7 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
     interpolate(issue, vars),
   ];
   if (includeDestination) {
-    blocks.push(``, interpolate(destination, vars));
+    blocks.push(``, destinationBlock);
   }
   return blocks.join('\n');
 }
@@ -510,7 +631,13 @@ function issueGuidanceBlock(ctx: ScriptContext): string {
 
 /** Warm close, shared by all scenarios. */
 function warmCloseBlock(ctx: ScriptContext, vars: Record<string, string>): string {
-  const defaultClose = `=== WARM CLOSE (all scenarios) ===
+  const defaultClose = isReframe(ctx)
+    ? `=== WARM CLOSE (all scenarios) ===
+[AGENT: Do not ask whether the app text came through.]
+AI: "Anything else before you go?"
+AI: "Bye for now."
+[AGENT: End the call.]`
+    : `=== WARM CLOSE (all scenarios) ===
 [AGENT: Do not ask whether the CONVINI text came through.]
 AI: "Anything else before you go?"
 AI: "Drive safe."
@@ -597,8 +724,15 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // entirely when we have no address, rather than left as an empty phrase.
   const shopAddressPhrase = ctx.nearestShopAddress?.trim() ? ` at {{nearest_shop_address}}` : ``;
 
+  // 'reframe' already announced the offer one line earlier ("Now I would like
+  // to mention a few great offers..."), so the old preamble would announce it
+  // twice. Control keeps it — it is the line that front-loads the ask.
+  const offerPreamble = isReframe(ctx)
+    ? ``
+    : `Before I confirm the drop-off — one quick option and then I'll let you go. `;
+
   const singleShopOffer1 =
-    `Before I confirm the drop-off — one quick option and then I'll let you go. We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
+    `${offerPreamble}We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
     (distanceShort ? `, ${distanceShort}` : ``) +
     `: they include the diagnostic at no charge, normally around \${{diagnostic_value}}, and take 10 percent off the repair. ` +
     (hasSeparateDestination(ctx)
@@ -629,7 +763,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     .join('; ');
 
   const multiShopOffer1 =
-    `Before I confirm the drop-off — one quick option and then I'll let you go. ` +
+    `${offerPreamble}` +
     `We work with several certified partner shops in your area, and they all include the diagnostic at no charge, ` +
     `normally around \${{diagnostic_value}}, plus 10 percent off the repair for new customers. ` +
     `The closest to you are ${choiceList}. ` +
@@ -664,7 +798,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // One of two wins on 2026-08-11 rested on a reply given amid unrelated, partly
   // unintelligible speech. A destination change is not something to infer.
   const consentGate = `[AGENT: Before you treat any reply as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to {{nearest_shop}} instead?" Only log a destination change on an explicit yes.]`;
-  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = conviniCloseFor(ctx);
 
   // Two gates, both hard. No partner shop on file means there is nothing
   // truthful to offer — on 2026-08-11 an agent with no shop invented "a partner
@@ -696,7 +830,19 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     ? `[AGENT: DISTANCE OBJECTION. If the customer says {{nearest_shop}} is too far, or asks for somewhere closer or more local -> NEVER say we have no other partner shops. We have others. Be straight that {{nearest_shop}} is the closest one to their pickup, then name the rest and let them choose: ${alternateList}. Name ONE at a time and wait for an answer before naming another. Do not promise anything nearer than {{nearest_shop}}. If none of them suit, accept it and go to the CONVINI close.]`
     : `[AGENT: DISTANCE OBJECTION. If the customer says {{nearest_shop}} is too far or asks for somewhere closer -> do NOT claim we have no other partner shops, and do NOT invent one. Say "That's the closest one to you, but let me have our office check what else we can do and call you straight back", then go to the CONVINI close.]`;
 
+  // 3.0 'reframe' — a statement, not a permission question. Chris's wording.
+  // The opening already told them an offer was coming; this collects on that
+  // promise rather than asking for leave to make it.
+  const offerBridge = isReframe(ctx)
+    ? [
+        ``,
+        `AI: "Now I would like to mention a few great offers from our in-network partner shops."`,
+        `[AGENT: This is a statement. Do NOT turn it into a question, do not ask whether they would like to hear the offers, and do not wait for permission — go straight into the offer below.]`,
+      ]
+    : [];
+
   const flipBlock = offersAllowed ? [
+        ...offerBridge,
         ``,
         interpolate(ctx.scriptBlocks?.offer_1 ?? ctx.globalScriptBlocks?.offer_1 ?? defaultOffer1, vars),
         ``,
@@ -785,12 +931,23 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     `=== PHASE 1: DATA CONFIRMATION ===`,
     openingBlock(ctx, vars),
     ``,
-    confirmBlock(ctx, vars, clarify, { includeDestination: false }),
-    ``,
-    issueGuidanceBlock(ctx),
-    ``,
-    destinationIntent,
-    ``,
+    // 'reframe' folds the destination question into the confirm sequence so it
+    // lands second, right after pickup. 'control' keeps it after the issue.
+    ...(isReframe(ctx)
+      ? [
+          confirmBlock(ctx, vars, clarify, { destinationOverride: destinationIntent }),
+          ``,
+          issueGuidanceBlock(ctx),
+          ``,
+        ]
+      : [
+          confirmBlock(ctx, vars, clarify, { includeDestination: false }),
+          ``,
+          issueGuidanceBlock(ctx),
+          ``,
+          destinationIntent,
+          ``,
+        ]),
     `=== PHASE 2: THE 3-TIER FLIP ===`,
     ...noOfferNote,
     ...flipBlock,
@@ -842,7 +999,7 @@ function scenarioB(ctx: ScriptContext): string {
     ? `AI: "Understood, that sounds like ${damageKind}. Just to let you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} If we can ever be of help let us know. No pressure either way — ${closingLine}."`
     : `AI: "Understood. Just to let you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. If we can ever be of help down the road, let us know — no pressure at all. ${closingLine.charAt(0).toUpperCase()}${closingLine.slice(1)}."`;
 
-  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -889,7 +1046,7 @@ function scenarioC(ctx: ScriptContext): string {
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
   
   const vars = baseVars(ctx);
-  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = ctx.pitchConvini ? [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -950,7 +1107,7 @@ function scenarioC(ctx: ScriptContext): string {
 function scenarioD(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -984,7 +1141,7 @@ function scenarioD(ctx: ScriptContext): string {
 function scenarioAaaBranded(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = conviniCloseFor(ctx);
 
   return [
     `# SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE)`,
