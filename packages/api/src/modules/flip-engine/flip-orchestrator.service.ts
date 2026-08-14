@@ -81,10 +81,54 @@ function scenarioForNonEligible(
     : scenarioForDestinationTag(destinationTag);
 }
 
+/**
+ * How far a partner shop may be from the PICKUP and still be worth offering.
+ *
+ * Was 100 miles, which is not a catchment area — it is the whole state. On
+ * 2026-08-13 the agent pitched shops 13 and 19 miles away, one of them in a
+ * different town from the customer's own local shop; both were declined
+ * instantly and the offer cost credibility. A driver is not detouring 19 miles
+ * for a free diagnostic.
+ *
+ * 12 miles keeps every Alpha location reachable across the Columbus metro while
+ * cutting the pitches that were never going to land. Tenant-overridable via
+ * max_shop_distance_miles.
+ */
+const DEFAULT_MAX_SHOP_DISTANCE_MILES = 12;
+
+/** Business/dispatch words that mean the "customer" field is not a person. */
+const NOT_A_PERSON =
+  /(customers?\b|\bllc\b|\binc\b|\bcorp\b|\bco\b|dept|department|salvage|towing|tow yard|impound|storage|dispatch|account|repair|automotive|collision|body shop|service center|motors\b)/i;
+
+/**
+ * The spoken first name, or '' when the field is not a person's name.
+ *
+ * Returning '' rather than a placeholder is deliberate: the caller treats an
+ * empty name as unusable and falls back to "Am I speaking with the owner of the
+ * vehicle?". The old 'there' default leaked through as if it were a real name
+ * and produced "Am I speaking with there?" on live calls.
+ *
+ * Matched against the FULL field, not the first token — that is the only way to
+ * see that "Salvage At Repair Facility Tow Yard" is not somebody called Salvage.
+ */
 function firstNameOf(full: string | null | undefined): string {
   const n = (full ?? '').trim();
-  if (!n) return 'there';
+  if (!n) return '';
+  if (NOT_A_PERSON.test(n)) return '';
   return n.split(/\s+/)[0];
+}
+
+/** Street address of a partner shop, for naming it inside the offer. */
+function shopAddressFor(
+  shops: Array<{ name: string; addressLine?: string | null; city?: string | null }>,
+  shopName: string | null,
+): string | null {
+  if (!shopName) return null;
+  const target = shopName.toLowerCase().trim();
+  const shop = shops.find((s) => s.name.toLowerCase().trim() === target);
+  if (!shop?.addressLine?.trim()) return null;
+  const city = shop.city?.trim();
+  return city ? `${shop.addressLine.trim()} in ${city}` : shop.addressLine.trim();
 }
 
 /**
@@ -359,7 +403,7 @@ export class FlipOrchestratorService {
         pickupLng: job.pickupLng,
         shopType: 'REPAIR',
       });
-      const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+      const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES);
       if (pick.shop && pick.distanceMiles != null && pick.distanceMiles <= maxDistance) {
         nearestShopName = pick.shop.name;
         distanceMilesSaved = pick.distanceMiles;
@@ -385,7 +429,7 @@ export class FlipOrchestratorService {
       pickupLat: job.pickupLat,
       pickupLng: job.pickupLng,
       maxDistanceMiles: Number(
-        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES,
       ),
     });
     const actualScenario = flipEligible ? scenario : scenarioForNonEligible(destination.tag, decision);
@@ -408,6 +452,7 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -542,7 +587,7 @@ export class FlipOrchestratorService {
     } | null = null;
     let nearestShopName: string | null = null;
     let distanceMilesSaved: number | null = null;
-    const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+    const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES);
     if (decision.flipEligible && job.pickupLat != null && job.pickupLng != null) {
       const pick = await this.flipEngine.pickNearestShop({
         tenantId,
@@ -579,7 +624,7 @@ export class FlipOrchestratorService {
       pickupLat: job.pickupLat,
       pickupLng: job.pickupLng,
       maxDistanceMiles: Number(
-        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES,
       ),
     });
     const ctx: ScriptContext = {
@@ -600,6 +645,7 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -929,7 +975,7 @@ export class FlipOrchestratorService {
           pickupLng: Number(job.pickupLng),
           shopType: 'REPAIR',
         });
-        const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+        const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES);
         if (pick.shop && pick.distanceMiles != null && pick.distanceMiles <= maxDistance) {
           nearestShopName = pick.shop.name;
           distanceMilesSaved = pick.distanceMiles;
@@ -952,7 +998,7 @@ export class FlipOrchestratorService {
         pickupLat: job.pickupLat != null ? Number(job.pickupLat) : null,
         pickupLng: job.pickupLng != null ? Number(job.pickupLng) : null,
         maxDistanceMiles: Number(
-          cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+          cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES,
         ),
       });
 
@@ -975,6 +1021,7 @@ export class FlipOrchestratorService {
         nearestShop: flipEligible ? nearestShopName : null,
         nearestShopDistanceMiles:
           flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+        nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
         conditionalShop: conditional.name,
         conditionalShopDistanceMiles:
           conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -1140,7 +1187,7 @@ export class FlipOrchestratorService {
         pickupLng: geocoded.lng,
         shopType: 'REPAIR',
       });
-      const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100);
+      const maxDistance = Number(cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES);
       if (pick.shop && pick.distanceMiles != null && pick.distanceMiles <= maxDistance) {
         nearestShopName = pick.shop.name;
         distanceMilesSaved = pick.distanceMiles;
@@ -1166,7 +1213,7 @@ export class FlipOrchestratorService {
       pickupLat: geocoded?.lat ?? null,
       pickupLng: geocoded?.lng ?? null,
       maxDistanceMiles: Number(
-        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? 100,
+        cfg.max_shop_distance_miles ?? globalCfg.max_shop_distance_miles ?? DEFAULT_MAX_SHOP_DISTANCE_MILES,
       ),
     });
 
@@ -1185,6 +1232,7 @@ export class FlipOrchestratorService {
       issueSubcategory: issue.subcategory,
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles: flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
+      nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,

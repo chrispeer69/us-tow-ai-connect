@@ -33,7 +33,14 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.5';
+export const SCRIPT_VERSION = '2.6';
+// 2.6 (2026-08-14) — approved from the 08-13 review. Offer 1 and offer 2 now
+//   name the shop's street address, answering the question that killed a flip
+//   outright ("where actually is it?"); offer 2 adds the written-estimate
+//   reassurance. Unusable customer names no longer reach the caller's ears —
+//   "there", "Salvage", "Hexion-Customers" were all spoken aloud on 08-13 — and
+//   the vocative now disappears entirely rather than degrading to a placeholder.
+//   Shop catchment cut from 100 miles to 12: a 19-mile pitch is not credible.
 // 2.5 (2026-08-13) — single flat tires are flip-eligible again, on Chris's
 //   call. Low value is not no value: the job still lands at somebody's shop and
 //   we were handing those over. `full_tire_set` was always eligible; this only
@@ -95,6 +102,13 @@ export interface ScriptContext {
   // Flip data (Scenario A)
   nearestShop?: string | null;
   nearestShopDistanceMiles?: number | null;
+  /**
+   * Street address of the shop being offered. Twice now a customer has asked
+   * where the shop actually is and the agent had only a mileage figure; on
+   * 2026-08-13 the customer declined on the very next turn. The addresses were
+   * in alpha_shops the whole time — they were simply never passed in.
+   */
+  nearestShopAddress?: string | null;
 
   /**
    * Session 74 — the conditional offer, for calls whose destination could not
@@ -269,7 +283,14 @@ function isUnusableName(name: string | null | undefined): boolean {
   if (n.length < 2) return true;
   if (/\d/.test(n) && /[.,-]/.test(n)) return true; // coordinate-ish
   if (/^[\d\s.,+-]+$/.test(n)) return true; // all digits/punctuation
-  return /^(unknown|n\/?a|null|undefined|customer|caller|test)$/i.test(n);
+  // "there" is our own empty-name placeholder leaking through as if it were a
+  // real name — it produced "Am I speaking with there?" on live calls.
+  // The rest are business/dispatch words seen in the customer field on
+  // 2026-08-13: "Salvage", "Hexion-Customers", "Dipping".
+  if (/(customers?|llc|inc\b|corp|dept|department|salvage|towing|tow yard|impound|storage|dispatch|account)/i.test(n)) {
+    return true;
+  }
+  return /^(unknown|n\/?a|null|undefined|customer|caller|test|there|owner|driver|dipping)$/i.test(n);
 }
 
 function baseVars(ctx: ScriptContext): Record<string, string> {
@@ -286,11 +307,18 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
     customer_first_name: isUnusableName(ctx.customerFirstName)
       ? 'there'
       : ctx.customerFirstName,
+    // A vocative that disappears entirely when we have no usable name, so the
+    // close reads "You're all set." rather than "You're all set, there." or,
+    // worse, "You're all set, Salvage." — both heard on 2026-08-13.
+    customer_salutation: isUnusableName(ctx.customerFirstName)
+      ? ''
+      : `, ${ctx.customerFirstName}`,
     vehicle: ctx.vehicle,
     pickup_location: ctx.pickupLocation,
     destination: ctx.destination,
     issue: ctx.issue,
     nearest_shop: ctx.nearestShop ?? '',
+    nearest_shop_address: ctx.nearestShopAddress ?? '',
     nearest_shop_distance:
       ctx.nearestShopDistanceMiles != null
         ? String(ctx.nearestShopDistanceMiles)
@@ -470,8 +498,13 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // Front-loaded: four customers cut the previous pitch off mid-sentence, so the
   // decline was to the length of the monologue rather than to the offer. Ask
   // first, justify second, and name the alternative so "no" is a real choice.
+  // Naming the street address answers the question that killed the flip on
+  // 2026-08-13 ("where actually is it?") before it has to be asked. Omitted
+  // entirely when we have no address, rather than left as an empty phrase.
+  const shopAddressPhrase = ctx.nearestShopAddress?.trim() ? ` at {{nearest_shop_address}}` : ``;
+
   const defaultOffer1 =
-    `Before I confirm the drop-off — one quick option and then I'll let you go. We work with a certified shop, {{nearest_shop}}` +
+    `Before I confirm the drop-off — one quick option and then I'll let you go. We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
     (distanceShort ? `, ${distanceShort}` : ``) +
     `: they include the diagnostic at no charge, normally around \${{diagnostic_value}}, and take 10 percent off the repair. ` +
     (hasSeparateDestination(ctx)
@@ -481,16 +514,22 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // Offer 2 previously restated the same benefits the customer had just turned
   // down; it went 0 for 11. Ask why instead — if the reason is a regular shop or
   // an insurer, there is no offer to make and pushing only costs goodwill.
+  // Keeps the diagnostic question (it is what makes tier 2 different from tier
+  // 1) and adds the two things a hesitant customer actually asked for on
+  // 2026-08-13: where the shop is, and what happens before any work starts.
+  const offer2Reassurance =
+    `{{nearest_shop}}${shopAddressPhrase} is certified, they give you a written estimate before any work starts, ` +
+    `and the free diagnostic plus 10 percent off still stands. I'd sort the change out with the driver.`;
   const defaultOffer2 = hasSeparateDestination(ctx)
-    ? `Totally fair — can I ask what's taking you to {{destination}}? If that's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, {{nearest_shop}} would include the diagnostic and 10 percent off the repair, and I'd sort the change out with the driver.`
-    : `Totally fair — can I ask what's taking you to that shop? If it's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, {{nearest_shop}} would include the diagnostic and 10 percent off the repair, and I'd sort the change out with the driver.`;
+    ? `Totally fair — can I ask what's taking you to {{destination}}? If that's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, ${offer2Reassurance}`
+    : `Totally fair — can I ask what's taking you to that shop? If it's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, ${offer2Reassurance}`;
 
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
 
   // One of two wins on 2026-08-11 rested on a reply given amid unrelated, partly
   // unintelligible speech. A destination change is not something to infer.
   const consentGate = `[AGENT: Before you treat any reply as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to {{nearest_shop}} instead?" Only log a destination change on an explicit yes.]`;
-  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   // Two gates, both hard. No partner shop on file means there is nothing
   // truthful to offer — on 2026-08-11 an agent with no shop invented "a partner
@@ -505,7 +544,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         ``,
         interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: If they give a soft objection like "I already have a shop" -> make Offer 2. If they give a hard decline -> stop pitching, keep the original destination, and jump to the CONVINI close.]`,
+        `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-13, 10 of 12 declines went straight to the close and the ladder was never run. Go to Offer 2 unless they gave a REASON (their regular shop, their insurer, a warranty, a dealership they chose) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder.]`,
       ] : [];
 
   const offer2Block = offersAllowed ? [
@@ -626,10 +665,10 @@ function scenarioB(ctx: ScriptContext): string {
     : ``;
 
   const bodyShopMention = isActiveDamageJob
-    ? `AI: "Understood, that sounds like ${damageKind}. Just to let you know, {{customer_first_name}}, we own our own body shops here in the area${shopList}.${insuranceLine} If we can ever be of help let us know. No pressure either way — ${closingLine}."`
-    : `AI: "Understood. Just to let you know, {{customer_first_name}}, we own our own body shops here in the area${shopList}. If we can ever be of help down the road, let us know — no pressure at all. ${closingLine.charAt(0).toUpperCase()}${closingLine.slice(1)}."`;
+    ? `AI: "Understood, that sounds like ${damageKind}. Just to let you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} If we can ever be of help let us know. No pressure either way — ${closingLine}."`
+    : `AI: "Understood. Just to let you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. If we can ever be of help down the road, let us know — no pressure at all. ${closingLine.charAt(0).toUpperCase()}${closingLine.slice(1)}."`;
 
-  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -676,7 +715,7 @@ function scenarioC(ctx: ScriptContext): string {
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
   
   const vars = baseVars(ctx);
-  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = ctx.pitchConvini ? [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -737,7 +776,7 @@ function scenarioC(ctx: ScriptContext): string {
 function scenarioD(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
     interpolate(ctx.scriptBlocks?.convini_pitch ?? ctx.globalScriptBlocks?.convini_pitch ?? defaultConvini, vars),
@@ -771,7 +810,7 @@ function scenarioD(ctx: ScriptContext): string {
 function scenarioAaaBranded(ctx: ScriptContext): string {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
   const vars = baseVars(ctx);
-  const defaultConvini = `You're all set, {{customer_first_name}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  const defaultConvini = `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
 
   return [
     `# SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE)`,
