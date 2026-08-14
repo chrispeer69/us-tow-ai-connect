@@ -51,6 +51,38 @@ export interface TowingSoftwareAdapter {
     sourceJobId: string,
     reason: string,
   ): Promise<AdapterActionResult>;
+
+  /**
+   * Session 75 — write an "AI Notes" block into the job's details box.
+   *
+   * The point of the integration: on 2026-08-14, 118 of 421 calls carried a
+   * real correction ("Corrected pickup address from 766 to 763 South Richardson
+   * Avenue and clarified car is parked in the alley behind the address") and not
+   * one of them ever reached the dispatch system. The driver went to the address
+   * on the ticket.
+   *
+   * CONTRACT — every implementation must hold all four:
+   *
+   *  1. APPEND ONLY. Read the current value, append, write back. The details box
+   *     belongs to the customer and may carry dispatcher notes a driver depends
+   *     on. Compose the new value with `appendAiNotes` rather than concatenating
+   *     by hand — that is what keeps this a property rather than a promise.
+   *  2. IDEMPOTENT. A webhook delivered twice must not stack blocks. Check with
+   *     `alreadyContainsAiNote` before writing.
+   *  3. NEVER THROW. Return the result, like accept/decline, so a failed write
+   *     is visible in the audit trail instead of killing the caller.
+   *  4. VERIFY. Read the field back after writing and only report success when
+   *     the text is actually there. A click that silently did nothing is the
+   *     failure mode these portals actually have.
+   *
+   * Optional: implemented only for portals whose job records we are permitted to
+   * write to.
+   */
+  updateJobNotes?(
+    tenantId: string,
+    sourceJobId: string,
+    notesBlock: string,
+  ): Promise<AdapterActionResult>;
 }
 
 export enum SoftwareType {
