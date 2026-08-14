@@ -7,9 +7,9 @@ All figures pulled from production `outbound_call_logs` on 2026-08-14.
 
 ## 1. Summary
 
-Five releases shipped today. Four are defect fixes. One — script 3.0 — is a new
-call structure that is running as an **A/B test against the current script**,
-not as a replacement.
+Seven releases shipped today. Most are defect fixes. One — script 3.0 — is a new
+call structure running as an **A/B test against the current script**, not as a
+replacement.
 
 | Version | What it is | Type |
 |---|---|---|
@@ -17,6 +17,8 @@ not as a replacement.
 | Retell agent v36 | Prompt rules stopped contradicting the script | Defect fix |
 | 2.9 | Offer 1 offers a choice of shops; "too far" has an answer | Defect fix + copy |
 | 3.0 | Chris's new call structure, as an A/B split | **Experiment** |
+| Offer terms | VIP visual diagnostic, up to an hour, $179, up to 10% | Accuracy fix |
+| Retell agent v38 | Agent may not inflate the offer terms | Guardrail |
 | — | AAA guardrail; partner-shop self-poach | Defect fix |
 
 **The single most important number to watch is not wins.** It is the share of
@@ -73,8 +75,11 @@ Rule 32's closing claim is false. Offer 2 has produced 12 wins across 282 runs,
 every one of them a second attempt after a decline.
 
 Both rules now draw the same constraint/preference line as the script. Shipped
-as **agent v36**, published, with `RETELL_AGENT_VERSION` repointed 35 → 36.
-**v35 is untouched and remains a working rollback target.**
+as **agent v36**, published. Superseded by **v38** (section 3.5), which is what
+`RETELL_AGENT_VERSION` now points to. **v35 and v36 are untouched and remain
+working rollback targets.** (v37 and v39 are unpublished drafts created as a
+side effect of versioning; live calls are pinned to a published version, so they
+are inert.)
 
 Both prompts are checked into `docs/backups/` because Retell edits are otherwise
 invisible to this repo.
@@ -175,9 +180,10 @@ confounds.
 > "Now I would like to mention a few great offers from our in-network partner
 > shops."
 >
-> "We work with several certified partner shops in your area, and they all
-> include the diagnostic at no charge, normally around $89, plus 10 percent off
-> the repair for new customers. The closest to you are Wayne's Auto Repair —
+> "We work with several certified partner shops in your area, and as a new VIP
+> customer you'd get a free visual mechanical diagnostic — a visual inspection of
+> up to an hour, normally a $179 value — plus up to 10 percent off parts and
+> labor. The closest to you are Wayne's Auto Repair —
 > Powell, about 7 miles away; Wayne's Auto Repair — Columbus, about 8 miles;
 > Wayne's Auto Repair — Westerville, about 9 miles. Would one of those work
 > instead of 5816 Columbus Pike, or would you like me to just send the driver to
@@ -203,6 +209,52 @@ from turning the bridge back into a question.
 
 **The AI disclosure was kept**, against the draft. The tenant's own agent rules
 require it, and AI-voice disclosure rules are tightening. It costs six words.
+
+---
+
+## 3.5 The offer terms, stated accurately
+
+The offer we were describing was not the offer being given. Three corrections,
+all in the same pass:
+
+| Was said | Actually is |
+|---|---|
+| "the diagnostic", no scope | a **visual mechanical diagnostic** — a visual inspection |
+| "a full hour of diagnostic time" | **up to** one hour |
+| "$89" | **$179** |
+| "10 percent off the repair" | **up to 10 percent off parts and labor** |
+| no mention of VIP | free for **new VIP customers** |
+
+As spoken now:
+
+> "…as a new VIP customer you'd get a free visual mechanical diagnostic — a
+> visual inspection of up to an hour, normally a $179 value — plus up to 10
+> percent off parts and labor."
+
+Two of these mattered beyond tidiness. **$89 undersold the giveaway by half.**
+And **"a full hour" promised more than the shops agreed to** — that was an error
+introduced earlier the same day and corrected within the hour.
+
+Applied to all five places the offer is stated: offer 1, the single-shop
+fallback, the conditional offer, and the two legacy helpers. Offer 2's
+reassurance restates it in short form — repeating full terms on a second pass
+reads as pressure.
+
+**Both "up to"s are load-bearing**, so they are now guarded in two layers:
+
+- **Script directive.** Never promise a full hour, never promise a flat 10
+  percent, never imply a teardown, road test, computer scan, or parts removed.
+- **Retell agent v38, rule 33.** The same constraint at the prompt layer, which
+  is where improvisation happens. Also forbids quoting any dollar figure or
+  percentage the script did not supply.
+
+If asked what the diagnostic covers, the authorized answer is that a technician
+looks the vehicle over and gives a written quote before any work begins. That
+question gets asked, and previously the agent would have improvised the answer —
+it has invented policy on live calls twice this week.
+
+VIP already had a pronunciation rule in the agent prompt ("vee-eye-pee"), so it
+is not read as a word.
 
 ---
 
@@ -274,7 +326,7 @@ Each piece reverses independently:
 
 | To undo | Do this |
 |---|---|
-| Retell prompt rules | Repoint `RETELL_AGENT_VERSION` to `35` and redeploy |
+| Retell prompt rules | Repoint `RETELL_AGENT_VERSION` to `36` (or `35`) and redeploy |
 | Script 3.0 A/B | `git revert f523ecd` — all calls return to the 2.9 flow |
 | Choice-of-shops offer | `git revert db3ae6b` |
 | Offer ladder (2.8) | `git revert 3650a3b` |
@@ -294,6 +346,8 @@ Setting a Railway variable does **not** restart the process on its own — run
 | `b7e225d` | Retell agent v36: the prompt no longer contradicts the script |
 | `db3ae6b` | Fix the test-call path that invented a shop and a distance |
 | `f523ecd` | Script 3.0: run the new call structure as an A/B split |
+| `e99b8cd` | Diagnostic is a full hour, and it is worth $179 not $89 |
+| `bcfa4c4` | State the offer accurately: VIP visual diagnostic, up to an hour, up to 10% |
 
 Test status: **164 of 164 flip-engine tests pass.** Eleven pre-existing failures
 remain elsewhere in the API suite (`admin-auth.guard`, `outbound-voice.service`,
