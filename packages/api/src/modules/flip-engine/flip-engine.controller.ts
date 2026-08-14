@@ -97,6 +97,7 @@ const ConfigPatchSchema = z.object({
         warm_close: z.string().optional(),
         offer_1: z.string().optional(),
         offer_2: z.string().optional(),
+        offer_2_reassurance: z.string().optional(),
         offer_3: z.string().optional(),
         convini_pitch: z.string().optional(),
       }).optional(),

@@ -33,7 +33,40 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.7';
+export const SCRIPT_VERSION = '2.8';
+// 2.8 (2026-08-14) — the offer ladder is switched back on. Structural, hence
+//   the version bump on the same day as 2.7.
+//
+//   Measured on 08-14: offer 2 fired on 0 of 13 offer-1 declines. Escalation
+//   ran 29–44% of declines on 08-07 through 08-11 and has been 0–15% since
+//   08-12. Offer 2 has produced 12 of the programme's 62 all-time wins (19%),
+//   12 wins across 282 runs — it is the backstop for days when offer 1 goes
+//   cold, and today offer 1 went 0-for-13 with no second rung behind it.
+//
+//   Cause, in this file: both the 2.0 directives and the 2.0 offer-2 wording
+//   treated "it's my regular shop" as a reason to end the ladder. That is the
+//   single most common way a customer declines a shop switch, so the ladder
+//   terminated on nearly every decline. Worse, from 2.7 — the first version
+//   whose words actually reach customers — offer 2 SPOKE the exit line before
+//   asking the question ("If that's your regular shop [...] I'll leave it
+//   exactly as it is"), and customers took it. See the 08-14 John R C. call.
+//
+//   The distinction the script had collapsed: a CONSTRAINT (the insurer or
+//   motor club chose the shop, a warranty, a dealership obligation, work
+//   already underway) means there is genuinely no offer to make, and pushing
+//   only costs goodwill — that guardrail is kept. A PREFERENCE ("my regular
+//   shop", "I know the guy", "it's closer", "it's what was on the ticket") is
+//   not a constraint and still gets offer 2.
+//
+//   Offer 2 is now the question alone; the reassurance is a separate spoken
+//   block the agent reaches only after hearing a preference. That preserves
+//   2.3's reason for keeping them apart — stacking them reproduced the density
+//   failure the 08-12 review found — while giving the agent something to say.
+//
+//   Offer 3 is deliberately left restrictive: 2 wins across 175 runs.
+//
+//   Note the 2.0 comment below claims offer 2 "went 0 for 11". That window was
+//   too narrow to support gutting the rung; all-time it is 12 wins.
 // 2.7 (2026-08-14) — NOT a wording change. This is the version at which the
 //   wording changes from 2.0 onward actually began reaching customers.
 //
@@ -167,6 +200,8 @@ export interface ScriptContext {
     warm_close?: string | null;
     offer_1?: string | null;
     offer_2?: string | null;
+    /** 2.8 — the second-offer line the agent reaches after hearing a preference. */
+    offer_2_reassurance?: string | null;
     offer_3?: string | null;
     convini_pitch?: string | null;
   };
@@ -180,6 +215,8 @@ export interface ScriptContext {
     warm_close?: string | null;
     offer_1?: string | null;
     offer_2?: string | null;
+    /** 2.8 — the second-offer line the agent reaches after hearing a preference. */
+    offer_2_reassurance?: string | null;
     offer_3?: string | null;
     convini_pitch?: string | null;
   };
@@ -530,17 +567,23 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
       : `Want me to send the driver there instead?`);
 
   // Offer 2 previously restated the same benefits the customer had just turned
-  // down; it went 0 for 11. Ask why instead — if the reason is a regular shop or
-  // an insurer, there is no offer to make and pushing only costs goodwill.
-  // Keeps the diagnostic question (it is what makes tier 2 different from tier
-  // 1) and adds the two things a hesitant customer actually asked for on
-  // 2026-08-13: where the shop is, and what happens before any work starts.
-  const offer2Reassurance =
-    `{{nearest_shop}}${shopAddressPhrase} is certified, they give you a written estimate before any work starts, ` +
-    `and the free diagnostic plus 10 percent off still stands. I'd sort the change out with the driver.`;
+  // down; over a narrow window it went 0 for 11 and was rewritten into a
+  // question. All-time it is 12 wins of 62 — see the 2.8 note in the header.
+  //
+  // 2.8: the question stays (it is what makes tier 2 different from tier 1) but
+  // it no longer announces its own surrender. The reassurance it used to bury
+  // behind "if it's just what was on the ticket" is now a block of its own, so
+  // the agent has something to actually say to a preference. It carries the two
+  // things a hesitant customer asked for on 2026-08-13: where the shop is, and
+  // what happens before any work starts.
   const defaultOffer2 = hasSeparateDestination(ctx)
-    ? `Totally fair — can I ask what's taking you to {{destination}}? If that's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, ${offer2Reassurance}`
-    : `Totally fair — can I ask what's taking you to that shop? If it's your regular shop or your insurer picked it, I'll leave it exactly as it is. If it's just what was on the ticket, ${offer2Reassurance}`;
+    ? `Totally fair — can I ask what's taking you to {{destination}}?`
+    : `Totally fair — can I ask what's taking you to that shop?`;
+
+  const defaultOffer2Reassurance =
+    `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
+    `a written estimate before any work starts, and the free diagnostic plus 10 percent off still stands. ` +
+    `I'd sort the change out with the driver. Want me to switch it?`;
 
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
 
@@ -562,17 +605,27 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         ``,
         interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-13, 10 of 12 declines went straight to the close and the ladder was never run. Go to Offer 2 unless they gave a REASON (their regular shop, their insurer, a warranty, a dealership they chose) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder.]`,
+        `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
       ] : [];
 
   const offer2Block = offersAllowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
-        `[AGENT: This is a question, not a second pitch. LISTEN to the reason. If they name a regular shop, a dealership, an insurer, or a warranty -> accept it, say "That makes sense, I'll leave it as it is", and go to the CONVINI close. Do NOT continue to Offer 3.]`,
+        `[AGENT: Ask that question and LISTEN. It sorts the answer into one of two buckets, and you must not skip ahead to the close without doing so.]`,
+        `[AGENT: CONSTRAINT — their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there. There is genuinely no offer to make: say "That makes sense, I'll leave it as it is" and go to the CONVINI close. Do NOT continue.]`,
+        `[AGENT: PREFERENCE — "it's my regular shop", "I've used them before", "I know the guy", "it's closer", "it's what was on the ticket", or any answer that is habit rather than obligation. These are the MOST COMMON answers and they all still get the line below. Say it. Do NOT treat a preference as a constraint, and never talk the customer out of the offer on their behalf.]`,
+        ``,
+        interpolate(
+          ctx.scriptBlocks?.offer_2_reassurance ??
+            ctx.globalScriptBlocks?.offer_2_reassurance ??
+            defaultOffer2Reassurance,
+          vars,
+        ),
+        ``,
         interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: Only if the reason is genuinely "it's just what was on the ticket" AND they are still undecided -> make Offer 3. Otherwise stop pitching and jump to the CONVINI close.]`,
+        `[AGENT: If they decline a second time, stop pitching. Only if the reason was genuinely "it's just what was on the ticket" AND they are still undecided -> make Offer 3. Otherwise jump to the CONVINI close.]`,
       ] : [];
 
   const offer3Block = offersAllowed ? [

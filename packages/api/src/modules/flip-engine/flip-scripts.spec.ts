@@ -97,7 +97,37 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
   it('makes offer 2 a reason-finding question, not a restatement', () => {
     const body = renderCallBody('competitor_repair', base);
     expect(body).toContain("can I ask what's taking you to Firestone on Main?");
-    expect(body).toContain('This is a question, not a second pitch');
+    expect(body).toContain('Ask that question and LISTEN');
+  });
+
+  // 2.8. Offer 2 fired on 0 of 13 offer-1 declines on 2026-08-14 because both
+  // the question and the directive behind it treated "it's my regular shop" —
+  // the most common decline there is — as a reason to stop. The rung is worth
+  // 12 of the programme's 62 all-time wins.
+  it('never speaks its own surrender inside offer 2', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).not.toContain("I'll leave it exactly as it is");
+    expect(body).not.toContain('If it\'s just what was on the ticket');
+  });
+
+  it('sorts a preference from a constraint and still pitches on a preference', () => {
+    const body = renderCallBody('competitor_repair', base);
+    // The constraint branch keeps its graceful exit.
+    expect(body).toContain('CONSTRAINT');
+    expect(body).toContain("That makes sense, I'll leave it as it is");
+    // The preference branch reaches a real second offer.
+    expect(body).toContain('PREFERENCE');
+    expect(body).toContain("it's my regular shop");
+    expect(body).toContain('they give you a written estimate before any work starts');
+    expect(body).toContain('Want me to switch it?');
+  });
+
+  it('puts the offer-2 reassurance after the question, not inside it', () => {
+    const body = renderCallBody('competitor_repair', base);
+    const questionIdx = body.indexOf("can I ask what's taking you to Firestone on Main?");
+    const reassuranceIdx = body.indexOf('written estimate before any work starts');
+    expect(questionIdx).toBeGreaterThan(-1);
+    expect(reassuranceIdx).toBeGreaterThan(questionIdx);
   });
 
   it('requires explicit consent before a destination change', () => {
