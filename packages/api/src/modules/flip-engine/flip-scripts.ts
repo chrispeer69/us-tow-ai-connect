@@ -33,7 +33,25 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.6';
+export const SCRIPT_VERSION = '2.7';
+// 2.7 (2026-08-14) — NOT a wording change. This is the version at which the
+//   wording changes from 2.0 onward actually began reaching customers.
+//
+//   Two layers of `script_blocks` overrides — global `flip_engine_defaults` and
+//   the tenant's `flip_engine_config` — were replacing every spoken block with a
+//   snapshot of the pre-2.0 text. Everything in this file that renders WORDS was
+//   inert for seven versions: the two-leg close (2.3), the reason-finding
+//   offer 2 (2.0), the honest distance phrasing (2.0), the shop address and name
+//   sanitising (2.6). Only [AGENT:] directives, decision-engine logic and the
+//   Retell prompt ever took effect, which is why the 08-12 and 08-13 reviews kept
+//   re-reporting wording defects we believed were fixed.
+//
+//   Consequence for analysis: script_version 2.0–2.6 do NOT identify distinct
+//   spoken scripts. Five calls on 08-14 carry a 2.6 stamp with pre-2.0 wording.
+//   Do not compare across that range. 2.7 is the first trustworthy boundary.
+//
+//   Both override sets are backed up before removal. Code is the source of
+//   truth again, as this file's own header always claimed.
 // 2.6 (2026-08-14) — approved from the 08-13 review. Offer 1 and offer 2 now
 //   name the shop's street address, answering the question that killed a flip
 //   outright ("where actually is it?"); offer 2 adds the written-estimate
