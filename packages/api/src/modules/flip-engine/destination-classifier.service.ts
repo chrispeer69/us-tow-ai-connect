@@ -72,17 +72,13 @@ export class DestinationClassifierService {
     // 2. Self-detect: is the destination one of our partner shops?
     const lowerName = (input.destinationName ?? '').toLowerCase().trim();
     const ours = input.ourShopNames ?? [];
-    if (lowerName) {
-      for (const ourName of ours) {
-        if (lowerName.includes(ourName) || ourName.includes(lowerName)) {
-          return {
-            tag: 'our_shop',
-            reason: 'self_detect_partner_shop',
-            resolvedName: input.destinationName,
-            resolvedAddress: input.destinationAddress ?? null,
-          };
-        }
-      }
+    if (matchOurShopName(input.destinationName, ours)) {
+      return {
+        tag: 'our_shop',
+        reason: 'self_detect_partner_shop',
+        resolvedName: input.destinationName,
+        resolvedAddress: input.destinationAddress ?? null,
+      };
     }
 
     // 3. Google Places lookup.
@@ -149,6 +145,36 @@ export class DestinationClassifierService {
       const json = (await res.json()) as PlacesResponse;
       const top = (json.results ?? [])[0];
       if (!top) return null;
+
+      // Session 75 — re-run the partner-shop check against the name GOOGLE
+      // returns, not just the raw Towbook field.
+      //
+      // On 2026-08-14 a customer already booked into Wayne's Auto Repair — one
+      // of our own partner shops — was pitched a flip to a different partner
+      // shop. Towbook had put the business name inside the ADDRESS string and
+      // left the name field empty, so the gate-2 check above saw nothing and
+      // was skipped. Places then resolved it perfectly, returning the literal
+      // name "Wayne's Auto Repair", and we tagged it competitor_repair anyway.
+      //
+      // The same job placed with the name field populated (a second customer,
+      // same shop, 90 minutes later) classified correctly as our_shop. Whether
+      // we poach our own partner should not depend on which Towbook field the
+      // motor club happened to fill in.
+      const placesName = top.name ?? null;
+      const ourShopMatch = matchOurShopName(placesName, input.ourShopNames ?? []);
+      if (ourShopMatch) {
+        return {
+          tag: 'our_shop',
+          reason: `places_self_detect_partner_shop:${ourShopMatch}`,
+          placeTypes: top.types ?? [],
+          placeId: top.place_id ?? null,
+          resolvedName: placesName,
+          resolvedAddress: top.formatted_address ?? input.destinationAddress ?? null,
+          resolvedLat: top.geometry?.location?.lat ?? null,
+          resolvedLng: top.geometry?.location?.lng ?? null,
+        };
+      }
+
       const tag = mapPlaceTypesToTag(top.types ?? []);
       if (
         tag === 'unknown' &&
@@ -218,9 +244,9 @@ export class DestinationClassifierService {
       if (!top) return null;
 
       const nearbyName = top.name ?? '';
-      const lowerNearbyName = nearbyName.toLowerCase().trim();
-      for (const ourName of input.input.ourShopNames ?? []) {
-        if (lowerNearbyName && (lowerNearbyName.includes(ourName) || ourName.includes(lowerNearbyName))) {
+      {
+        const nearbyMatch = matchOurShopName(nearbyName, input.input.ourShopNames ?? []);
+        if (nearbyMatch) {
           return {
             tag: 'our_shop',
             reason: `places_nearby_repair:self_shop:${top.place_id ?? 'unknown'}`,
@@ -252,6 +278,32 @@ export class DestinationClassifierService {
   }
 
   private unconfiguredLogged = false;
+}
+
+/**
+ * Does `name` refer to one of our own partner shops?
+ *
+ * Matched as a substring in BOTH directions, because the two sides are named
+ * inconsistently: our records carry a city suffix ("Wayne's Auto Repair —
+ * Westerville") while a motor club or Google will just say "Wayne's Auto
+ * Repair". Neither string contains the other in a fixed direction.
+ *
+ * `ourShopNames` are expected pre-lowercased and trimmed by the caller.
+ * Returns the matched partner name so callers can log WHICH shop matched.
+ */
+export function matchOurShopName(
+  name: string | null | undefined,
+  ourShopNames: string[],
+): string | null {
+  const lower = (name ?? '').toLowerCase().trim();
+  // Two characters is not a shop name, and a bare-substring test on one would
+  // match almost every partner record.
+  if (lower.length < 3) return null;
+  for (const ourName of ourShopNames) {
+    if (!ourName || ourName.length < 3) continue;
+    if (lower.includes(ourName) || ourName.includes(lower)) return ourName;
+  }
+  return null;
 }
 
 /**

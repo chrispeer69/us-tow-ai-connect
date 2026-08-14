@@ -73,6 +73,64 @@ describe('DestinationClassifierService', () => {
     expect(result.reason).toBe('self_detect_partner_shop');
   });
 
+  it('detects our own shop from the name GOOGLE returns when Towbook left the name field empty', async () => {
+    // Regression: the 2026-08-14 Travis R D. call. Towbook put "Wayne's Auto
+    // Repair" inside the address string and left destinationName null, so the
+    // pre-lookup self-detect was skipped and we pitched a flip AWAY from our
+    // own partner shop.
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        results: [
+          {
+            name: "Wayne's Auto Repair",
+            place_id: 'wayne-westerville',
+            formatted_address: '5995 Westerville Rd, Westerville, OH 43081, USA',
+            types: ['car_repair', 'establishment', 'point_of_interest'],
+            geometry: { location: { lat: 40.095261, lng: -82.925764 } },
+          },
+        ],
+      }),
+    );
+
+    const result = await new DestinationClassifierService().classify({
+      source: 'TOWBOOK',
+      destinationName: null,
+      destinationAddress: "Wayne's Auto Repair Westerville Rd Westerville, OH 43081",
+      ourShopNames: ["wayne's auto repair — westerville", "petty's auto & electric service"],
+    });
+
+    expect(result.tag).toBe('our_shop');
+    expect(result.reason).toBe(
+      "places_self_detect_partner_shop:wayne's auto repair — westerville",
+    );
+  });
+
+  it('does not treat a genuine competitor as our shop', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        results: [
+          {
+            name: 'Grismer Tire & Auto Service Center',
+            place_id: 'grismer-1',
+            formatted_address: '9672 Liberty Crossing Dr, Powell, OH 43065',
+            types: ['car_repair', 'establishment'],
+            geometry: { location: { lat: 40.15, lng: -83.07 } },
+          },
+        ],
+      }),
+    );
+
+    const result = await new DestinationClassifierService().classify({
+      source: 'TOWBOOK',
+      destinationAddress: '9672 Liberty Crossing Dr, Powell, OH 43065',
+      ourShopNames: ["wayne's auto repair — westerville", 'hilliard auto repair'],
+    });
+
+    expect(result.tag).toBe('competitor_repair');
+  });
+
   it('uses a nearby repair search when Google resolves only a generic premise', async () => {
     process.env.GOOGLE_PLACES_API_KEY = 'test-key';
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
