@@ -40,7 +40,39 @@
 export const AI_NOTES_HEADER = 'AI Notes';
 
 export interface AiNotesInput {
-  /** Free-text corrections from post-call extraction. The valuable field. */
+  /**
+   * KEYS — who is meeting the driver and where the keys are. Chris's hard rule:
+   * the customer must be present with the keys or we do not tow, unless they
+   * leave the keys with the car and sign a release. "Keys left in my mailbox"
+   * is a real answer and the driver needs it before they roll, not on arrival.
+   */
+  keysAndPresence?: string | null;
+
+  /**
+   * ACCESS — how the vehicle is sitting and how to get to it. Chris's list:
+   * nose-in or nose-out, tight turn, on the curb in front of the house, front
+   * open and accessible. This decides approach and sometimes truck size.
+   */
+  accessNotes?: string | null;
+
+  /**
+   * CONDITION — whether it rolls, steers and starts. The highest-value line on
+   * the note, because it decides EQUIPMENT. "All four tires full of air" and
+   * "left rear completely flat" are different trucks: one rolls onto a bed, the
+   * other needs skates or dollies. Getting this from the ticket is not possible;
+   * getting it wrong is a second roll.
+   */
+  vehicleCondition?: string | null;
+
+  /**
+   * VEHICLE — colour and drivetrain, which the motor club ticket gets right
+   * about half the time. At 50% a confirm question is nearly worthless (a
+   * distracted customer says yes to anything), so the script asks these open.
+   * Drivetrain matters because AWD on dollies is damage.
+   */
+  vehicleDetails?: string | null;
+
+  /** Free-text corrections from post-call extraction. */
   correctionsMade?: string | null;
   /** What the customer said was wrong with the vehicle, if captured. */
   issueDescription?: string | null;
@@ -89,6 +121,11 @@ function isNoOp(text: string): boolean {
   );
 }
 
+/** Driver-scannable lines end in a full stop. Avoids doubling one up. */
+function endWithStop(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 function clean(value: string | null | undefined): string | null {
   const t = (value ?? '').trim();
   if (!t || t.toLowerCase() === 'null' || t.toLowerCase() === 'undefined') return null;
@@ -105,25 +142,40 @@ function clean(value: string | null | undefined): string | null {
 export function composeAiNotes(input: AiNotesInput): string | null {
   const lines: string[] = [];
 
-  const corrections = clean(input.correctionsMade);
-  if (corrections && !isNoOp(corrections)) {
-    lines.push(corrections);
-  }
-
-  const issue = clean(input.issueDescription);
-  if (issue && !isNoOp(issue) && issue.toLowerCase() !== 'unknown') {
-    lines.push(`Customer described: ${issue}`);
-  }
-
-  // A destination change is the single highest-consequence thing on this list.
-  // If the customer accepted a shop switch, the driver is going somewhere other
-  // than the ticket says, and that must be legible without reading a transcript.
+  // Ordered the way a driver reads it, not the way we collected it:
+  //   can I do this job at all -> where am I going -> how do I approach it ->
+  //   what equipment -> which car is it -> everything else.
+  // A destination change comes first because it is the one line that makes the
+  // rest of the ticket wrong.
   const newDestination = clean(input.newDestination);
   if (newDestination && (input.flipOutcome ?? '').toUpperCase() === 'ACCEPTED') {
     lines.push(`DESTINATION CHANGED — customer agreed to ${newDestination}.`);
   } else {
     const confirmed = clean(input.confirmedDestination);
     if (confirmed) lines.push(`Destination confirmed by customer: ${confirmed}.`);
+  }
+
+  const labelled: Array<[string, string | null | undefined]> = [
+    ['KEYS', input.keysAndPresence],
+    ['ACCESS', input.accessNotes],
+    ['CONDITION', input.vehicleCondition],
+    ['VEHICLE', input.vehicleDetails],
+  ];
+  for (const [label, raw] of labelled) {
+    const value = clean(raw);
+    if (value && !isNoOp(value) && value.toLowerCase() !== 'unknown') {
+      lines.push(`${label}: ${endWithStop(value)}`);
+    }
+  }
+
+  const issue = clean(input.issueDescription);
+  if (issue && !isNoOp(issue) && issue.toLowerCase() !== 'unknown') {
+    lines.push(`ISSUE: ${endWithStop(issue)}`);
+  }
+
+  const corrections = clean(input.correctionsMade);
+  if (corrections && !isNoOp(corrections)) {
+    lines.push(`NOTES: ${endWithStop(corrections)}`);
   }
 
   if (lines.length === 0) return null;

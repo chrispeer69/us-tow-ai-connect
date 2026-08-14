@@ -75,7 +75,45 @@ describe('AI Notes composer', () => {
   it('ignores an unknown issue rather than writing the word "unknown"', () => {
     expect(composeAiNotes({ issueDescription: 'unknown' })).toBeNull();
     const block = composeAiNotes({ issueDescription: 'check engine light, running rough' });
-    expect(block).toContain('Customer described: check engine light, running rough');
+    expect(block).toContain('ISSUE: check engine light, running rough');
+  });
+
+  // Chris's spec, 2026-08-14. This is the shape a driver actually wants: every
+  // line actionable, ordered by what they need first.
+  it('builds the full field-ready note in driver-reading order', () => {
+    const block = composeAiNotes({
+      keysAndPresence: 'Keys left in the mailbox, customer will not be present',
+      accessNotes: 'On the curb in front of the house, nose out, front open and accessible',
+      vehicleCondition: 'Left rear completely flat, other three full of air',
+      vehicleDetails: 'Red, front-wheel drive',
+      issueDescription: 'will not start',
+      correctionsMade: 'Corrected pickup to 763 South Richardson Avenue.',
+      callTimeIso: '2026-08-14T19:42:00.000Z',
+    })!;
+    const order = ['KEYS:', 'ACCESS:', 'CONDITION:', 'VEHICLE:', 'ISSUE:', 'NOTES:'];
+    const positions = order.map((l) => block.indexOf(l));
+    expect(positions.every((p) => p > -1)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    expect(block).toContain('Left rear completely flat');
+    expect(block).toContain('nose out');
+    expect(block).toContain('Keys left in the mailbox');
+  });
+
+  it('puts a destination change above everything else', () => {
+    const block = composeAiNotes({
+      keysAndPresence: 'Customer on scene with keys',
+      newDestination: "Wayne's Auto Repair — Powell",
+      flipOutcome: 'ACCEPTED',
+    })!;
+    expect(block.indexOf('DESTINATION CHANGED')).toBeLessThan(block.indexOf('KEYS:'));
+  });
+
+  it('emits only the lines it actually has', () => {
+    const block = composeAiNotes({ vehicleCondition: 'All four tires full of air' })!;
+    expect(block).toContain('CONDITION: All four tires full of air.');
+    expect(block).not.toContain('KEYS:');
+    expect(block).not.toContain('ACCESS:');
+    expect(block).not.toContain('VEHICLE:');
   });
 
   it('omits the stamp rather than inventing one when the time is unusable', () => {
