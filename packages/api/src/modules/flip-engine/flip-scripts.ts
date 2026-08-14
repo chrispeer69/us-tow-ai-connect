@@ -734,7 +734,8 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   const singleShopOffer1 =
     `${offerPreamble}We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
     (distanceShort ? `, ${distanceShort}` : ``) +
-    `: they include a full hour of diagnostic time at no charge, normally a \${{diagnostic_value}} value, and take 10 percent off the repair. ` +
+    `: as a new VIP customer you'd get a free visual mechanical diagnostic — a visual inspection of up to an hour, ` +
+    `normally a \${{diagnostic_value}} value — plus up to 10 percent off parts and labor. ` +
     (hasSeparateDestination(ctx)
       ? `Want me to send the driver there instead, or keep {{destination}}?`
       : `Want me to send the driver there instead?`);
@@ -764,8 +765,9 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
 
   const multiShopOffer1 =
     `${offerPreamble}` +
-    `We work with several certified partner shops in your area, and they all include a full hour of diagnostic time ` +
-    `at no charge — normally a \${{diagnostic_value}} value — plus 10 percent off the repair for new customers. ` +
+    `We work with several certified partner shops in your area, and as a new VIP customer you'd get a free visual ` +
+    `mechanical diagnostic — a visual inspection of up to an hour, normally a \${{diagnostic_value}} value — plus ` +
+    `up to 10 percent off parts and labor. ` +
     `The closest to you are ${choiceList}. ` +
     (hasSeparateDestination(ctx)
       ? `Would one of those work instead of {{destination}}, or would you like me to just send the driver to the closest one?`
@@ -790,7 +792,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
 
   const defaultOffer2Reassurance =
     `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
-    `a written estimate before any work starts, and the free diagnostic plus 10 percent off still stands. ` +
+    `a written estimate before any work starts, and the free VIP diagnostic and up to 10 percent off parts and labor still stand. ` +
     `I'd sort the change out with the driver. Want me to switch it?`;
 
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
@@ -851,6 +853,9 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
               `[AGENT: This offer names more than one shop. If the customer PICKS one, that named shop is the new destination — confirm it back by name before you log it. If they say "you choose", "whichever is closest", or similar, take {{nearest_shop}} and say so by name. Never log a destination change without a specific shop name attached.]`,
             ]
           : []),
+        // The offer has two "up to"s and they are load-bearing. An agent that
+        // rounds them off is promising something the shop has not agreed to.
+        `[AGENT: State the offer exactly as written. It is "UP TO an hour" and "UP TO 10 percent" — never promise a full hour, never promise a flat 10 percent, and never say the discount is guaranteed. The diagnostic is a VISUAL INSPECTION: do not say or imply it includes a teardown, a road test, a computer scan, or any parts removed. It is free for NEW VIP customers at that shop. If asked what the visual diagnostic covers, say a technician looks the vehicle over and gives you a written quote before any work begins, and that anything beyond that would be quoted first.]`,
         interpolate(consentGate, vars),
         interpolate(tooFarDirective, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
@@ -1066,7 +1071,7 @@ function scenarioC(ctx: ScriptContext): string {
   const conditionalBlock = conditional
     ? [
         `[AGENT: THE DESTINATION ON FILE IS UNCONFIRMED, so there is no offer yet. Ask the destination question as written and LISTEN. Do not mention any shop, discount or diagnostic before the customer has answered it.]`,
-        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance}, and I could get you a free diagnostic plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?"]`,
+        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance}, and I could get you a free VIP visual mechanical diagnostic — a visual inspection of up to an hour — plus up to 10 percent off parts and labor. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?"]`,
         `[AGENT: If they say anything else — home, a body shop, a dealership they chose, a residence, or they are unsure — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
         `[AGENT: Take a YES only if it is unambiguous. If the answer is unclear or arrives amid other speech, ask "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Never infer a destination change.]`,
         `[AGENT: If they decline, accept it and move to the CONVINI close. Do not make a second or third offer on this call.]`,
@@ -1279,11 +1284,11 @@ export interface FlipOfferInput {
 
 export function renderOffer1(i: FlipOfferInput): string {
   const dist = i.distanceMilesSaved != null ? ` just ${i.distanceMilesSaved} miles away` : '';
-  return `Before I confirm the drop-off — just so you know, ${i.ourShopName} is a certified shop${dist}, and I could get you a free diagnostic plus 10 percent off today's repair. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${i.ourShopName}?`;
+  return `Before I confirm the drop-off — just so you know, ${i.ourShopName} is a certified shop${dist}, and I could get you a free VIP visual mechanical diagnostic — a visual inspection of up to an hour — plus up to 10 percent off parts and labor. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${i.ourShopName}?`;
 }
 
 export function renderOffer2(i: FlipOfferInput): string {
-  return `Totally fair. Here's the difference though — for today's tow, ${i.ourShopName} can look at your car quickly, give you a written estimate before any work, and you still get the free diagnostic plus 10 percent off today's repair. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
+  return `Totally fair. Here's the difference though — for today's tow, ${i.ourShopName} can look at your car quickly, give you a written estimate before any work, and you still get the free VIP visual mechanical diagnostic and up to 10 percent off parts and labor. If you want that, I can update the drop-off with the driver. Would you like me to make that change?`;
 }
 
 export function renderOffer3(i: FlipOfferInput): string {

@@ -63,7 +63,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     // Assert the OFFER is absent, not the words — the suppression instruction
     // itself legitimately names the things the agent must not say.
     expect(body).not.toContain('one quick option and then');
-    expect(body).not.toContain('10 percent off the repair');
+    expect(body).not.toContain('up to 10 percent off parts and labor');
     expect(body).not.toContain("can I ask what's taking you to");
     expect(body).not.toContain('50 dollar credit');
   });
@@ -75,7 +75,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
       issue: 'a collision',
     });
     expect(body).toContain('collision, body or glass work');
-    expect(body).not.toContain('10 percent off the repair');
+    expect(body).not.toContain('up to 10 percent off parts and labor');
   });
 
   it('suppresses the offer on glass damage even without a subcategory', () => {
@@ -89,7 +89,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
   it('front-loads offer 1 with the ask before the terms', () => {
     const body = renderCallBody('competitor_repair', base);
     const offerIdx = body.indexOf('one quick option and then');
-    const termsIdx = body.indexOf('10 percent off the repair');
+    const termsIdx = body.indexOf('up to 10 percent off parts and labor');
     expect(offerIdx).toBeGreaterThan(-1);
     expect(offerIdx).toBeLessThan(termsIdx);
     expect(body).toContain('Want me to send the driver there instead, or keep Firestone on Main?');
@@ -173,8 +173,14 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain("Wayne's Columbus, about 6 miles away");
     expect(body).toContain('Wrench Recovery, about 10 miles away');
     expect(body).toContain('send the driver to the closest one');
-    // The benefit is stated once, not repeated per shop.
-    expect(body.split('10 percent off the repair').length - 1).toBe(1);
+    // The benefit is stated once for all three shops, not repeated per shop.
+    // Scoped to offer 1 — offer 2's reassurance legitimately restates it later.
+    const offer1 = body.slice(
+      body.indexOf('We work with several certified partner shops'),
+      body.indexOf('[AGENT: This offer names more than one shop'),
+    );
+    expect(offer1.split('up to 10 percent off parts and labor').length - 1).toBe(1);
+    expect(offer1.split('visual mechanical diagnostic').length - 1).toBe(1);
   });
 
   it('never claims we have no other partner shops on a distance objection', () => {
@@ -227,7 +233,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     // The preference branch reaches a real second offer.
     expect(body).toContain('PREFERENCE');
     expect(body).toContain("it's my regular shop");
-    expect(body).toContain('they give you a written estimate before any work starts');
+    expect(body).toContain('written estimate before any work starts');
     expect(body).toContain('Want me to switch it?');
   });
 

@@ -56,7 +56,7 @@ describe('conditional offer on unresolved destinations', () => {
     expect(body).toContain('THE DESTINATION ON FILE IS UNCONFIRMED');
     expect(body).toContain('ONLY IF the customer confirms');
     expect(body).toContain('Complete Brake Service');
-    expect(body).toContain('free diagnostic plus 10 percent off');
+    expect(body).toContain('free VIP visual mechanical diagnostic');
   });
 
   // The whole risk of this change is an agent that offers before it has asked.
