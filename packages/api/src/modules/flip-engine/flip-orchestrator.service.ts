@@ -12,6 +12,7 @@ import {
 } from './destination-classifier.service';
 import { FlipEngineService } from './flip-engine.service';
 import { decideFlip, type FlipDecision } from './flip-decision.engine';
+import { isTowCompany, type TowCompanyEntry } from './tow-company.matcher';
 import {
   IssueClassifierService,
   type ClassifyIssueResult,
@@ -260,6 +261,42 @@ export class FlipOrchestratorService {
         active: b.active,
       }));
     const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+
+    // 0. Is this a collection from another tow company's yard?
+    //
+    // When it is, the motor club routinely puts that tow company in the
+    // CUSTOMER fields rather than the notes, and we end up phoning a
+    // competitor's dispatch line to confirm a tow and pitch a flip. 20 times in
+    // the 30 days to 2026-08-13. These jobs are worked manually, so the right
+    // outcome is no call at all — logged, so they stay countable.
+    //
+    // Checked before classification so a suppressed job costs no Places call.
+    const towCheck = isTowCompany({
+      customerName: job.customerName ?? null,
+      pickupAddress: job.pickupAddress ?? null,
+      customerPhone: job.customerPhone ?? null,
+      entries: readTowCompanyEntries(config.config, globalConfig),
+      neverMatch: [...ourShops.map((s) => s.name), job.companyName ?? ''],
+    });
+    if (towCheck.matched) {
+      this.logger.log(
+        `[flip-orchestrator] no call: pickup is a tow company job=${job.jobId} ` +
+          `rule=${towCheck.rule} field=${towCheck.field} value="${towCheck.matchedValue}"`,
+      );
+      await this.db.insert(outboundCallLogs).values({
+        tenantId,
+        customerName: job.customerName ?? 'Unknown',
+        customerPhone: job.customerPhone ?? '',
+        vehicle: job.vehicle ?? null,
+        originalDestination: job.destinationAddress ?? null,
+        destinationBusinessName: job.destinationName ?? null,
+        flipEligible: false,
+        noFlipReason: `no_call_tow_company_${towCheck.rule}`.slice(0, 120),
+        flipOutcome: 'NOT_ATTEMPTED',
+        scriptVersion: SCRIPT_VERSION,
+      });
+      return false;
+    }
 
     // 1. Classify destination.
     const destination: ClassifyDestinationResult = await this.destinationClassifier.classify({
@@ -1427,5 +1464,48 @@ function formatVehicleYear(vehicle: string | null | undefined): string {
       return `nineteen ${tens[Math.floor(y/10)]} ${ones[y%10]}`.trim();
     }
     return match;
+  });
+}
+
+/**
+ * Session 74 — operator-supplied tow-company list.
+ *
+ * Lives in the flip-engine config jsonb as `tow_company_list` so a list can be
+ * loaded without a migration or a deploy; the tenant list wins over the global
+ * one. Entries are validated rather than trusted, because a malformed row here
+ * would silence real customer calls.
+ *
+ *   tow_company_list: [
+ *     { matchType: 'EXACT_ADDRESS', matchValue: '1450 Joyce Ave, Columbus, OH 43219' },
+ *     { matchType: 'EXACT_NAME',    matchValue: 'Buckeye Vehicle Storage' },
+ *     { matchType: 'PHONE',         matchValue: '(614) 555-0100' }
+ *   ]
+ *
+ * `active` defaults to true when omitted, so a pasted list works as-is.
+ */
+const TOW_ENTRY_TYPES = new Set(['EXACT_NAME', 'EXACT_ADDRESS', 'NAME_PATTERN', 'PHONE']);
+
+export function readTowCompanyEntries(
+  tenantConfig: unknown,
+  globalConfig: unknown,
+): TowCompanyEntry[] {
+  const pick = (cfg: unknown): unknown[] => {
+    const v = (cfg as Record<string, unknown> | null | undefined)?.tow_company_list;
+    return Array.isArray(v) ? v : [];
+  };
+  const raw = pick(tenantConfig).length ? pick(tenantConfig) : pick(globalConfig);
+
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const { matchType, matchValue, active } = item as Record<string, unknown>;
+    if (typeof matchType !== 'string' || !TOW_ENTRY_TYPES.has(matchType)) return [];
+    if (typeof matchValue !== 'string' || !matchValue.trim()) return [];
+    return [
+      {
+        matchType: matchType as TowCompanyEntry['matchType'],
+        matchValue: matchValue.trim(),
+        active: active === undefined ? true : active === true,
+      },
+    ];
   });
 }
