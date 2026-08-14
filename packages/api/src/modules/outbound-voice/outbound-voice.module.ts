@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { GeocoderService } from '../command-center/geocoder.service';
 import { DbModule } from '../../db/db.module';
 import { OutboundSmsModule } from '../outbound-sms/outbound-sms.module';
 import { OutboundVoiceController } from './outbound-voice.controller';
@@ -41,6 +42,12 @@ import {
         pickOutboundVoiceProvider(retell, thinkrr),
     },
     OutboundVoiceService,
+    // Session 75 — the test-call path geocodes the pickup so it picks a real
+    // nearest shop instead of the first DB row and a hardcoded 3 miles.
+    // Provided directly rather than by importing CommandCenterModule:
+    // GeocoderService only needs REDIS_CLIENT, which is @Global, so this avoids
+    // a module cycle with flip-engine (which already depends on this service).
+    GeocoderService,
   ],
   exports: [OutboundVoiceService],
 })

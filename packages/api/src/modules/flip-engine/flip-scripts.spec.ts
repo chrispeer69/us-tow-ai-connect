@@ -94,6 +94,53 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('Want me to send the driver there instead, or keep Firestone on Main?');
   });
 
+  // 2.9. A test call on 2026-08-14 offered one shop and then told the customer
+  // we had no other partner shops when he asked for somewhere local. We have 9.
+  it('offers a choice of shops when alternates exist', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      nearestShop: "Wayne's Powell",
+      nearestShopDistanceMiles: 4,
+      alternateShops: [
+        { name: "Wayne's Columbus", distanceMiles: 6 },
+        { name: 'Wrench Recovery', distanceMiles: 10 },
+      ],
+    });
+    expect(body).toContain('several certified partner shops in your area');
+    expect(body).toContain("Wayne's Powell, about 4 miles away");
+    expect(body).toContain("Wayne's Columbus, about 6 miles away");
+    expect(body).toContain('Wrench Recovery, about 10 miles away');
+    expect(body).toContain('send the driver to the closest one');
+    // The benefit is stated once, not repeated per shop.
+    expect(body.split('10 percent off the repair').length - 1).toBe(1);
+  });
+
+  it('never claims we have no other partner shops on a distance objection', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      nearestShop: "Wayne's Powell",
+      nearestShopDistanceMiles: 4,
+      alternateShops: [{ name: "Wayne's Columbus", distanceMiles: 6 }],
+    });
+    expect(body).toContain('DISTANCE OBJECTION');
+    expect(body).toContain('NEVER say we have no other partner shops');
+    // And it must not promise something nearer than the nearest.
+    expect(body).toContain('Do not promise anything nearer');
+  });
+
+  it('falls back to the single-shop offer when nothing else is in catchment', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      nearestShop: "Wayne's Powell",
+      nearestShopDistanceMiles: 4,
+      alternateShops: [],
+    });
+    expect(body).toContain('We work with a certified shop');
+    expect(body).not.toContain('several certified partner shops');
+    // Still must not claim an empty network.
+    expect(body).toContain('do NOT claim we have no other partner shops');
+  });
+
   it('makes offer 2 a reason-finding question, not a restatement', () => {
     const body = renderCallBody('competitor_repair', base);
     expect(body).toContain("can I ask what's taking you to Firestone on Main?");

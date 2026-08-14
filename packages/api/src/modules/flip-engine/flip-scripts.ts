@@ -33,7 +33,33 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
-export const SCRIPT_VERSION = '2.8';
+export const SCRIPT_VERSION = '2.9';
+// 2.9 (2026-08-14) — offer 1 offers a CHOICE of shops, and "that's too far" has
+//   an answer. Chris's call after a test call went wrong.
+//
+//   The test call offered a shop 18 miles away, said it was "3 miles", and then
+//   told him we had no other partner shops when he asked for somewhere local.
+//   The wrong shop and the invented distance were a separate defect in the
+//   test-call path (see outbound-voice.service.ts). The empty-network answer was
+//   this file: the script only ever carried ONE shop name, so the agent had
+//   nothing else it was allowed to say. We have nine.
+//
+//   Two changes:
+//   - `alternateShops` — the next nearest partners, so the agent can name them.
+//   - Offer 1 names up to three shops and asks which, or offers to pick the
+//     closest. A single name is a yes/no question and "no" is the easy answer;
+//     a choice is "which one", and gives a customer who dislikes one location
+//     somewhere to go other than out of the conversation. The benefit is stated
+//     once for all of them, so it is no longer to sit through.
+//   - A distance objection now names the rest of the network instead of
+//     claiming there is none. It never promises anything nearer than the
+//     closest shop, because there isn't one.
+//
+//   Falls back to the single-shop wording when only one shop is in catchment.
+//
+//   RISK: offer 1 carries 48 of 62 all-time wins. This is the rung with the
+//   most to lose, and unlike 2.8 it is a copy change, not a defect fix. Watch
+//   wins per offer for a week before concluding anything.
 // 2.8 (2026-08-14) — the offer ladder is switched back on. Structural, hence
 //   the version bump on the same day as 2.7.
 //
@@ -160,6 +186,19 @@ export interface ScriptContext {
    * in alpha_shops the whole time — they were simply never passed in.
    */
   nearestShopAddress?: string | null;
+
+  /**
+   * Session 75 — the other partner shops, nearest-first, EXCLUDING the one
+   * being offered. The script carried a single shop name, so when a customer
+   * said "that's too far, anywhere closer?" the agent had nothing in context
+   * and told them we had no other partner shops. We have nine. On a 2026-08-14
+   * test call that answer ended the conversation.
+   *
+   * These are alternates the agent may name if the offered shop is rejected on
+   * DISTANCE. They are not a second pitch — see the directive in the offer
+   * block.
+   */
+  alternateShops?: Array<{ name: string; distanceMiles: number | null }> | null;
 
   /**
    * Session 74 — the conditional offer, for calls whose destination could not
@@ -558,13 +597,48 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // entirely when we have no address, rather than left as an empty phrase.
   const shopAddressPhrase = ctx.nearestShopAddress?.trim() ? ` at {{nearest_shop_address}}` : ``;
 
-  const defaultOffer1 =
+  const singleShopOffer1 =
     `Before I confirm the drop-off — one quick option and then I'll let you go. We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
     (distanceShort ? `, ${distanceShort}` : ``) +
     `: they include the diagnostic at no charge, normally around \${{diagnostic_value}}, and take 10 percent off the repair. ` +
     (hasSeparateDestination(ctx)
       ? `Want me to send the driver there instead, or keep {{destination}}?`
       : `Want me to send the driver there instead?`);
+
+  // 2.9 — offer a CHOICE, not a single shop. Chris's call, 2026-08-14, after a
+  // test call offered one shop and then had nothing to say when he asked for
+  // somewhere more local.
+  //
+  // A single name is a yes/no question, and "no" is the easy answer. Two or
+  // three names turn it into "which one", and give a customer who dislikes one
+  // location somewhere to go instead of out of the conversation. The benefit is
+  // stated once for all of them rather than repeated per shop, which keeps this
+  // no longer to sit through than the single-shop version — prompt rule 8.
+  //
+  // Watch this one. Offer 1 carries 48 of the programme's 62 all-time wins, so
+  // it is the rung with the most to lose.
+  const choiceList = [
+    { name: '{{nearest_shop}}', distanceMiles: ctx.nearestShopDistanceMiles ?? null },
+    ...(ctx.alternateShops ?? []).filter((a) => a?.name).slice(0, 2),
+  ]
+    .map((s) =>
+      s.distanceMiles != null
+        ? `${s.name}, about ${Math.round(s.distanceMiles)} miles away`
+        : s.name,
+    )
+    .join('; ');
+
+  const multiShopOffer1 =
+    `Before I confirm the drop-off — one quick option and then I'll let you go. ` +
+    `We work with several certified partner shops in your area, and they all include the diagnostic at no charge, ` +
+    `normally around \${{diagnostic_value}}, plus 10 percent off the repair for new customers. ` +
+    `The closest to you are ${choiceList}. ` +
+    (hasSeparateDestination(ctx)
+      ? `Would one of those work instead of {{destination}}, or would you like me to just send the driver to the closest one?`
+      : `Would one of those work for you, or would you like me to just send the driver to the closest one?`);
+
+  const hasChoice = (ctx.alternateShops ?? []).filter((a) => a?.name).length > 0;
+  const defaultOffer1 = hasChoice ? multiShopOffer1 : singleShopOffer1;
 
   // Offer 2 previously restated the same benefits the customer had just turned
   // down; over a narrow window it went 0 for 11 and was rewritten into a
@@ -599,11 +673,40 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   // mechanical diagnostic at a brake shop.
   const offersAllowed = !!ctx.nearestShop && !isCollisionOrGlass(ctx);
 
+  // Session 75 — "that's too far" now has an answer other than "we have none".
+  //
+  // Distance is a different objection from preference. A customer who says the
+  // shop is too far has not rejected the offer, they have rejected THAT shop,
+  // and the honest reply is the next one down the list. Saying we have no other
+  // partner shops when we have nine is the one answer that ends the call and
+  // makes the network look empty.
+  const alternates = (ctx.alternateShops ?? []).filter((a) => a?.name);
+  const alternateList = alternates
+    .map((a) =>
+      a.distanceMiles != null
+        ? `${a.name} (about ${Math.round(a.distanceMiles)} miles)`
+        : a.name,
+    )
+    .join('; ');
+  // {{nearest_shop}} IS the closest partner we have to their pickup, so never
+  // promise something nearer. What we can do is name the rest of the network —
+  // a customer rejecting a shop on "distance" often means direction, not miles
+  // ("that's the wrong way", "I work the other side of town").
+  const tooFarDirective = alternates.length
+    ? `[AGENT: DISTANCE OBJECTION. If the customer says {{nearest_shop}} is too far, or asks for somewhere closer or more local -> NEVER say we have no other partner shops. We have others. Be straight that {{nearest_shop}} is the closest one to their pickup, then name the rest and let them choose: ${alternateList}. Name ONE at a time and wait for an answer before naming another. Do not promise anything nearer than {{nearest_shop}}. If none of them suit, accept it and go to the CONVINI close.]`
+    : `[AGENT: DISTANCE OBJECTION. If the customer says {{nearest_shop}} is too far or asks for somewhere closer -> do NOT claim we have no other partner shops, and do NOT invent one. Say "That's the closest one to you, but let me have our office check what else we can do and call you straight back", then go to the CONVINI close.]`;
+
   const flipBlock = offersAllowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_1 ?? ctx.globalScriptBlocks?.offer_1 ?? defaultOffer1, vars),
         ``,
+        ...(hasChoice
+          ? [
+              `[AGENT: This offer names more than one shop. If the customer PICKS one, that named shop is the new destination — confirm it back by name before you log it. If they say "you choose", "whichever is closest", or similar, take {{nearest_shop}} and say so by name. Never log a destination change without a specific shop name attached.]`,
+            ]
+          : []),
         interpolate(consentGate, vars),
+        interpolate(tooFarDirective, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
         `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
       ] : [];

@@ -57,6 +57,35 @@ export function selectNearestShop(input: NearestShopInput): NearestShopResult {
   };
 }
 
+/**
+ * Session 75 — the ranked list, not just the winner.
+ *
+ * The script only ever carried ONE shop name, so when a customer said "that's
+ * too far, is there anywhere closer?" the agent had nothing in context and
+ * answered that we have no other partner shops. We have nine. A test call on
+ * 2026-08-14 hit exactly this and it reads as either a lie or an empty network.
+ *
+ * Returns every candidate of the requested type sorted nearest-first, so the
+ * caller can hand the script a short list of fallbacks.
+ */
+export function selectNearestShops(
+  input: NearestShopInput,
+  limit = 3,
+): Array<{ shop: ShopForSelection; distanceMiles: number }> {
+  return input.shops
+    .filter(
+      (s) => s.active && s.shopType === input.shopType && s.lat != null && s.lng != null,
+    )
+    .map((shop) => ({
+      shop,
+      distanceMiles: round1(
+        haversineMiles(input.pickupLat, input.pickupLng, shop.lat!, shop.lng!),
+      ),
+    }))
+    .sort((a, b) => a.distanceMiles - b.distanceMiles)
+    .slice(0, limit);
+}
+
 export function haversineMiles(
   lat1: number,
   lng1: number,

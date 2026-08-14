@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { haversineMiles } from './nearest-shop.selector';
+import { haversineMiles, selectNearestShops } from './nearest-shop.selector';
 import { Cron } from '@nestjs/schedule';
 import { eq, and } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -119,6 +119,48 @@ function firstNameOf(full: string | null | undefined): string {
 }
 
 /** Street address of a partner shop, for naming it inside the offer. */
+/**
+ * Session 75 — the other partner shops the agent may name when the offered one
+ * is rejected on distance. Nearest-first, excluding the shop already offered.
+ * Empty when we have no pickup fix, which keeps the script honest rather than
+ * letting it invent a network it cannot see.
+ */
+function alternateShopsFor(
+  shops: Array<{
+    id?: string;
+    name: string;
+    shopType: string;
+    active: boolean;
+    lat?: string | number | null;
+    lng?: string | number | null;
+  }>,
+  pickupLat: number | null | undefined,
+  pickupLng: number | null | undefined,
+  offeredShopName: string | null,
+): Array<{ name: string; distanceMiles: number }> {
+  if (pickupLat == null || pickupLng == null || !offeredShopName) return [];
+  const offered = offeredShopName.toLowerCase().trim();
+  return selectNearestShops(
+    {
+      pickupLat: Number(pickupLat),
+      pickupLng: Number(pickupLng),
+      shopType: 'REPAIR',
+      shops: shops.map((s) => ({
+        id: s.id ?? s.name,
+        name: s.name,
+        shopType: s.shopType as 'REPAIR' | 'BODY',
+        lat: s.lat == null ? null : Number(s.lat),
+        lng: s.lng == null ? null : Number(s.lng),
+        active: s.active,
+      })),
+    },
+    4,
+  )
+    .filter((x) => x.shop.name.toLowerCase().trim() !== offered)
+    .slice(0, 3)
+    .map((x) => ({ name: x.shop.name, distanceMiles: x.distanceMiles }));
+}
+
 function shopAddressFor(
   shops: Array<{ name: string; addressLine?: string | null; city?: string | null }>,
   shopName: string | null,
@@ -453,6 +495,9 @@ export class FlipOrchestratorService {
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      alternateShops: flipEligible
+        ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
+        : null,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -646,6 +691,9 @@ export class FlipOrchestratorService {
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      alternateShops: flipEligible
+        ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
+        : null,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -1022,6 +1070,9 @@ export class FlipOrchestratorService {
         nearestShopDistanceMiles:
           flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
         nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+        alternateShops: flipEligible
+          ? alternateShopsFor(ourShops, Number(job.pickupLat), Number(job.pickupLng), nearestShopName)
+          : null,
         conditionalShop: conditional.name,
         conditionalShopDistanceMiles:
           conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,
@@ -1233,6 +1284,9 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles: flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      alternateShops: flipEligible
+        ? alternateShopsFor(ourShops, geocoded?.lat ?? null, geocoded?.lng ?? null, nearestShopName)
+        : null,
       conditionalShop: conditional.name,
       conditionalShopDistanceMiles:
         conditional.distanceMiles != null ? Math.round(conditional.distanceMiles) : null,

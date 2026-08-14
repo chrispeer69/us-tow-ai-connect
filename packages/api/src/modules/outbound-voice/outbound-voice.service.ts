@@ -21,6 +21,8 @@ import {
   renderTemplate,
   SCRIPT_TEMPLATES,
 } from './script-templates';
+import { GeocoderService } from '../command-center/geocoder.service';
+import { selectNearestShop, selectNearestShops } from '../flip-engine/nearest-shop.selector';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
 import { RetellOutboundClient } from './retell-outbound.client';
 import {
@@ -61,6 +63,7 @@ export class OutboundVoiceService {
     private readonly retell: RetellOutboundClient,
     @Inject(OUTBOUND_VOICE_PROVIDER) private readonly provider: OutboundVoiceProvider,
     private readonly sms: TwilioSmsService,
+    private readonly geocoder: GeocoderService,
   ) {
     this.logger.log(`[outbound-voice] active provider: ${this.provider.providerName}`);
   }
@@ -1228,6 +1231,76 @@ export class OutboundVoiceService {
     const repairShops = activeShops.filter((s) => s.shopType === 'REPAIR');
     const bodyShops = activeShops.filter((s) => s.shopType === 'BODY');
 
+    // Session 75 — this path used to hand the script `repairShops[0]` and a
+    // LITERAL `nearestShopDistanceMiles: 3`. It measured nothing. A test call
+    // from Lewis Center on 2026-08-14 was offered Complete Brake Service — 18
+    // miles away, the ninth-nearest shop of nine — and told the customer it was
+    // "just 3 miles from you". Both the shop and the number were fabrications,
+    // and the same code backs the PUBLIC DEMO, so prospects heard it too.
+    //
+    // Real jobs were never affected: the orchestrator renders its own body and
+    // passes it in as `scriptBody`, so it never reached this ctx. That is
+    // exactly why the defect survived — it only ever fired where we were
+    // looking at it.
+    //
+    // Now geocoded and measured like production, and honest when it cannot be:
+    // no pickup, no geocode, or nothing inside the catchment means no shop and
+    // no offer, rather than an invented one.
+    const geocodedPickup = input.pickupLocation
+      ? await this.geocoder.geocode(input.pickupLocation)
+      : null;
+    const flipCfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
+    const maxShopDistanceMiles = Number(flipCfg.max_shop_distance_miles ?? 12);
+    const nearest = geocodedPickup
+      ? selectNearestShop({
+          pickupLat: geocodedPickup.lat,
+          pickupLng: geocodedPickup.lng,
+          shopType: 'REPAIR',
+          shops: activeShops.map((s) => ({
+            id: s.id,
+            name: s.name,
+            shopType: s.shopType as 'REPAIR' | 'BODY',
+            lat: s.lat == null ? null : Number(s.lat),
+            lng: s.lng == null ? null : Number(s.lng),
+            active: s.active,
+          })),
+        })
+      : null;
+    const withinCatchment =
+      nearest?.shop != null &&
+      nearest.distanceMiles != null &&
+      nearest.distanceMiles <= maxShopDistanceMiles;
+    const offeredName = withinCatchment ? nearest!.shop!.name.toLowerCase().trim() : null;
+    const alternateShops = geocodedPickup
+      ? selectNearestShops(
+          {
+            pickupLat: geocodedPickup.lat,
+            pickupLng: geocodedPickup.lng,
+            shopType: 'REPAIR',
+            shops: activeShops.map((s) => ({
+              id: s.id,
+              name: s.name,
+              shopType: s.shopType as 'REPAIR' | 'BODY',
+              lat: s.lat == null ? null : Number(s.lat),
+              lng: s.lng == null ? null : Number(s.lng),
+              active: s.active,
+            })),
+          },
+          4,
+        )
+          .filter((x) => x.shop.name.toLowerCase().trim() !== offeredName)
+          .slice(0, 3)
+          .map((x) => ({ name: x.shop.name, distanceMiles: x.distanceMiles }))
+      : [];
+    if (input.pickupLocation && !withinCatchment) {
+      this.logger.warn(
+        `[outbound-voice] test call: no partner shop offered — pickup="${input.pickupLocation}" ` +
+          `geocoded=${geocodedPickup ? `${geocodedPickup.lat},${geocodedPickup.lng}` : 'FAILED'} ` +
+          `nearest=${nearest?.shop?.name ?? 'none'} distance=${nearest?.distanceMiles ?? 'n/a'}mi ` +
+          `cap=${maxShopDistanceMiles}mi`,
+      );
+    }
+
     const ctx: any = {
       repName: (cfg.rep_name as string) || '',
       companyName: (cfg.company_name as string) || 'Roadside Towing',
@@ -1241,8 +1314,9 @@ export class OutboundVoiceService {
       destination: input.destination || 'Collision Center',
       issue: 'a breakdown',
       issueSubcategory: null,
-      nearestShop: repairShops[0]?.name || 'Downtown Auto Care',
-      nearestShopDistanceMiles: 3,
+      nearestShop: withinCatchment ? nearest!.shop!.name : null,
+      nearestShopDistanceMiles: withinCatchment ? Math.round(nearest!.distanceMiles!) : null,
+      alternateShops: withinCatchment ? alternateShops : null,
       bodyShop1: bodyShops[0]?.name || null,
       bodyShop2: bodyShops[1]?.name || bodyShops[0]?.name || null,
       rentalsAvailable: true,
