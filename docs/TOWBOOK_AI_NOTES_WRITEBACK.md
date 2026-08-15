@@ -40,26 +40,27 @@ and every call transcript. **Keep that at zero.**
 ## Navigating to the right job
 
 **Use click-through, not the search bar.** The adapter already scrapes
- from the dispatch list, and our  *is* that
- — the Towbook job number (Chris, 2026-08-15), an exact handle we
+`li.entryRow[data-id]` from the dispatch list, and our `source_job_id` *is* that
+`data-id` — the Towbook job number (Chris, 2026-08-15), an exact handle we
 already hold. Clicking the row opens the modal directly. Towbook typically has
 5–20 jobs open at once, so the row is in a list we parse every poll cycle. There
 is a search bar top-right if click-through ever fails, but it should not be the
 primary path.
 
 **One thing to confirm during discovery.** All 883 stored ids are 9 digits
-( … ), while the modal observed on 2026-08-15 was titled
- — six digits, and not present anywhere in our data. Those
+(`278515215` … `280215679`), while the modal observed on 2026-08-15 was titled
+`Update Call #126258` — six digits, and not present anywhere in our data. Those
 may simply be two different Towbook identifiers (a row/job id and a displayed
-call number). It does not block anything, because click-through uses and never needs the displayed number — but it does mean **searching by our stored
-id may not find the job**, so confirm which is which before relying on search.
-The row selector list also references ; if the row
-carries both, capture and store the second so the two identities are linked
-permanently.
+call number). It does not block anything, because click-through uses `data-id`
+and never needs the displayed number — but it does mean **searching by our
+stored id may not find the job**, so confirm which is which before relying on
+search. The row selector list also references `[data-id][data-call-number]`; if
+the row carries both, capture and store the second so the two identities are
+linked permanently.
 
 **Keep the identifier abstract.** Chris, 2026-08-15: US Tow Dispatch job numbers
 will be used as well once that software comes in. Nothing here should hard-code
-Towbook's scheme — the job handle is whatever  holds for the
+Towbook's scheme — the job handle is whatever `source_job_id` holds for the
 adapter that produced the job.
 
 ### Identity verification — fail closed
