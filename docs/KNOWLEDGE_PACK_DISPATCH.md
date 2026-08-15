@@ -97,6 +97,52 @@ That decomposes into three separate items:
 
 ---
 
+## What we can actually do — captured 2026-08-15, Chris
+
+The operational capability behind every offer. **This is the reason the speed
+objection is answerable**, and it should be read before the tire section below.
+
+- **16 tow trucks** working the Columbus area daily, across three brands:
+  Roadside Towing, Auto Lyft USA, Excite Towing.
+- **We own the Roadside Emergency Management App** — it is our product, not a
+  third-party integration.
+- **Round-trip towing.** Tow to a destination, have the car repaired anywhere,
+  then collect it and tow it back to the customer's home. Repeatedly, all day.
+- **30 rental cars** at 5511 Westerville Rd, Columbus. We can collect a rental
+  and deliver it to any local location or store.
+
+**The positioning, in Chris's words:** *"we sell convenience — hence the name
+CONVINI. We go the extra mile, we go the distance, to make a difference in the
+experience a customer has when a breakdown occurs."* Winning on creativity,
+effort, time invested, and care — not on price or turnaround.
+
+### Why this matters to the script
+
+The two objections that dominated 2026-08-14 were **loyalty** (9 — "it's my
+regular shop") and **dealership/warranty** (6). Neither is answerable with a
+discount, and we have been answering both with a discount.
+
+Convenience answers both, because it does not ask the customer to give anything
+up. Their regular shop is still their regular shop; what changes is whether they
+have to sit in a waiting room.
+
+The same logic dissolves the tire problem below. **We do not need to be faster
+than a tire store. We need the four hours to stop being the customer's
+problem** — a rental, a lift home, or the car returned to their driveway.
+
+Open: how these are actually offered, what they cost the customer, what
+eligibility rules apply, and which of them the AI is allowed to promise on a
+call versus flag for the office. Nothing here is in the script yet, and none of
+it should be spoken until that is answered — an over-promise on a rental is
+worse than not mentioning it.
+
+**Data note:** 5511 Westerville Rd is also the address of `Excite Collision
+Repair` in `alpha_shops`, where it is marked **inactive**. The 08-13 report
+already asked whether the two body shops are meant to be switched off and that
+is still unanswered. Worth resolving, since the rental depot lives there.
+
+---
+
 ## Tire jobs — captured 2026-08-15, Chris
 
 **Settles a live contradiction.** Script 2.5 made single flat tires flip-eligible
