@@ -97,6 +97,55 @@ That decomposes into three separate items:
 
 ---
 
+## Tire jobs — captured 2026-08-15, Chris
+
+**Settles a live contradiction.** Script 2.5 made single flat tires flip-eligible
+again; the tenant `custom_agent_rules` still said do not pitch them; the
+2026-08-14 analyst recommended suppressing them outright. All three were arguing
+the wrong question. The answer is not *whether* to pitch — it is that **the
+mechanical-diagnostic flip is the wrong offer for a tire job.**
+
+**Why we lose the tire job itself, in Chris's words:**
+
+- A flat-tire customer does not need a flip. They need a **quick tire repair**.
+- Auto shops carry a few tires but not an immediate solution, and they tend to
+  **upsell to the most expensive tire available, because they know you need it**.
+- **Alpha shops are not the best option for a quick tire replacement.** A focused
+  tire store is. Alpha lacks the speed tire stores typically have.
+- Even a tire store takes **1–4 hours, possibly a half day** — they hold more
+  inventory but often not the brand you want, so a warehouse order is common.
+
+So pitching "come to us, it'll be quick" on a single tire is a promise we lose
+on, and it costs trust. The free mechanical diagnostic is also simply not the
+relevant benefit — one customer on 08-14 said *"No, it's a tire. I got my tire
+flat. I want to bring it to the tire shop"* and was offered a $89 mechanical
+diagnostic anyway.
+
+**Why we still want the customer.** A single tire repair leads to:
+
+- a **full set of tires**
+- a **brake job**
+- a **caliper replacement**
+
+> "These are the jobs we are seeking to capture — either on this visit, or the
+> next visit."
+
+**Design consequence.** Tire jobs need their own path, not the standard offer and
+not silence:
+
+- No mechanical-diagnostic flip, and no speed claim we cannot keep.
+- Position for the follow-on work — the set, the brakes, the calipers — on this
+  visit or a later one.
+- Honesty about turnaround is a feature here, not a concession.
+
+**Still open (round 2):** does the tow still route to our shop on a tire job or
+go where the customer chose; does a full set / blown tire / damaged rim / no
+spare change the answer back; what exactly the AI offers; whether anything is
+done to enable the *next* visit; and whether there is a partner tire store we
+refer to.
+
+---
+
 ## Round 2 — Vehicle condition & equipment
 
 *TBD.* Currently asked on every call:
