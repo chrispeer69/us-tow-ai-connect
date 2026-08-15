@@ -75,11 +75,25 @@ function isReframe(ctx: ScriptContext): boolean {
  */
 function conviniCloseFor(ctx: ScriptContext): string {
   if (isReframe(ctx)) {
+    // 3.1 — what the app actually is, per Chris 2026-08-15. It is an all-in-one
+    // emergency services app, not a tow tracker: 24/7 roadside assistance, plus
+    // towing, rentals, auto repair and body work, plus travel, hotels,
+    // entertainment ticketing, auto repair insurance and rewards.
+    //
+    // Deliberately does NOT list all nine. A customer thirty seconds past a
+    // breakdown is not shopping for hotel deals, and a nine-item list read
+    // aloud turns a close into a timeshare pitch — prompt rule 8. Lead with
+    // what they are living through right now, gesture at the rest, and let the
+    // authorized answer carry the full list if they ask.
+    //
+    // The framing that earns the download is "so this is easier next time" —
+    // the customer is currently experiencing exactly the problem it solves.
     return (
       `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. ` +
-      `One last thing — we've built a free app that gives you 24/7 access to all our partner towing companies ` +
-      `and repair shops. It's called the Roadside Emergency Management App, and I've just texted you a link to it. ` +
-      `Take a look, and let us know if you have any questions. Thanks again for using {{company_name}}.`
+      `One last thing — we've built a free all-in-one emergency services app, so this is a lot easier next time. ` +
+      `You get 24/7 roadside assistance, plus towing, rentals, auto repair and body shops in one place, ` +
+      `and travel, hotels and rewards on top. It's called the Roadside Emergency Management App, and I've just ` +
+      `texted you the link. Thanks again for using {{company_name}}.`
     );
   }
   return (
@@ -88,7 +102,31 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.0';
+export const SCRIPT_VERSION = '3.1';
+// 3.1 (2026-08-15) — the app close says what the app actually is, and tire jobs
+//   get their own offer. Knowledge-pack round 1 with Chris.
+//
+//   - The Roadside Emergency Management App is an all-in-one emergency services
+//     app: 24/7 roadside assistance, plus towing, rentals, auto repair and body
+//     work, plus travel, hotels, entertainment ticketing, auto repair insurance
+//     and rewards. The close previously described it as access to partner
+//     towing and repair shops, which undersold it to about a third of what it
+//     is. The close names the four that matter to someone thirty seconds past a
+//     breakdown and gestures at the rest; the full list is an authorized answer
+//     for when they ask, because nine items read aloud is a timeshare pitch.
+//   - TIRE JOBS (single_tire_issue, full_tire_set) keep the flip — the tow still
+//     goes to the nearest network shop — but get a tire-relevant offer: free
+//     visual brake inspection, tire condition assessment, fluids checked and
+//     topped off, and 10% off the NEXT set of tires, brake job, or oil change
+//     and rotation. The discount moves from today to next visit and the two must
+//     never be stated together.
+//   - Getting home is answered in two parts, both authorized answers rather than
+//     pitches: a ride now (driver or rideshare, hedged) and the car home later
+//     (customer requests it via their club or the app, never implied free).
+//
+//   A/B NOTE: 3.0 collected 4 calls and 0 offers before this shipped, so
+//   changing the reframe close costs the experiment nothing. Treat 3.1 as the
+//   real start of A/B collection and ignore the 3.0 rows.
 // 3.0 (2026-08-14) — A/B split, not a replacement. Chris's call: run the new
 //   call structure against the current one on alternating calls rather than
 //   cutting over, so the comparison is not confounded by day-of-week, weather,
@@ -1023,6 +1061,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         // close. Adding a new element to one arm would muddy what the
         // experiment is attributing. Promoting this into the close proactively
         // is a deliberate 3.1 decision, not a side effect of this change.
+        `[AGENT: WHAT'S IN THE APP. If the customer asks what the app does, or what else is in it -> "It's an all-in-one emergency services app. You get 24/7 roadside assistance, and from the app you can book towing, car rentals, auto repair and auto body repair. There's also travel, hotels, entertainment ticketing, auto repair insurance and a rewards programme." Only give the full list if they ASK — do not read it out in the close. Do NOT quote a price for anything in the app or say what is free versus paid: the pricing is in the app. Do not promise a reward, a discount or a specific benefit amount.]`,
         `[AGENT: GETTING HOME — NOW. If the customer asks how they get home, says they have no ride, or worries about being stranded -> "We can usually sort a ride for you — the driver may be able to run you somewhere close by, or we can arrange a rideshare from the shop to wherever you need to be. I'll flag it on the job and our office will confirm it with you." Say "usually" and "arrange", never "we will". Do NOT promise the tow truck has room or that the driver will do it — that depends on the truck, the load and how many of you there are. Do NOT commit to a distance, and do NOT say who pays. If they need to know more than that, the office confirms.]`,
         `[AGENT: GETTING THE CAR HOME — LATER. If they ask how the car gets back to them after the repair, or say the shop is out of their way -> "When the repair's done, you can request a tow home — either through your motor club again, or straight from the Roadside App I'm texting you. The app also has one-off tows and membership options, and the pricing is all in there." Do NOT say or imply that tow is free, included, or covered. Do NOT quote a price for it. Do NOT state whether their motor club will cover a second tow — that is between them and their club. If they say their club will not cover it, note that plenty of people hold more than one membership and either another club or the app will do it.]`,
         `[AGENT: If the customer asks whether their insurance or warranty covers it -> "Our partner shops take most aftermarket repair policies. I can note down who you're insured with and have our office team check your coverage with them directly. The diagnostic itself is free either way, so you'd know what you're dealing with before spending anything." Take the provider NAME only — never ask for a policy number, member id, or date of birth. Do not say the office will call "right now" or give any timeframe, and never state that a specific policy is or is not covered.]`,

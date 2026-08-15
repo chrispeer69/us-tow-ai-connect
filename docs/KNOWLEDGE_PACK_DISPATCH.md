@@ -104,8 +104,14 @@ objection is answerable**, and it should be read before the tire section below.
 
 - **16 tow trucks** working the Columbus area daily, across three brands:
   Roadside Towing, Auto Lyft USA, Excite Towing.
-- **We own the Roadside Emergency Management App** — it is our product, not a
-  third-party integration.
+- **We own the Roadside Emergency Management App** — our product, not a
+  third-party integration. It is an **all-in-one emergency services app**:
+  24/7 roadside assistance, plus towing, car rentals, auto repair and auto body
+  repair bookable from the app, plus travel, hotels, entertainment ticketing,
+  auto repair insurance and rewards. **SHIPPED in the 3.1 close** — which names
+  the four that matter to someone thirty seconds past a breakdown and gestures
+  at the rest. The full list is an authorized answer for when they ask; nine
+  items read aloud is a timeshare pitch.
 - **Round-trip towing.** Tow to a destination, have the car repaired anywhere,
   then collect it and tow it back to the customer's home. Repeatedly, all day.
 - **30 rental cars** at 5511 Westerville Rd, Columbus. We can collect a rental

@@ -258,7 +258,8 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).not.toContain('Would you like to hear');
     // New close.
     expect(body).toContain('Roadside Emergency Management App');
-    expect(body).toContain('24/7 access to all our partner towing companies');
+    expect(body).toContain('all-in-one emergency services app');
+    expect(body).toContain('24/7 roadside assistance');
     expect(body).not.toContain('CONVINIcar app link');
     // AI disclosure survives the rewrite.
     expect(body).toContain("I'm an AI assistant");
