@@ -1074,6 +1074,20 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         // shops. See the open question in KNOWLEDGE_PACK_DISPATCH.md about
         // whether the ride is available at all when the customer keeps their
         // own destination.
+        // Rentals. 30 cars at 5511 Westerville Rd, and the delivery options are
+        // the actual selling point — a car brought to your house with digital
+        // paperwork is a different product from "go and collect one".
+        //
+        // FULL COVERAGE INSURANCE IS A HARD REQUIREMENT and must be said while
+        // offering, not discovered at handover. Plenty of people carry liability
+        // only; offering a rental they cannot take and letting them find out at
+        // the counter is a worse experience than never mentioning it.
+        //
+        // Rental offers live in the Roadside App (Chris, 2026-08-15), same as
+        // tow pricing and RoadsideMC memberships. So "how much?" — the first
+        // thing anyone asks about a rental — has a real answer that is not a
+        // number the agent could get wrong: it is in the app we just texted them.
+        `[AGENT: RENTAL CARS. If the customer asks about a rental, a loaner, or how they get around while the car is in the shop -> "We have rental cars as well. We can bring one to the shop, or out to your home, and do the paperwork digitally — or run you over to our rental location on Westerville Road, whichever suits. You'd need your driver's license and full coverage insurance. The rental offers are all in the Roadside App I'm texting you." State the full coverage requirement EVERY time you mention a rental — do not leave it to the handover. Do NOT quote a rate, do NOT say it is free or included, and do NOT promise a particular vehicle or that one is available today. If they ask the price, point them to the app.]`,
         `[AGENT: GETTING HOME — NOW. If the customer asks how they get home, says they have no ride, or worries about being stranded -> "We can usually sort a ride for you — the driver may be able to run you somewhere close by, or we can arrange a rideshare from the shop to wherever you need to be." Then you MUST say how it is paid for, before they accept: "If you're a RoadsideMC member it's already included in your plan. If you're not, it goes on the repair invoice at the shop — our office will confirm that with you." Say "usually" and "arrange", never "we will". Do NOT promise the tow truck has room or that the driver will do it — that depends on the truck, the load and how many of you there are. Do NOT commit to a distance and do NOT quote an amount. NEVER let a customer accept a ride without hearing that it goes on the repair invoice if they are not a member.]`,
         `[AGENT: GETTING THE CAR HOME — LATER. If they ask how the car gets back to them after the repair, or say the shop is out of their way -> "When the repair's done, you can request a tow home — either through your motor club again, or straight from the Roadside App I'm texting you. The app also has one-off tows and membership options, and the pricing is all in there." Do NOT say or imply that tow is free, included, or covered. Do NOT quote a price for it. Do NOT state whether their motor club will cover a second tow — that is between them and their club. If they say their club will not cover it, note that plenty of people hold more than one membership and either another club or the app will do it.]`,
         `[AGENT: If the customer asks whether their insurance or warranty covers it -> "Our partner shops take most aftermarket repair policies. I can note down who you're insured with and have our office team check your coverage with them directly. The diagnostic itself is free either way, so you'd know what you're dealing with before spending anything." Take the provider NAME only — never ask for a policy number, member id, or date of birth. Do not say the office will call "right now" or give any timeframe, and never state that a specific policy is or is not covered.]`,

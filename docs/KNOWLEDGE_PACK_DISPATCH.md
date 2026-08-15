@@ -283,10 +283,14 @@ leads to a full set, a brake job or a caliper replacement.
 is forbidden from promising a turnaround time on a tire, because a tire can take
 an hour or most of a day depending on stock and we do not compete on that.
 
-**Consequence for the tenant config:** `custom_agent_rules` still says *do not
-pitch repair-shop offers for … single flat tire …*. That is now wrong and should
-be **removed** — the code pitches, with the right offer. Left in place, the
-config is what the agent reads, so it suppresses the pitch entirely.
+**Tenant config — RESOLVED 2026-08-15.** `custom_agent_rules` said *do not pitch
+repair-shop offers for … single flat tire …*, which suppressed the pitch
+entirely, because the config is what the agent reads. Removed on Chris's
+instruction from **both** the tenant and the global `flip_engine_defaults`, and
+replaced with a line stating that tire jobs DO get an offer and that the script
+carries a tire-specific one. Lockout, fuel delivery, jump-start-only and
+winch-out-only are still suppressed — those genuinely are not repair jobs.
+Previous values backed up in `docs/backups/`.
 
 **Still open:** whether a damaged rim, no spare, run-flats or tire-caused
 suspension damage change anything; whether we refer to a tire store when we

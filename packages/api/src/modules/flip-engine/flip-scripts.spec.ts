@@ -220,6 +220,27 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(spoken).not.toContain('tow home');
   });
 
+  // Session 75 — rentals, Chris 2026-08-15. Full coverage insurance is a hard
+  // requirement and offering a rental someone cannot take is worse than not
+  // offering one, so it is stated while offering rather than at handover.
+  it('states the full coverage requirement whenever it offers a rental', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('RENTAL CARS');
+    expect(body).toContain("driver's license and full coverage insurance");
+    expect(body).toContain('State the full coverage requirement EVERY time');
+  });
+
+  it('offers all three rental delivery options and quotes no rate', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('bring one to the shop, or out to your home');
+    expect(body).toContain('paperwork digitally');
+    expect(body).toContain('rental location on Westerville Road');
+    // Pricing lives in the app, so there is no number to get wrong.
+    expect(body).toContain('rental offers are all in the Roadside App');
+    expect(body).toContain('Do NOT quote a rate');
+    expect(body).toContain('do NOT promise a particular vehicle');
+  });
+
   // 3.0 A/B split.
   it('splits variants stably and roughly evenly', () => {
     // Same seed must always give the same arm — a retry that switched arms
