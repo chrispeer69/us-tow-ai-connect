@@ -189,9 +189,52 @@ Promoting either into the close proactively is a 3.1 decision.
 > avoids the question entirely, which is safe but vague. If we cover it, that is
 > a strong line we are currently not using.
 
-Still open on the rest: rental eligibility and cost, and whether the agent may
-offer a rental on a call at all. Nothing about rentals is in the script — an
-over-promised rental is worse than an unmentioned one.
+### Rentals — SHIPPED 2026-08-15
+
+30 cars. Three ways to get one, and the delivery is the product:
+
+1. Transport the customer to the rental location, 5511 Westerville Rd
+2. Tow a rental to the **shop**, paperwork done digitally
+3. Tow a rental to their **home**, paperwork done digitally
+
+**Requirements: driver's license and full coverage insurance**, presented at
+handover. The agent states the full-coverage requirement **every time** it
+mentions a rental — plenty of people carry liability only, and letting someone
+discover that at the counter is worse than never offering. Rental **offers live
+in the Roadside App**, so no rate is quoted, nothing is called free, and no
+specific vehicle is promised.
+
+### The ride is in-network only — the rule that makes it a lever
+
+Chris, 2026-08-15: *"a RoadsideMC member can always request a ride service — from
+an in-network repair shop. We do not offer the ride service from out-of-network
+shops."*
+
+That single rule makes the whole thing coherent:
+
+| Destination | Member | Non-member |
+|---|---|---|
+| **Our shop** | Included in plan | Added to the repair invoice |
+| Out of network | **Not offered** | **Not offered** |
+
+A non-member's ride is billed to the repair invoice — which only exists if the
+repair happens with us. So out of network there is nothing to bill it to.
+
+**SHIPPED in 3.2:** the offer now carries *"and if you need a ride home from
+there, we can sort that too"*, the agent may raise it against a distance
+objection framed as a gain, and it must refuse to offer a ride when the customer
+keeps an out-of-network destination.
+
+### Repair financing and insurance — TBD, Chris gathering details
+
+Chris, 2026-08-15: we can offer **auto repair financing** and **auto repair
+insurance**, on larger jobs. Details to follow.
+
+**Not in the script and must not be**, until the terms are known. Financing is
+regulated in ways a tow offer is not, and an agent improvising credit terms is a
+materially worse failure than an invented discount. When the details arrive:
+who qualifies, what "larger job" means, who actually provides it, and exactly
+what the agent may say versus hand to the office.
 
 **Data note:** 5511 Westerville Rd is also the address of `Excite Collision
 Repair` in `alpha_shops`, where it is marked **inactive**. The 08-13 report

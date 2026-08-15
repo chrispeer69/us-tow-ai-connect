@@ -241,6 +241,38 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('do NOT promise a particular vehicle');
   });
 
+  // 3.2 — the ride is the pitch. Chris: 'come to Wayne's and we'll get you
+  // home'. It answers the distance objection, which a discount cannot, and it
+  // is only true at our shops.
+  it('offers the ride in every offer-1 variant', () => {
+    for (const extra of [
+      { issue: 'a breakdown' },
+      { issue: 'a breakdown', alternateShops: [{ name: "Wayne's Columbus", distanceMiles: 6 }] },
+      { issue: 'a flat tire', issueSubcategory: 'single_tire_issue' as const },
+    ]) {
+      const body = renderCallBody('competitor_repair', { ...base, ...extra });
+      expect(body).toContain('if you need a ride home from there, we can sort that too');
+    }
+  });
+
+  it('says can, not will — the ride is not free to everyone', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('we can sort that too');
+    expect(body).not.toContain("we'll get you home");
+  });
+
+  it('runs the ride from our shops only, and refuses it out of network', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('The ride service runs from OUR partner shops ONLY');
+    expect(body).toContain('you may NOT offer one, and must not hint that we might');
+  });
+
+  it('may use the ride against a distance objection, framed as a gain', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('You MAY raise the ride as a reason to come to us');
+    expect(body).toContain('Never say it as a threat');
+  });
+
   // 3.0 A/B split.
   it('splits variants stably and roughly evenly', () => {
     // Same seed must always give the same arm — a retry that switched arms
