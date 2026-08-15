@@ -154,9 +154,25 @@ Two different customer moments, answered separately because they are.
 
 **The ride now.** We can arrange one — the tow truck driver may run them
 somewhere close by, or we arrange a rideshare from the shop to a destination of
-their choosing, within a reasonable distance. The agent says "usually" and
-"arrange", never "we will": it must not promise the truck has room, must not
-commit to a distance, and must not say who pays. Office confirms.
+their choosing, within a reasonable distance. **We pay for it**, but it is only
+*free* to some:
+
+| Customer | Who pays |
+|---|---|
+| **RoadsideMC member** | Included — already covered by their plan |
+| Everyone else | **Added to the repair invoice** at the shop |
+
+The agent **must disclose which applies before the customer accepts**. A ride
+that turns up as an unexplained line on a repair bill is a complaint and a
+chargeback, and it would be our fault for not saying so on the call. It still
+says "usually" and "arrange" rather than "we will", must not promise the truck
+has room, must not commit to a distance, and must not quote an amount.
+
+> **Open — needs Chris:** for a non-member the charge lands on the **repair
+> invoice**, which only exists if the vehicle is repaired at one of our shops.
+> So is the ride available at all when the customer keeps their own
+> destination? If it is not, that makes it a genuine flip lever — "come to
+> Wayne's and we will get you home" — and the script should say so.
 
 **The car home later.** We do retail towing and local motor-club towing under
 **RoadsideMC**. The customer requests the second tow themselves — through the
