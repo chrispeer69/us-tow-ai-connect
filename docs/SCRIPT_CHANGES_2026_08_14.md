@@ -1,15 +1,19 @@
-# Outbound Call Script — Changes on 14 August 2026
+# Outbound Call Script — Changes, 14–15 August 2026
 
 Prepared for Chris Peer, Alpha Automotive management, and Sidd.
-All figures pulled from production `outbound_call_logs` on 2026-08-14.
+All figures pulled from production `outbound_call_logs`.
+
+**Live now: script 3.2, Retell agent v40.** Sections 1–8 cover 14 August.
+**Section 9 covers 15 August** — knowledge-pack round 1, the tire offer, the
+ride home, and a review pass that found four more defects.
 
 ---
 
 ## 1. Summary
 
-Seven releases shipped today. Most are defect fixes. One — script 3.0 — is a new
-call structure running as an **A/B test against the current script**, not as a
-replacement.
+Seven releases shipped on 14 August. Most are defect fixes. One — script 3.0 —
+is a new call structure running as an **A/B test against the current script**,
+not as a replacement. (Superseded by 3.1 and 3.2 on 15 August — see section 9.)
 
 | Version | What it is | Type |
 |---|---|---|
@@ -75,9 +79,9 @@ Rule 32's closing claim is false. Offer 2 has produced 12 wins across 282 runs,
 every one of them a second attempt after a decline.
 
 Both rules now draw the same constraint/preference line as the script. Shipped
-as **agent v36**, published. Superseded by **v38** (section 3.5), which is what
-`RETELL_AGENT_VERSION` now points to. **v35 and v36 are untouched and remain
-working rollback targets.** (v37 and v39 are unpublished drafts created as a
+as **agent v36**, published. Superseded by **v38**, then **v40** (section 9.5), which is what
+`RETELL_AGENT_VERSION` now points to. **v35, v36 and v38 are untouched and
+remain working rollback targets.** (v37 and v39 are unpublished drafts created as a
 side effect of versioning; live calls are pinned to a published version, so they
 are inert.)
 
@@ -353,3 +357,156 @@ Test status: **164 of 164 flip-engine tests pass.** Eleven pre-existing failures
 remain elsewhere in the API suite (`admin-auth.guard`, `outbound-voice.service`,
 `tenant-onboarding`); they were failing on `main` before today's work and are
 untouched by it.
+
+---
+
+# 9. 15 August 2026 — knowledge-pack round 1, and a review pass
+
+## 9.1 What shipped
+
+| Version | What it is | Type |
+|---|---|---|
+| 3.1 | The close says what the app actually is | Copy |
+| 3.2 | Tire offer; the ride home enters the offer; rentals | Copy + capability |
+| Retell agent v40 | Rule 33 stopped contradicting the tire offer | **Defect fix** |
+| — | Conditional offer got a consent gate | **Defect fix** |
+| — | CONVINIcar retired from everything spoken | **Defect fix** |
+| — | Tire suppression removed from tenant + global config | Config |
+
+## 9.2 The tire decision — a contradiction live in three places
+
+Script 2.5 made single flat tires flip-eligible. The tenant config said *do not
+pitch them*. The 14 August analyst recommended suppressing them outright.
+
+**All three were arguing the wrong question.** Chris's call: the tow still goes
+to the nearest network shop — what was wrong was pitching a *mechanical*
+diagnostic to someone with a flat. On 14 August a customer said *"No, it's a
+tire. I got my tire flat. I want to bring it to the tire shop"* and was offered
+an $89 mechanical diagnostic anyway.
+
+Tire jobs now get a tire-relevant offer:
+
+> "…while they're fixing the tire they'll do a **free visual brake inspection and
+> tire condition assessment**, and **check and top off your fluids** — no charge.
+> You'd also get **10 percent off your next** set of tires, brake job, or oil
+> change and rotation."
+
+Note the discount **moves**: on a normal flip it is off *today's* parts and
+labor; on a tire job it is a coupon for the *next* visit. The agent is told
+explicitly these are never stated together. It is also forbidden from promising a
+turnaround time — a tire can take an hour or most of a day depending on stock,
+and we do not compete there.
+
+The rationale is Chris's: a single tire repair is what leads to a full set, a
+brake job or a caliper replacement.
+
+## 9.3 The ride home — the answer to the objection a discount cannot touch
+
+The two objections that dominated 14 August were **loyalty (9)** — *"it's my
+regular shop"* — and **dealership/warranty (6)**. Fifteen of twenty-five
+declines. Neither is answerable with a discount, and a discount is what we had
+been answering both with.
+
+The offer now carries:
+
+> "And if you need a ride home from there, we can sort that too."
+
+**It runs from our shops only.** That is what makes it a genuine reason to
+switch rather than a courtesy — and the billing falls out of the same rule: a
+RoadsideMC member has it included, everyone else has it added to the repair
+invoice, and a repair invoice only exists if the repair happens with us.
+
+| Destination | Member | Non-member |
+|---|---|---|
+| **Our shop** | Included in plan | Added to the repair invoice |
+| Out of network | **Not offered** | **Not offered** |
+
+Three guardrails, all deliberate:
+
+- It says **"can"**, not "will". Leading with *"we'll get you home"* before the
+  billing is disclosed would be a soft bait. A test asserts the offer never says
+  it.
+- **Payment must be disclosed before the customer accepts.** This is the one
+  place the agent can create a charge the customer did not agree to; a ride that
+  appears as an unexplained line on a repair bill is a complaint and a
+  chargeback.
+- Out of network the agent must **refuse and not hint** — *"for a ride we'd need
+  the car going to one of our shops."*
+
+## 9.4 Also live
+
+**Rentals** — three delivery options (to the shop, to your home with digital
+paperwork, or a lift to the Westerville Road location). **Driver's license and
+full coverage insurance stated every time**, because plenty of people carry
+liability only and discovering that at the counter is worse than never being
+offered. Offers and pricing live in the app, so no rate is quoted.
+
+**The app close** now says what the app is — an all-in-one emergency services
+app: 24/7 roadside assistance, plus towing, rentals, auto repair and body work,
+with travel, hotels and rewards on top. The previous close described it as
+access to partner towing and repair shops, which undersold it to about a third.
+It names the four that matter to someone thirty seconds past a breakdown; the
+full list is an answer for when they ask.
+
+## 9.5 The review pass — four more defects
+
+**Retell rule 33 contradicted the tire offer.** It enumerated the standard terms
+as universal — *"up to one hour, normally a $179 value… plus up to 10 percent off
+parts and labor"* — while a tire job carries entirely different terms. The prompt
+would have dragged the agent back to the wrong offer. **This is the same class of
+bug that made offer 2 unreachable for three days.** Rewritten to state the
+principle without enumerating any one variant. Shipped as **agent v40**.
+
+**The conditional offer had no consent gate.** It makes a real destination change
+— *"Would you like me to switch the drop-off to X?"* — with nothing requiring an
+unambiguous yes. Every other offer has one, because on 11 August a win was logged
+from a reply given amid partly unintelligible speech.
+
+**`"certified shopabout 4 miles from you"`** — a missing separator in the same
+offer.
+
+**CONVINIcar was still being spoken.** It is retired (CONVINI Inc remains the
+parent; it is the *app* brand that is gone), but the name survived in the A/B
+**control arm's close — roughly half of all customers** — in the legacy pitch
+helpers, and in both tenant and global `custom_agent_rules`, which is what the
+agent actually reads. Only the *name* changed in control; its structure and
+"track this tow live" framing are untouched, because that is what the A/B is
+comparing. Correcting a factual error in both arms does not bias the comparison;
+leaving a dead brand in one would have.
+
+## 9.6 A security finding — not ours, but serious
+
+The Towbook **Billing Notes** field carries raw cardholder data: full card
+number, expiry, **security code** and billing ZIP.
+
+**Retaining a security code after authorization is prohibited under PCI DSS.**
+This is upstream of us and needs raising with Towbook or whichever motor club
+populates it.
+
+**We are not making it worse, and this was verified rather than assumed:** zero
+matches for card-like digit runs, `CCN`, or `Security Code` across every
+`unified_jobs.source_payload` and every call transcript. The write-back design
+makes it a hard rule never to read, write, log or store that field.
+
+## 9.7 Still open
+
+- **SendGrid is a free account with zero credits** (`chris@bluecollarai.online`,
+  hard limit, allowance exhausted). Daily review emails fail until it is
+  upgraded. The 14 August review was delivered by hand. Separately, the sending
+  address `alerts@ustowalliance.com` shows as **unverified**.
+- **Towbook write-back** — designed in full (`TOWBOOK_AI_NOTES_WRITEBACK.md`),
+  blocked only on the DOM selectors inside the Update Call modal.
+- **App URL** still resolves to the CONVINI address although nothing says
+  CONVINIcar any more — now *more* inconsistent, not less.
+- **Repair financing and repair insurance** — parked at Chris's instruction
+  pending details. Deliberately not in the script: financing is regulated in
+  ways a tow offer is not.
+- **Spanish** — leaning toward a second AI dispatcher; demand still unmeasured
+  because the STT is pinned to `en-US`.
+
+## 9.8 Test status
+
+**flip-engine: 210 of 210 pass.** Full API suite: **538 pass, 11 fail** — the
+same eleven pre-existing failures as 14 August, same test names, in
+`admin-auth.guard`, `outbound-voice.service` and `tenant-onboarding`. Untouched
+by this work.
