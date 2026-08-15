@@ -146,6 +146,22 @@ problem** — a rental, a lift home, or the car returned to their driveway.
 | Roadside Towing / Auto Lyft USA / Excite Towing | The three towing brands, 16 trucks |
 | **Blue Collar AI** | Manages and powers all the digital assets |
 
+**RoadsideMC — the motor club offering** (Chris, 2026-08-15):
+
+- **B2C** memberships, sold direct.
+- **B2B** package memberships to insurance companies, car dealers, auto repair
+  shops, auto body shops — anyone with a book of customers who would want to
+  offer them a motor club service.
+- **The Roadside App is the delivery method** for those services.
+- **Service area: Columbus, OH. Dayton, OH coming very soon.**
+
+*Script impact: none today.* A stranded motorist is not the audience for a B2B
+package, and the agent already points at the app for membership options and
+pricing rather than describing plans. The one thing to watch is the **service
+area** — if the agent is ever allowed to sell or promise a membership benefit, it
+must not promise coverage outside where services are actually rendered. Worth
+revisiting the moment Dayton goes live.
+
 **CONVINIcar is retired** (Chris, 2026-08-15) — it is no longer part of the app.
 The app is the **Roadside Emergency Management App**. CONVINI Inc remains the
 parent company; it is the app brand that is gone. Removed on 2026-08-15 from the
