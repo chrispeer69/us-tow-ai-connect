@@ -273,6 +273,31 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('Never say it as a threat');
   });
 
+  // Session 75 audit. The conditional offer makes a real destination change
+  // and had no consent gate, and rendered 'certified shopabout 4 miles'.
+  it('gates the conditional offer on explicit consent too', () => {
+    const body = renderCallBody('unknown', {
+      ...base,
+      nearestShop: null,
+      conditionalShop: "Wayne's Powell",
+      conditionalShopDistanceMiles: 4,
+    });
+    expect(body).toContain('Would you like me to switch the drop-off to');
+    expect(body).toContain('is that a yes to sending the driver to');
+    expect(body).toContain('Only log a destination change on an explicit yes');
+  });
+
+  it('spaces the conditional distance phrase correctly', () => {
+    const body = renderCallBody('unknown', {
+      ...base,
+      nearestShop: null,
+      conditionalShop: "Wayne's Powell",
+      conditionalShopDistanceMiles: 4,
+    });
+    expect(body).toContain('certified shop, about 4 miles from you');
+    expect(body).not.toMatch(/shopabout|shopjust/);
+  });
+
   // 3.0 A/B split.
   it('splits variants stably and roughly evenly', () => {
     // Same seed must always give the same arm — a retry that switched arms

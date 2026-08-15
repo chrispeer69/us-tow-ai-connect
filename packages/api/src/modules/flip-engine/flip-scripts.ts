@@ -1304,7 +1304,13 @@ function scenarioC(ctx: ScriptContext): string {
   const conditionalBlock = conditional
     ? [
         `[AGENT: THE DESTINATION ON FILE IS UNCONFIRMED, so there is no offer yet. Ask the destination question as written and LISTEN. Do not mention any shop, discount or diagnostic before the customer has answered it.]`,
-        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance}, and I could get you a free VIP visual mechanical diagnostic — a visual inspection of up to an hour — plus up to 10 percent off parts and labor. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?"]`,
+        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic — a visual inspection of up to an hour — plus up to 10 percent off parts and labor. And if you need a ride home from there, we can sort that too. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?"]`,
+        // Session 75 audit — this path offers a real destination change and had
+        // no consent gate. Every other offer has one, for the reason recorded on
+        // 2026-08-11: a win was logged from a reply given amid unrelated, partly
+        // unintelligible speech. A conditional offer is no less binding than a
+        // scripted one.
+        `[AGENT: Before you treat any reply to that offer as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Only log a destination change on an explicit yes.]`,
         `[AGENT: If they say anything else — home, a body shop, a dealership they chose, a residence, or they are unsure — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
         `[AGENT: Take a YES only if it is unambiguous. If the answer is unclear or arrives amid other speech, ask "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Never infer a destination change.]`,
         `[AGENT: If they decline, accept it and move to the CONVINI close. Do not make a second or third offer on this call.]`,
