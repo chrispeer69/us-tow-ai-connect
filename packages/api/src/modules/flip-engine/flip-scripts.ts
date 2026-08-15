@@ -828,7 +828,46 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
       : `Would one of those work for you, or would you like me to just send the driver to the closest one?`);
 
   const hasChoice = (ctx.alternateShops ?? []).filter((a) => a?.name).length > 0;
-  const defaultOffer1 = hasChoice ? multiShopOffer1 : singleShopOffer1;
+
+  // Session 75 — tire jobs get their own offer. Chris, 2026-08-15.
+  //
+  // The flip itself is unchanged: a single flat or two flats still tows to the
+  // closest shop in the network. What changes is the OFFER, because a free
+  // mechanical diagnostic answers a question this customer did not ask. On
+  // 2026-08-14 a customer said "No, it's a tire. I got my tire flat. I want to
+  // bring it to the tire shop" and was offered an $89 mechanical diagnostic
+  // anyway.
+  //
+  // The same free visual inspection, described in the terms a person with a
+  // flat actually cares about — brakes, tire condition, fluids — plus a reason
+  // to come back. Chris's reasoning: a single tire repair is what leads to a
+  // full set, a brake job or a caliper replacement, and those are the jobs
+  // worth capturing, on this visit or the next.
+  //
+  // Note the discount MOVES here. On a normal flip it is up to 10% off parts
+  // and labor on today's repair; on a tire job it is 10% off the NEXT set of
+  // tires, brake job, or oil change and rotation. Do not state both.
+  const isTireJob =
+    ctx.issueSubcategory === 'single_tire_issue' || ctx.issueSubcategory === 'full_tire_set';
+
+  const tireOffer1 =
+    `${offerPreamble}` +
+    (hasChoice
+      ? `We work with several certified partner shops in your area, and while they're fixing the tire `
+      : `We work with a certified shop, {{nearest_shop}}${shopAddressPhrase}` +
+        (distanceShort ? `, ${distanceShort}` : ``) +
+        `, and while they're fixing the tire `) +
+    `they'll do a free visual brake inspection and tire condition assessment, and check and top off your fluids — ` +
+    `no charge. You'd also get 10 percent off your next set of tires, brake job, or oil change and rotation. ` +
+    (hasChoice ? `The closest to you are ${choiceList}. ` : ``) +
+    (hasSeparateDestination(ctx)
+      ? hasChoice
+        ? `Would one of those work instead of {{destination}}, or would you like me to just send the driver to the closest one?`
+        : `Want me to send the driver there instead, or keep {{destination}}?`
+      : `Want me to send the driver there instead?`);
+
+  const hasChoiceOffer = hasChoice ? multiShopOffer1 : singleShopOffer1;
+  const defaultOffer1 = isTireJob ? tireOffer1 : hasChoiceOffer;
 
   // Offer 2 previously restated the same benefits the customer had just turned
   // down; over a narrow window it went 0 for 11 and was rewritten into a
@@ -844,10 +883,13 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     ? `Totally fair — can I ask what's taking you to {{destination}}?`
     : `Totally fair — can I ask what's taking you to that shop?`;
 
-  const defaultOffer2Reassurance =
-    `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
-    `a written estimate before any work starts, and the free VIP diagnostic and up to 10 percent off parts and labor still stand. ` +
-    `I'd sort the change out with the driver. Want me to switch it?`;
+  const defaultOffer2Reassurance = isTireJob
+    ? `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
+      `a written estimate before any work starts, and the free brake and tire check plus the 10 percent off your next ` +
+      `visit still stand. I'd sort the change out with the driver. Want me to switch it?`
+    : `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
+      `a written estimate before any work starts, and the free VIP diagnostic and up to 10 percent off parts and labor still stand. ` +
+      `I'd sort the change out with the driver. Want me to switch it?`;
 
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
 
@@ -909,7 +951,9 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
           : []),
         // The offer has two "up to"s and they are load-bearing. An agent that
         // rounds them off is promising something the shop has not agreed to.
-        `[AGENT: State the offer exactly as written. It is "UP TO an hour" and "UP TO 10 percent" — never promise a full hour, never promise a flat 10 percent, and never say the discount is guaranteed. The diagnostic is a VISUAL INSPECTION: do not say or imply it includes a teardown, a road test, a computer scan, or any parts removed. It is free for NEW VIP customers at that shop. If asked what the visual diagnostic covers, say a technician looks the vehicle over and gives you a written quote before any work begins, and that anything beyond that would be quoted first.]`,
+        isTireJob
+          ? `[AGENT: TIRE JOB — state this offer exactly as written and do NOT mix it with the standard one. The free work is a VISUAL brake inspection, a tire condition assessment, and fluids checked and topped off. Do not say or imply a teardown, a road test, a computer scan, or any parts removed. The 10 percent is a discount on their NEXT set of tires, brake job, or oil change and rotation — it is NOT a discount on today's repair, so never say "10 percent off today". Never promise how fast the tire will be fixed: a tire can take anywhere from an hour to most of a day depending on whether the size is in stock, and we do not compete on that. If they ask how long, say the shop will give them a time once they have looked at it.]`
+          : `[AGENT: State the offer exactly as written. It is "UP TO an hour" and "UP TO 10 percent" — never promise a full hour, never promise a flat 10 percent, and never say the discount is guaranteed. The diagnostic is a VISUAL INSPECTION: do not say or imply it includes a teardown, a road test, a computer scan, or any parts removed. It is free for NEW VIP customers at that shop. If asked what the visual diagnostic covers, say a technician looks the vehicle over and gives you a written quote before any work begins, and that anything beyond that would be quoted first.]`,
         interpolate(consentGate, vars),
         interpolate(tooFarDirective, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,

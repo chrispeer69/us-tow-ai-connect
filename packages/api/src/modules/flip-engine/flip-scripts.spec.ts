@@ -139,6 +139,61 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(offer).toBeGreaterThan(keys);
   });
 
+  // Session 75 — tire jobs, Chris 2026-08-15. The flip is unchanged (a flat
+  // still tows to the closest network shop); the OFFER changes, because a free
+  // mechanical diagnostic answers a question a flat-tire customer did not ask.
+  const tire = { ...base, issue: 'a flat tire', issueSubcategory: 'single_tire_issue' as const };
+
+  it('offers brakes, tire condition and fluids on a tire job', () => {
+    const body = renderCallBody('competitor_repair', tire);
+    expect(body).toContain('free visual brake inspection and tire condition assessment');
+    expect(body).toContain('check and top off your fluids');
+    // The standard mechanical pitch must not appear — that was the 08-14 defect.
+    expect(body).not.toContain('visual mechanical diagnostic');
+    expect(body).not.toContain('$179');
+  });
+
+  it('moves the 10 percent to the NEXT visit on a tire job', () => {
+    const body = renderCallBody('competitor_repair', tire);
+    expect(body).toContain('10 percent off your next set of tires, brake job, or oil change and rotation');
+    expect(body).not.toContain('up to 10 percent off parts and labor');
+    // And says so explicitly, so the agent cannot collapse the two.
+    expect(body).toContain("it is NOT a discount on today's repair");
+  });
+
+  it('forbids promising how fast a tire will be fixed', () => {
+    const body = renderCallBody('competitor_repair', tire);
+    expect(body).toContain('Never promise how fast the tire will be fixed');
+  });
+
+  it('still flips a tire job to the nearest network shop', () => {
+    const body = renderCallBody('competitor_repair', tire);
+    expect(body).toContain("Wayne's Westerville");
+    expect(body).toContain('Want me to send the driver there instead');
+  });
+
+  it('applies the tire offer to a full set as well as a single flat', () => {
+    const body = renderCallBody('competitor_repair', {
+      ...base,
+      issue: 'needs all four tires',
+      issueSubcategory: 'full_tire_set',
+    });
+    expect(body).toContain('free visual brake inspection and tire condition assessment');
+  });
+
+  it('leaves the standard offer untouched on non-tire jobs', () => {
+    const body = renderCallBody('competitor_repair', { ...base, issueSubcategory: 'no_start' });
+    expect(body).toContain('visual mechanical diagnostic');
+    expect(body).toContain('up to 10 percent off parts and labor');
+    expect(body).not.toContain('brake inspection and tire condition assessment');
+  });
+
+  it('keeps offer 2 consistent with the tire offer', () => {
+    const body = renderCallBody('competitor_repair', tire);
+    expect(body).toContain('free brake and tire check plus the 10 percent off your next');
+    expect(body).not.toContain('free VIP diagnostic and up to 10 percent off parts and labor');
+  });
+
   // 3.0 A/B split.
   it('splits variants stably and roughly evenly', () => {
     // Same seed must always give the same arm — a retry that switched arms

@@ -176,6 +176,11 @@ diagnostic anyway.
 > "These are the jobs we are seeking to capture — either on this visit, or the
 > next visit."
 
+**SUPERSEDED 2026-08-15 — see "The tire offer, decided" below.** Chris's call:
+the flip still applies and the tow still goes to the closest network shop. What
+changes is only the offer. The reasoning above still explains WHY the standard
+offer was wrong; it was wrong about what to do instead.
+
 **Design consequence.** Tire jobs need their own path, not the standard offer and
 not silence:
 
@@ -184,11 +189,52 @@ not silence:
   visit or a later one.
 - Honesty about turnaround is a feature here, not a concession.
 
-**Still open (round 2):** does the tow still route to our shop on a tire job or
-go where the customer chose; does a full set / blown tire / damaged rim / no
-spare change the answer back; what exactly the AI offers; whether anything is
-done to enable the *next* visit; and whether there is a partner tire store we
-refer to.
+---
+
+## The tire offer, decided — 2026-08-15, Chris. **SHIPPED**
+
+Chris's decision, which answers the open questions above and supersedes the
+"design consequence" framing:
+
+> "If a customer has a flat tire — a single flat or two flats — the tow should go
+> to the closest shop in our network (flip script). The visual diag still
+> applies. Someone with a flat tire should want a brake inspection."
+
+**So the flip is unchanged. Only the offer changes.** The tow still routes to the
+nearest network shop exactly as any other job. What was wrong was never the
+routing — it was pitching a *mechanical* diagnostic to someone with a flat.
+
+The tire offer, in Chris's terms:
+
+- free **visual brake inspection**
+- **tire condition assessment**
+- **fluids checked and topped off**
+- **10% off the next** set of tires, brake job, or oil change and rotation
+- the Roadside App by CONVINI Inc, there to serve them 24/7
+
+Note what moved: on a normal flip the 10% is off *today's* parts and labor. On a
+tire job it is a coupon for the **next** visit. The two must never be stated
+together, and the script says so explicitly.
+
+**Why it is a better offer for this customer.** It is the same free visual
+inspection, described in terms a person with a flat actually cares about. It is
+also the honest route to the jobs worth having — a single tire repair is what
+leads to a full set, a brake job or a caliper replacement.
+
+**Live in the script** as of 2026-08-15, keyed on issue subcategory
+`single_tire_issue` and `full_tire_set`. Non-tire jobs are untouched. The agent
+is forbidden from promising a turnaround time on a tire, because a tire can take
+an hour or most of a day depending on stock and we do not compete on that.
+
+**Consequence for the tenant config:** `custom_agent_rules` still says *do not
+pitch repair-shop offers for … single flat tire …*. That is now wrong and should
+be **removed** — the code pitches, with the right offer. Left in place, the
+config is what the agent reads, so it suppresses the pitch entirely.
+
+**Still open:** whether a damaged rim, no spare, run-flats or tire-caused
+suspension damage change anything; whether we refer to a tire store when we
+genuinely are the wrong choice; and how the rental / round-trip capability is
+offered here (see above — not yet approved for the agent to say).
 
 ---
 
