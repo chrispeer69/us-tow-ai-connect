@@ -250,21 +250,94 @@ there, we can sort that too"*, the agent may raise it against a distance
 objection framed as a gain, and it must refuse to offer a ride when the customer
 keeps an out-of-network destination.
 
-### Repair financing and insurance — TBD, Chris gathering details
+### Repair financing and insurance — partially answered 2026-08-15
 
 Chris, 2026-08-15: we can offer **auto repair financing** and **auto repair
-insurance**, on larger jobs. Details to follow.
+insurance**, on larger jobs.
 
-**Not in the script and must not be**, until the terms are known. Financing is
-regulated in ways a tow offer is not, and an agent improvising credit terms is a
-materially worse failure than an invented discount. When the details arrive:
-who qualifies, what "larger job" means, who actually provides it, and exactly
-what the agent may say versus hand to the office.
+**The providers — answered.** Chris, 2026-08-15: **every in-network partner auto
+repair store offers 3 or more** of these. The current options available:
 
-**Data note:** 5511 Westerville Rd is also the address of `Excite Collision
-Repair` in `alpha_shops`, where it is marked **inactive**. The 08-13 report
-already asked whether the two body shops are meant to be switched off and that
-is still unanswered. Worth resolving, since the rental depot lives there.
+| Provider |
+|---|
+| **Qualify Finance** |
+| **America's First Finance** |
+| **SNAP Finance** |
+| **Synchrony Finance** |
+
+"3 or more" is the floor, not the list per shop — **which three a given shop
+carries is not captured yet**, so the agent must never name a specific provider
+for a specific shop. The only safe shape of the fact is *financing is available
+at our network shops*, with the office confirming the options.
+
+**Still not in the script.** Financing is regulated in ways a tow offer is not,
+and an agent improvising credit terms is a materially worse failure than an
+invented discount. Naming a lender on a recorded call edges toward a credit
+offer, which is exactly the line an unscripted agent should not be near.
+
+**Still open before any of this ships:**
+
+- Who qualifies — is there a soft-pull/no-credit-needed path, or an application?
+- What counts as a "larger job" — the dollar threshold that makes it relevant
+- Which providers each shop actually carries (per-shop, in `alpha_shops`)
+- Exactly what the agent may say versus hand to the office
+- Auto repair **insurance** — provider and terms still entirely unknown
+
+**Category:** *authorized answer*, not a pitch — spoken only if the customer
+raises cost or asks how they'll pay. It is not a gate and not a field fact.
+
+---
+
+## Body shops go live — Monday 2026-08-17, 6:00 AM
+
+Chris, 2026-08-15: **"On Monday at 6 AM we will turn on both Excite Collision and
+T&C Auto Body — both collision shops."**
+
+This closes the question the 08-13 call review raised and the 08-15 note left
+open: the two body shops were `active = false` in `alpha_shops` while appearing
+as live locations on the Alpha website. They were not meant to stay off.
+
+| Shop | `alpha_shops` id | Address | Type | Now | Monday 6:00 AM |
+|---|---|---|---|---|---|
+| **Excite Collision Repair** | `60f41614-…` | 5511 Westerville Rd, Westerville 43081 | `BODY` | `active=false` | `active=true` |
+| **T&C Body Shop** | `7e30e9b5-…` | 2856 Johnstown Rd, Columbus 43219 | `BODY` | `active=false` | `active=true` |
+
+Verified against production 2026-08-15: these are the **only two** `BODY` rows;
+all nine `REPAIR` rows are already active. Note the stored name is **`T&C Body
+Shop`**, not "T&C Auto Body" — the script speaks whatever `name` holds, so if the
+spoken name should be "T&C Auto Body" the column must be renamed too.
+
+### What actually changes in the script
+
+Less than it sounds, and that is the point — this is a two-row `active` flip, not
+a code change.
+
+- **Scenario B (auto body / collision / glass) already fires today.** The soft
+  mention is unconditional; only the shop *names* are conditional
+  (`flip-scripts.ts:1217`). Right now `bodyShop1`/`bodyShop2` are empty because
+  `pickTwoBodyShops` filters on `active` (`flip-orchestrator.service.ts:1335`),
+  so the agent says *"we own our own body shops here in the area."* — unnamed.
+- **From Monday it says the names**: *"…we own our own body shops here in the
+  area, like Excite Collision Repair and T&C Body Shop."*
+- **Nearest-shop selection for `BODY`** also filters on `active`
+  (`nearest-shop.selector.ts:39`), so body routing goes from returning nothing
+  to returning a real shop.
+
+### What does *not* change
+
+Scenario B stays a **soft referral, never a flip offer**. No discount, no free
+diagnostic, no asking to switch the drop-off, mentioned once. Insurance work
+carries a shop commitment we explicitly respect. Naming the shops makes the
+mention concrete; it does not promote it to a pitch.
+
+> **Watch on Monday:** this is the first time the agent speaks these two names on
+> live calls. Check the 08-17 call review for Scenario B calls and confirm the
+> names render cleanly — `T&C` in particular is a string a TTS voice can mangle
+> ("T and C" vs "T-ampersand-C").
+
+**Data note now resolved:** 5511 Westerville Rd is both the rental depot and
+Excite Collision Repair. That was ambiguous while Excite was inactive; from
+Monday it is simply one address doing two jobs.
 
 ---
 

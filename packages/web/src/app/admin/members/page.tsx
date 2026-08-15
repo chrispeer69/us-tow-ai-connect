@@ -46,6 +46,8 @@ export default function MembersPage() {
   const [pwTarget, setPwTarget] = useState<string | null>(null);
   const [pwValue, setPwValue] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
+  // id of the member whose on/off toggle is mid-flight
+  const [statusSaving, setStatusSaving] = useState<string | null>(null);
 
   const isOwner = me?.role === 'OWNER';
 
@@ -156,10 +158,49 @@ export default function MembersPage() {
     }
   }
 
-  async function remove(id: string) {
+  /**
+   * Turn an employee off without deleting them. SUSPENDED keeps the row — their
+   * history, role and password survive — so turning them back on is one click
+   * and nothing has to be re-entered. This is the reversible action; `remove`
+   * below is not.
+   */
+  async function setStatus(m: Member, next: Status) {
     setError(null);
+    setNotice(null);
+    setStatusSaving(m.id);
     try {
-      await api(`/v1/admin/members/${id}`, { method: 'DELETE' });
+      await api(`/v1/admin/members/${m.id}`, {
+        method: 'PATCH',
+        json: { status: next },
+      });
+      setNotice(
+        next === 'SUSPENDED'
+          ? `${m.name || m.email} is turned off and can no longer sign in. Turn them back on any time.`
+          : `${m.name || m.email} is turned back on and can sign in again.`,
+      );
+      await fetchMembers();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setStatusSaving(null);
+    }
+  }
+
+  async function remove(m: Member) {
+    const label = m.name || m.email;
+    if (
+      !confirm(
+        `Permanently delete ${label}?\n\nThis erases the account and cannot be undone. ` +
+          `If they may come back — or you just want to stop their access — use "Turn Off" instead.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    try {
+      await api(`/v1/admin/members/${m.id}`, { method: 'DELETE' });
+      setNotice(`${label} was permanently deleted.`);
       await fetchMembers();
     } catch (err) {
       setError((err as Error).message);
@@ -172,7 +213,9 @@ export default function MembersPage() {
         <h1 className="text-3xl font-bold">Team Members</h1>
         <p className="text-zinc-400 mt-1">
           Add people to your account, manage their access roles, and set or reset
-          their sign-in passwords.
+          their sign-in passwords. To stop someone&apos;s access without losing
+          their record, use <span className="text-zinc-300">Turn Off</span> —
+          it&apos;s reversible. Delete is permanent.
         </p>
       </header>
 
@@ -250,7 +293,13 @@ export default function MembersPage() {
               {members.map((m) => (
                 <li key={m.id} className="py-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="min-w-0">
+                    {/* Dim the identity of a turned-off member so the list reads
+                        at a glance — the buttons stay at full contrast. */}
+                    <div
+                      className={
+                        m.status === 'SUSPENDED' ? 'min-w-0 opacity-50' : 'min-w-0'
+                      }
+                    >
                       <div className="font-medium truncate">
                         {m.name || m.email}
                       </div>
@@ -296,12 +345,35 @@ export default function MembersPage() {
                               ))}
                             </SelectContent>
                           </Select>
+                          {/* Reversible action first, and visually quieter than
+                              Delete — turning someone off should be the easy,
+                              obvious choice and deleting them the deliberate one. */}
+                          <Button
+                            size="sm"
+                            variant={m.status === 'SUSPENDED' ? 'default' : 'outline'}
+                            disabled={statusSaving === m.id}
+                            title={
+                              m.status === 'SUSPENDED'
+                                ? 'Restore access. Their role and password still work.'
+                                : 'Block sign-in but keep the account and their history.'
+                            }
+                            onClick={() =>
+                              void setStatus(
+                                m,
+                                m.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED',
+                              )
+                            }
+                          >
+                            {statusSaving === m.id ? <Spinner className="mr-2" /> : null}
+                            {m.status === 'SUSPENDED' ? 'Turn On' : 'Turn Off'}
+                          </Button>
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => remove(m.id)}
+                            title="Permanently delete this account. Cannot be undone."
+                            onClick={() => void remove(m)}
                           >
-                            Remove
+                            Delete
                           </Button>
                         </>
                       )}
@@ -353,5 +425,7 @@ export default function MembersPage() {
 function StatusBadge({ status }: { status: Status }) {
   if (status === 'ACTIVE') return <Badge variant="success">● Active</Badge>;
   if (status === 'INVITED') return <Badge variant="outline">● Invited</Badge>;
-  return <Badge variant="destructive">● Suspended</Badge>;
+  // Wording matches the Turn Off button. "Suspended" reads like a disciplinary
+  // action; most of the time this is a seasonal driver or someone who left.
+  return <Badge variant="destructive">● Turned Off</Badge>;
 }

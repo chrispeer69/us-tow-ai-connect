@@ -67,24 +67,44 @@ export class AuthService {
         .limit(1);
 
       if (member) {
-        // Auto-link this membership to the user's ID for future logins
+        // Auto-link this membership to the user's ID for future logins.
+        //
+        // A SUSPENDED member must NOT be revived here. This branch used to set
+        // status ACTIVE unconditionally, which meant an owner could turn an
+        // employee off and the employee's very next login would silently turn
+        // them back on — the one path where the "off" switch undid itself.
         const now = new Date();
-        await this.db.update(tenantMembers).set({ 
+        const revived = member.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+        await this.db.update(tenantMembers).set({
           userId: user.id,
-          status: 'ACTIVE',
-          acceptedAt: now,
+          status: revived,
+          acceptedAt: member.acceptedAt ?? now,
           lastLoginAt: now,
           inviteToken: null,
           inviteTokenExpiresAt: null,
         }).where(eq(tenantMembers.email, normalizedEmail));
         await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, normalizedEmail));
-        this.logger.log(`Auto-linked and activated tenant membership for ${normalizedEmail} to userId ${user.id}`);
+        this.logger.log(`Auto-linked tenant membership for ${normalizedEmail} to userId ${user.id} (status=${revived})`);
       }
     }
 
     const platformRole = isConfiguredSuperAdminEmail(user.email)
       ? 'super_admin'
       : user.platformRole;
+
+    // An owner turned this person off. Refuse the login outright rather than
+    // issue a 7-day token — the membership lookup above sorts ACTIVE first, so
+    // reaching a SUSPENDED row means every membership they hold is turned off.
+    // Super admins are exempt so support can never lock itself out.
+    if (member?.status === 'SUSPENDED' && platformRole !== 'super_admin') {
+      this.logger.warn(`Blocked login for suspended member ${user.email} tenant=${member.tenantId}`);
+      throw new UnauthorizedException({
+        status: 'error',
+        code: 'ACCOUNT_DISABLED',
+        message:
+          'Your access has been turned off. Please contact your account owner.',
+      });
+    }
 
     const payload: JwtPayload = {
       userId: user.id,
@@ -141,9 +161,12 @@ export class AuthService {
       
       if (existingMembers.length > 0 || existingTenants.length > 0) {
         const now = new Date();
-        await tx.update(tenantMembers).set({ 
+        // Same rule as login(): registering an account must not reactivate a
+        // membership an owner turned off. Otherwise "turn off" is defeated by
+        // re-registering with the same email.
+        await tx.update(tenantMembers).set({
           userId: u.id,
-          status: 'ACTIVE',
+          status: sql`CASE WHEN ${tenantMembers.status} = 'SUSPENDED' THEN 'SUSPENDED' ELSE 'ACTIVE' END`,
           acceptedAt: now,
           lastLoginAt: now,
           inviteToken: null,

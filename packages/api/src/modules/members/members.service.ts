@@ -10,6 +10,7 @@ import {
 import { and, desc, eq, sql, asc } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
+import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import * as bcrypt from 'bcryptjs';
 import { tenantMembers, tenants, users, rolePermissions } from '../../db/schema';
 import { AuthEmailService } from '../auth/auth-email.service';
@@ -292,6 +293,16 @@ export class MembersService {
         .where(eq(tenantMembers.id, memberId))
         .returning()
     )[0];
+
+    // The guard caches membership status for a few seconds; drop the entry so
+    // turning someone on or off is felt on their very next request instead of
+    // at the end of the cache window.
+    if (input.status !== undefined) {
+      AdminAuthGuard.invalidateStatus(tenantId, target.email);
+      this.logger.log(
+        `member ${target.email} tenant=${tenantId} status ${target.status} -> ${input.status}`,
+      );
+    }
     return this.redact(updated);
   }
 
@@ -301,6 +312,7 @@ export class MembersService {
       await this.assertNotLastOwner(tenantId, 'remove');
     }
     await this.db.delete(tenantMembers).where(eq(tenantMembers.id, memberId));
+    AdminAuthGuard.invalidateStatus(tenantId, target.email);
     return { status: 'success' as const };
   }
 
