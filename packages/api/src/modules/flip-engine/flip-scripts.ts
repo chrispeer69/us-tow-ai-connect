@@ -1006,6 +1006,25 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         // Roadside Towing absorbs the second tow. Any recovery from the vendor
         // afterwards is internal and must never reach the call.
         `[AGENT: If the customer worries about being stuck at our shop, or asks what happens if the repair does not go ahead -> "You're not stuck there. If the repair isn't something you want to go ahead with, we'll tow it on to {{destination}} at no cost to you." Do not put a time or a day on that onward tow, and never discuss who pays us or why a repair was not approved.]`,
+        // Session 75 — the tow home. Chris, 2026-08-15.
+        //
+        // This is a real capability (16 trucks, round-trip work daily) and it is
+        // the strongest answer we have to "that shop is out of my way" and to
+        // being stranded. But it is NOT free and NOT included, and the agent
+        // must never imply either. The second tow is requested by the CUSTOMER
+        // and paid for one of three ways: their motor club again, another club
+        // they belong to, or the Roadside App as a one-off retail tow or on a
+        // RoadsideMC membership. Pricing lives in the app, so the agent quotes
+        // nothing — which also keeps it inside the existing "never invent
+        // prices" rule.
+        //
+        // Offered as an authorized ANSWER rather than baked into the close on
+        // purpose: the 3.0 A/B is live and the two arms already differ in their
+        // close. Adding a new element to one arm would muddy what the
+        // experiment is attributing. Promoting this into the close proactively
+        // is a deliberate 3.1 decision, not a side effect of this change.
+        `[AGENT: GETTING HOME — NOW. If the customer asks how they get home, says they have no ride, or worries about being stranded -> "We can usually sort a ride for you — the driver may be able to run you somewhere close by, or we can arrange a rideshare from the shop to wherever you need to be. I'll flag it on the job and our office will confirm it with you." Say "usually" and "arrange", never "we will". Do NOT promise the tow truck has room or that the driver will do it — that depends on the truck, the load and how many of you there are. Do NOT commit to a distance, and do NOT say who pays. If they need to know more than that, the office confirms.]`,
+        `[AGENT: GETTING THE CAR HOME — LATER. If they ask how the car gets back to them after the repair, or say the shop is out of their way -> "When the repair's done, you can request a tow home — either through your motor club again, or straight from the Roadside App I'm texting you. The app also has one-off tows and membership options, and the pricing is all in there." Do NOT say or imply that tow is free, included, or covered. Do NOT quote a price for it. Do NOT state whether their motor club will cover a second tow — that is between them and their club. If they say their club will not cover it, note that plenty of people hold more than one membership and either another club or the app will do it.]`,
         `[AGENT: If the customer asks whether their insurance or warranty covers it -> "Our partner shops take most aftermarket repair policies. I can note down who you're insured with and have our office team check your coverage with them directly. The diagnostic itself is free either way, so you'd know what you're dealing with before spending anything." Take the provider NAME only — never ask for a policy number, member id, or date of birth. Do not say the office will call "right now" or give any timeframe, and never state that a specific policy is or is not covered.]`,
       ]
     : [];

@@ -130,11 +130,46 @@ The same logic dissolves the tire problem below. **We do not need to be faster
 than a tire store. We need the four hours to stop being the customer's
 problem** — a rental, a lift home, or the car returned to their driveway.
 
-Open: how these are actually offered, what they cost the customer, what
-eligibility rules apply, and which of them the AI is allowed to promise on a
-call versus flag for the office. Nothing here is in the script yet, and none of
-it should be spoken until that is answered — an over-promise on a rental is
-worse than not mentioning it.
+### Brand architecture — Chris, 2026-08-15
+
+| Entity | What it is |
+|---|---|
+| **CONVINI Inc** | Parent company. Develops and sells all convenience offerings |
+| **RoadsideMC** | Our motor club brand — memberships sold in the app |
+| **Roadside App** | The app, presented by CONVINI Inc |
+| Roadside Towing / Auto Lyft USA / Excite Towing | The three towing brands, 16 trucks |
+
+**On a call the agent always says "Roadside Towing", on every job** (Chris,
+2026-08-15). Already the case — no change needed.
+
+### Getting home — SHIPPED 2026-08-15
+
+Two different customer moments, answered separately because they are.
+
+**The ride now.** We can arrange one — the tow truck driver may run them
+somewhere close by, or we arrange a rideshare from the shop to a destination of
+their choosing, within a reasonable distance. The agent says "usually" and
+"arrange", never "we will": it must not promise the truck has room, must not
+commit to a distance, and must not say who pays. Office confirms.
+
+**The car home later.** We do retail towing and local motor-club towing under
+**RoadsideMC**. The customer requests the second tow themselves — through the
+motor club they just used, another club they hold (many people have several), or
+the Roadside App as a one-off retail tow or on a RoadsideMC membership. Pricing
+lives in the app, so the agent quotes nothing.
+
+Both are **authorized answers, not pitches** — spoken only when the customer
+raises it. Deliberate: the 3.0 A/B is live and its two arms already differ in
+their close, so adding a new element to one arm would muddy attribution.
+Promoting either into the close proactively is a 3.1 decision.
+
+> **Open — needs Chris:** who pays for the rideshare? The script currently
+> avoids the question entirely, which is safe but vague. If we cover it, that is
+> a strong line we are currently not using.
+
+Still open on the rest: rental eligibility and cost, and whether the agent may
+offer a rental on a call at all. Nothing about rentals is in the script — an
+over-promised rental is worse than an unmentioned one.
 
 **Data note:** 5511 Westerville Rd is also the address of `Excite Collision
 Repair` in `alpha_shops`, where it is marked **inactive**. The 08-13 report

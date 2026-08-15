@@ -194,6 +194,32 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).not.toContain('free VIP diagnostic and up to 10 percent off parts and labor');
   });
 
+  // Session 75 — the tow home, Chris 2026-08-15. Real capability, but the
+  // second tow is requested and paid for by the customer. The failure mode is
+  // implying it is free or included.
+  it('offers the tow home only as an authorized answer, never as a promise', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('you can request a tow home');
+    expect(body).toContain('through your motor club again, or straight from the Roadside App');
+    expect(body).toContain('Do NOT say or imply that tow is free, included, or covered');
+    expect(body).toContain('Do NOT quote a price for it');
+    // Coverage is between the customer and their club — not ours to state.
+    expect(body).toContain('that is between them and their club');
+  });
+
+  it('mentions the tow home on both arms, so it cannot confound the A/B', () => {
+    for (const scriptVariant of ['control', 'reframe'] as const) {
+      const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
+      expect(body).toContain('you can request a tow home');
+    }
+  });
+
+  it('keeps the tow home out of the spoken script — it is answered, not pitched', () => {
+    const body = renderCallBody('competitor_repair', base);
+    const spoken = body.split('\n').filter((l) => l.startsWith('AI:')).join('\n');
+    expect(spoken).not.toContain('tow home');
+  });
+
   // 3.0 A/B split.
   it('splits variants stably and roughly evenly', () => {
     // Same seed must always give the same arm — a retry that switched arms
