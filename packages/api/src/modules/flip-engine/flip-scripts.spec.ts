@@ -318,12 +318,30 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(reframe).toBeLessThan(n * 0.6);
   });
 
-  it('control arm is unchanged by the 3.0 split', () => {
+  // The arms differ by STRUCTURE — opening, order, how the offer is introduced,
+  // and how the close is framed. They no longer differ by app name: CONVINIcar
+  // is retired, so leaving it in control would have meant speaking a dead brand
+  // to half of all customers. Correcting a factual error in both arms does not
+  // bias the comparison.
+  it('control arm keeps its own structure, with the corrected app name', () => {
     const body = renderCallBody('competitor_repair', { ...base, scriptVariant: 'control' });
     expect(body).toContain("I'm the AI assistant helping confirm the details");
-    expect(body).toContain('CONVINIcar app link');
-    expect(body).not.toContain('Roadside Emergency Management App');
+    expect(body).toContain('Roadside Emergency Management App link');
+    expect(body).toContain('track this tow live');
+    // Control must NOT pick up the reframe's structure. Scoped to the spoken
+    // close: "all-in-one emergency services app" also appears in the shared
+    // what's-in-the-app answer, which both arms carry.
+    const close = body.slice(body.indexOf("You're all set"));
+    expect(close).not.toContain('all-in-one emergency services app');
     expect(body).not.toContain('a few great offers');
+    expect(body).not.toContain('I can also save you some money');
+  });
+
+  it('never speaks the retired CONVINIcar brand on either arm', () => {
+    for (const scriptVariant of ['control', 'reframe'] as const) {
+      const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
+      expect(body).not.toContain('CONVINIcar');
+    }
   });
 
   it('reframe arm pre-frames the offer, states it, and closes on the new app', () => {
@@ -338,7 +356,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('Roadside Emergency Management App');
     expect(body).toContain('all-in-one emergency services app');
     expect(body).toContain('24/7 roadside assistance');
-    expect(body).not.toContain('CONVINIcar app link');
+    expect(body).not.toContain('CONVINIcar');
     // AI disclosure survives the rewrite.
     expect(body).toContain("I'm an AI assistant");
   });
@@ -643,12 +661,13 @@ describe('flip-scripts', () => {
     expect(body.toLowerCase()).not.toContain('gift card');
   });
 
-  it('CONVINI soft pitch is send-first and does not ask permission', () => {
+  it('app pitch is send-first and does not ask permission', () => {
     const body = renderConviniPitch({ intensity: 'soft', rentalsAvailable: true });
-    expect(body).toContain('CONVINI');
+    expect(body).toContain('Roadside Emergency Management App');
+    expect(body).not.toContain('CONVINIcar');
     expect(body).toContain("I'm texting you");
     expect(body).not.toContain('Can I text you');
-    expect(body.length).toBeLessThan(250);
+    expect(body.length).toBeLessThan(280);
   });
 
   it('CONVINI medium pitch optionally mentions our 2 body shops', () => {

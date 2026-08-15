@@ -1539,7 +1539,7 @@ function renderManualScript(
       return [
         `Hi, this is ${vars.repName} calling from ${vars.companyName} about the service request. I'm the AI assistant helping confirm the details. Am I speaking with ${vars.customerFirstName}?`,
         `I am calling to quickly confirm your service request at ${vars.pickupLocation}.`,
-        `I'm texting you the free CONVINIcar app link now so you can track this service live and request help faster next time.`,
+        `I'm texting you the free Roadside Emergency Management App link now so you can track this service live and request help faster next time.`,
         callbackLine,
       ].join('\n');
     default:

@@ -140,10 +140,19 @@ problem** — a rental, a lift home, or the car returned to their driveway.
 
 | Entity | What it is |
 |---|---|
-| **CONVINI Inc** | Parent company. Develops and sells all convenience offerings |
+| **CONVINI Inc** | Parent company. Owns and manages RoadsideMC and the Roadside App; develops and sells all convenience offerings |
 | **RoadsideMC** | Our motor club brand — memberships sold in the app |
 | **Roadside App** | The app, presented by CONVINI Inc |
 | Roadside Towing / Auto Lyft USA / Excite Towing | The three towing brands, 16 trucks |
+| **Blue Collar AI** | Manages and powers all the digital assets |
+
+**CONVINIcar is retired** (Chris, 2026-08-15) — it is no longer part of the app.
+The app is the **Roadside Emergency Management App**. CONVINI Inc remains the
+parent company; it is the app brand that is gone. Removed on 2026-08-15 from the
+control arm of the A/B (which was still speaking it to roughly half of all
+customers), the legacy pitch helpers, and the tenant *and* global
+`custom_agent_rules`, which told the agent to send-frame "the free CONVINIcar
+app" and to disclose itself as "CONVINIcar's AI towing assistant".
 
 **On a call the agent always says "Roadside Towing", on every job** (Chris,
 2026-08-15). Already the case — no change needed.

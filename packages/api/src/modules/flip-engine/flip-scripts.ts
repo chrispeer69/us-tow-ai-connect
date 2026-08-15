@@ -96,9 +96,17 @@ function conviniCloseFor(ctx: ScriptContext): string {
       `texted you the link. Thanks again for using {{company_name}}.`
     );
   }
+  // CONVINIcar is no longer part of the app (Chris, 2026-08-15) — the app is the
+  // Roadside Emergency Management App. The control arm was still speaking a
+  // retired brand name to roughly half of all customers.
+  //
+  // Only the NAME changes here. Control keeps its own structure and its
+  // "track this tow live" framing, because that is what the A/B is comparing
+  // against the reframe close. Correcting a factual error in both arms does not
+  // bias the comparison; leaving a dead brand in one of them would.
   return (
     `You're all set{{customer_salutation}}. ${destinationPlanSentence(ctx)}. ` +
-    `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`
+    `I'm texting you the free Roadside Emergency Management App link now so you can track this tow live and request help faster next time.`
   );
 }
 
@@ -752,7 +760,7 @@ AI: "Anything else before you go?"
 AI: "Bye for now."
 [AGENT: End the call.]`
     : `=== WARM CLOSE (all scenarios) ===
-[AGENT: Do not ask whether the CONVINI text came through.]
+[AGENT: Do not ask whether the app text came through.]
 AI: "Anything else before you go?"
 AI: "Drive safe."
 [AGENT: End the call.]`;
@@ -766,7 +774,7 @@ function globalRules(ctx: ScriptContext): string {
   const lines = [
     `=== GLOBAL RULES (follow on every call; [AGENT:...] and [STEP...] lines are context, NEVER read aloud) ===`,
     `- Be a warm, reassuring dispatcher. One question at a time. Never sound like a telemarketer.`,
-    `- Disclose that you are CONVINIcar's AI towing assistant at the start of the call. Do not deny being an AI if asked.`,
+    `- Disclose that you are {{company_name}}'s AI assistant at the start of the call. Do not deny being an AI if asked.`,
     `- Confirm details first. If the customer corrects something, acknowledge it and move on.`,
     `- Do not ask "is now a good time?" The customer already requested service; keep the call brief and useful.`,
     `- Only pitch a repair-shop flip when the call is repairable and the destination is not already our shop or a protected destination.`,
@@ -777,7 +785,7 @@ function globalRules(ctx: ScriptContext): string {
     `- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.`,
     `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
     ...(ctx.pitchConvini ? [
-      `- ALWAYS send-frame the free CONVINIcar app near the close, unless the customer hung up, opted out, or asked you to stop.`,
+      `- ALWAYS send-frame the free Roadside Emergency Management App near the close, unless the customer hung up, opted out, or asked you to stop.`,
     ] : []),
     `- Never invent prices, times, names, or addresses — use only what's provided here.`,
     // Session 74 — from the 2026-08-11 review. Each of these is a behaviour that
@@ -1542,15 +1550,15 @@ export interface ConviniPitchInput {
 
 export function renderConviniPitch(i: ConviniPitchInput): string {
   if (i.intensity === 'soft') {
-    return `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+    return `I'm texting you the free Roadside Emergency Management App link now so you can track this tow live and request help faster next time.`;
   }
   if (i.intensity === 'medium') {
     const body = i.ourBodyShopMention
       ? ` By the way, we also own two body shops — ${i.ourBodyShopMention.shop1} and ${i.ourBodyShopMention.shop2} — if you ever need collision work down the road.`
       : '';
-    return `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.${body}`;
+    return `I'm texting you the free Roadside Emergency Management App link now so you can track this tow live and request help faster next time.${body}`;
   }
-  return `I'm texting you the free CONVINIcar app link now so you can track this tow live and request help faster next time.`;
+  return `I'm texting you the free Roadside Emergency Management App link now so you can track this tow live and request help faster next time.`;
 }
 
 export function renderClosing(_i: { customerName: string }): string {
