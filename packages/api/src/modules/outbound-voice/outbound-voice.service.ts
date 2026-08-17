@@ -15,6 +15,13 @@ import {
 import type { UnifiedJobRow } from '../../db/schema';
 import { TwilioSmsService } from '../outbound-sms/twilio-sms.service';
 import { renderFlipWinSms } from '../flip-engine/flip-sms-templates';
+import { CLOSE_MARKERS } from '../flip-engine/flip-scripts';
+import {
+  DEFAULT_INTAKE_COMPLETE_SECONDS,
+  judgePitchCompletion,
+  type PitchVerdict,
+} from './pitch-completion';
+import { extractRetellAnalysis, mapRetellStatus } from './retell-call-mapping';
 import {
   MissingVariableError,
   type OutboundVoicePurpose,
@@ -455,9 +462,181 @@ export class OutboundVoiceService {
     if (candidates.length === 0) return 0;
     await this.db
       .update(outboundCalls)
-      .set({ status: 'queued', error: null, updatedAt: new Date() })
+      .set({
+        status: 'queued',
+        error: null,
+        // dispatchQueued only picks up rows created in the last 15 minutes. This
+        // cron runs every 5 minutes over rows that failed at an unknown earlier
+        // time, so without resetting createdAt a re-queued row is dropped back
+        // into a window it has already fallen out of and is never dialled — the
+        // status just flips to 'queued' and stays there. The webhook retry path
+        // has always reset it; this one did not.
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(inArray(outboundCalls.id, candidates.map((c) => c.id)));
     return candidates.length;
+  }
+
+  /**
+   * Pull the truth for calls whose terminal webhook never arrived.
+   *
+   * On 2026-08-17, 12 of 32 calls were still `in_progress` hours later: no
+   * duration, no transcript, no analysis, `updated_at` unchanged since the
+   * `call_started` event. Retell's `call_ended` / `call_analyzed` webhooks simply
+   * did not land for 37% of the day's calls, which means those calls were absent
+   * from the win count, absent from the daily review, and — once redials exist —
+   * unjudgeable. Every one of those rows already had a `retell_call_id`.
+   *
+   * So we ask. The snapshot is fed back through handleProviderWebhookEvent, the
+   * exact path a webhook takes, so reconciliation and push produce identical
+   * state and the abandoned-pitch judgement downstream sees real data instead of
+   * nulls. Runs before the redial sweep for that reason.
+   */
+  @Cron('0 */3 * * * *')
+  async reconcileStalledCallsCron(): Promise<void> {
+    await this.reconcileStalledCalls().catch((err) => {
+      this.logger.warn(`[outbound-voice] stalled-call reconcile failed: ${(err as Error).message}`);
+    });
+  }
+
+  async reconcileStalledCalls(): Promise<number> {
+    // Raw SQL because `retell_call_id` and `provider` are not in the Drizzle
+    // schema — the same reason dispatchOne writes them with sql.raw. Keep this
+    // aligned with that if the schema is ever regenerated.
+    const stalled = await this.db.execute<{ id: string; retell_call_id: string }>(
+      sql`select id, retell_call_id
+            from outbound_calls
+           where status in ('dialing', 'in_progress')
+             and retell_call_id is not null
+             -- Long enough that a live call has genuinely ended. The longest
+             -- flip call observed is 201s; five minutes is past all of them.
+             and updated_at < now() - (${RECONCILE_MIN_AGE_SECONDS} * interval '1 second')
+             and created_at > now() - interval '3 days'
+           order by created_at asc
+           limit ${RECONCILE_BATCH_SIZE}`,
+    );
+    const stalledRows = (Array.isArray(stalled) ? stalled : (stalled as { rows?: unknown[] }).rows ?? []) as Array<{
+      id: string;
+      retell_call_id: string;
+    }>;
+
+    let reconciled = 0;
+    for (const call of stalledRows) {
+      const snapshot = await this.retell.getCall(call.retell_call_id);
+      if (!snapshot) continue;
+
+      // Still genuinely ongoing — leave it alone rather than forcing a terminal
+      // state onto a live conversation.
+      if (snapshot.call_status === 'ongoing' || snapshot.call_status === 'registered') {
+        this.logger.debug(
+          `[outbound-voice] reconcile: call=${call.id} still ${snapshot.call_status} at Retell`,
+        );
+        continue;
+      }
+
+      const result = await this.handleProviderWebhookEvent({
+        provider: 'retell',
+        callId: snapshot.call_id,
+        status: mapRetellStatus({
+          call_status: snapshot.call_status,
+          disconnection_reason: snapshot.disconnection_reason,
+        }),
+        durationSeconds:
+          snapshot.duration_ms != null ? Math.round(snapshot.duration_ms / 1000) : null,
+        transcript: snapshot.transcript ?? null,
+        recordingUrl: snapshot.recording_url ?? null,
+        analysisData: extractRetellAnalysis(snapshot.call_analysis),
+        error: snapshot.disconnection_reason ?? null,
+        timestampIso: snapshot.end_timestamp
+          ? new Date(snapshot.end_timestamp).toISOString()
+          : snapshot.start_timestamp
+            ? new Date(snapshot.start_timestamp).toISOString()
+            : null,
+      });
+      if (result.matched) reconciled += 1;
+    }
+
+    if (reconciled > 0) {
+      this.logger.log(
+        `[outbound-voice] reconciled ${reconciled} stalled call(s) from the Retell API ` +
+          `(their terminal webhook never arrived)`,
+      );
+    }
+    return reconciled;
+  }
+
+  /**
+   * Safety net for abandoned pitches the webhook path could not judge.
+   *
+   * Two real gaps it covers, both observed on 2026-08-17:
+   *  1. `call_analyzed` never arrives, so the offer results never populate and
+   *     the webhook check declines to judge on empty analysis.
+   *  2. No webhook arrives at all after `dialing` — one call that morning
+   *     (Capital Ford, 06:01) still had null duration and null transcript
+   *     ninety minutes later.
+   *
+   * Judged on whatever we do have (transcript, duration, our own eligibility
+   * gate) once the call is old enough that analysis is clearly not coming.
+   */
+  @Cron('30 */2 * * * *')
+  async retryAbandonedPitchesCron(): Promise<void> {
+    if (!ABANDONED_PITCH_RETRY_ENABLED) return;
+    await this.retryAbandonedPitches().catch((err) => {
+      this.logger.warn(`[outbound-voice] abandoned-pitch sweep failed: ${(err as Error).message}`);
+    });
+  }
+
+  async retryAbandonedPitches(): Promise<number> {
+    const candidates = await this.db
+      .select()
+      .from(outboundCalls)
+      .where(
+        and(
+          sql`${outboundCalls.attempts} < GREATEST(${outboundCalls.maxAttempts}, ${ABANDONED_PITCH_MIN_ATTEMPTS})`,
+          // Recent enough that a callback still makes sense to the customer.
+          sql`${outboundCalls.createdAt} > NOW() - INTERVAL '6 hours'`,
+          // A row must be genuinely settled before we touch it. 'dialing' and
+          // 'in_progress' are included only past a threshold no real call can
+          // survive — without that split, a call redialled two minutes ago and
+          // currently RINGING looks exactly like a stale one, and the sweep
+          // dials the customer a second time while the first call is still live.
+          or(
+            and(
+              eq(outboundCalls.status, 'completed'),
+              sql`${outboundCalls.updatedAt} < NOW() - (${ABANDONED_PITCH_SWEEP_MIN_AGE_SECONDS} * INTERVAL '1 second')`,
+            ),
+            and(
+              inArray(outboundCalls.status, ['dialing', 'in_progress']),
+              sql`${outboundCalls.updatedAt} < NOW() - (${ABANDONED_PITCH_STUCK_INFLIGHT_MINUTES} * INTERVAL '1 minute')`,
+            ),
+          ),
+        ),
+      )
+      .orderBy(asc(outboundCalls.createdAt))
+      .limit(25);
+
+    let requeued = 0;
+    for (const call of candidates) {
+      const analysis = (call.analysisData as Record<string, unknown> | null) ?? {};
+      const did = await this.maybeRetryAbandonedPitch(call, {
+        status: call.status,
+        durationSeconds: call.durationSeconds,
+        transcript: call.transcript,
+        disconnectionReason: call.error,
+        analysis,
+      }).catch((err) => {
+        this.logger.warn(
+          `[outbound-voice] sweep retry check failed call=${call.id}: ${(err as Error).message}`,
+        );
+        return false;
+      });
+      if (did) requeued += 1;
+    }
+    if (requeued > 0) {
+      this.logger.log(`[outbound-voice] abandoned-pitch sweep requeued ${requeued} call(s)`);
+    }
+    return requeued;
   }
 
   // ---------- webhook handlers ----------
@@ -561,6 +740,27 @@ export class OutboundVoiceService {
             `[outbound-voice] flip activity sync failed for call ${existing.id}: ${(err as Error).message}`,
           );
         });
+        // Retell delivers `call_analyzed` after `call_ended`, and the offer
+        // results only exist on the second one. This is therefore the FIRST
+        // point at which "did the pitch finish?" can be answered honestly, and
+        // the branch we normally reach for a completed call. Judging on
+        // call_ended alone would see empty analysis on every call and redial the
+        // ones that had already won.
+        const requeued = await this.maybeRetryAbandonedPitch(existing, {
+          status: existing.status,
+          durationSeconds: event.durationSeconds ?? existing.durationSeconds,
+          transcript: event.transcript ?? existing.transcript,
+          disconnectionReason: event.error ?? existing.error,
+          analysis: analysisData,
+        }).catch((err) => {
+          this.logger.warn(
+            `[outbound-voice] abandoned-pitch retry check failed for call ${existing.id}: ${(err as Error).message}`,
+          );
+          return false;
+        });
+        if (requeued) {
+          return { matched: true, previousStatus: existing.status, newStatus: 'queued' };
+        }
       }
       return { matched: true, previousStatus: existing.status, newStatus: existing.status };
     }
@@ -627,7 +827,175 @@ export class OutboundVoiceService {
         );
       });
     }
+
+    // The attempt is now fully recorded — transcript, duration and analysis all
+    // persisted — so a requeue from here loses nothing. Ordering matters: the
+    // connection-failure retry above returns early precisely because a dial that
+    // never connected has nothing worth keeping, whereas an abandoned pitch has
+    // a transcript we want in the daily review either way.
+    if (TERMINAL_STATUSES.has(newStatus)) {
+      const requeued = await this.maybeRetryAbandonedPitch(
+        { ...existing, ...patch } as OutboundCallRow,
+        {
+          status: newStatus,
+          durationSeconds: patch.durationSeconds ?? existing.durationSeconds,
+          transcript: patch.transcript ?? existing.transcript,
+          disconnectionReason: event.error ?? existing.error,
+          analysis: analysisData,
+        },
+      ).catch((err) => {
+        this.logger.warn(
+          `[outbound-voice] abandoned-pitch retry check failed for call ${existing.id}: ${(err as Error).message}`,
+        );
+        return false;
+      });
+      if (requeued) {
+        return { matched: true, previousStatus: existing.status, newStatus: 'queued' };
+      }
+    }
     return { matched: true, previousStatus: existing.status, newStatus };
+  }
+
+  // ---------- abandoned-pitch retry (Session 76) ----------
+
+  /**
+   * Chris, 2026-08-17: "If a call dies with a sales logic pitch I want the agent
+   * to immediately call the customer back again — we must complete the call — no
+   * less than 3 attempts."
+   *
+   * Requeues a call whose conversation stopped before the flip reached a
+   * decision. Returns true when it requeued, so the caller can report `queued`
+   * rather than the terminal status.
+   *
+   * Every gate here is a reason NOT to redial, and each one is load-bearing:
+   * an opt-out, a job that never had a pitch, a pitch the customer answered,
+   * or an agent that reached its close. See pitch-completion.ts for why the
+   * "agent judged it inappropriate after a full intake" case must survive —
+   * two of the three long calls on 2026-08-17 were correct suppressions of a
+   * wrong club ticket, and redialling them would pitch a repair shop to
+   * someone whose car is going home on a flatbed.
+   */
+  private async maybeRetryAbandonedPitch(
+    call: OutboundCallRow,
+    observed: {
+      status: string;
+      durationSeconds?: number | null;
+      transcript?: string | null;
+      disconnectionReason?: string | null;
+      analysis: Record<string, unknown>;
+    },
+  ): Promise<boolean> {
+    if (!ABANDONED_PITCH_RETRY_ENABLED) return false;
+
+    const maxAttempts = Math.max(call.maxAttempts ?? 0, ABANDONED_PITCH_MIN_ATTEMPTS);
+    if (call.attempts >= maxAttempts) {
+      this.logger.log(
+        `[outbound-voice] abandoned pitch call=${call.id} at attempt ceiling ${call.attempts}/${maxAttempts} — not redialling`,
+      );
+      return false;
+    }
+
+    // Only flip calls are in scope, and `purpose`/`scriptTemplate` cannot tell
+    // us — the flip orchestrator enqueues everything as 'custom', same as an ETA
+    // courtesy call. A time-bounded flip log row is the only real discriminator
+    // we have: no row in the window means this was not a flip call, so there is
+    // no pitch to have abandoned.
+    //
+    // The window matters as much as the match. The lookup is by phone with no
+    // time bound elsewhere in this file, which would happily return YESTERDAY's
+    // flip log for a customer we are calling today about their driver's ETA —
+    // and then redial them for a pitch that was never in this call's script.
+    const log = await this.findLatestCallLog(call, ABANDONED_PITCH_LOG_MATCH_WINDOW_HOURS);
+    if (!log) {
+      this.logger.debug(
+        `[outbound-voice] call=${call.id} has no flip log row in the last ` +
+          `${ABANDONED_PITCH_LOG_MATCH_WINDOW_HOURS}h — not a flip call, no redial`,
+      );
+      return false;
+    }
+
+    // Our pre-call gate's eligibility, not the agent's post-call opinion of it.
+    // syncFlipActivityFromAnalysis deliberately keeps those separate; so do we.
+    const jobFlipEligible = log.flipEligible ?? false;
+
+    const verdict: PitchVerdict = judgePitchCompletion(
+      {
+        status: observed.status,
+        disconnectionReason: observed.disconnectionReason,
+        durationSeconds: observed.durationSeconds,
+        transcript: observed.transcript,
+        analysis: observed.analysis as Parameters<typeof judgePitchCompletion>[0]['analysis'],
+        jobFlipEligible,
+      },
+      {
+        intakeCompleteSeconds: ABANDONED_PITCH_INTAKE_SECONDS,
+        closeMarkers: CLOSE_MARKERS,
+      },
+    );
+
+    if (verdict.outcome !== 'ABANDONED') {
+      this.logger.log(
+        `[outbound-voice] call=${call.id} pitch ${verdict.outcome} (${verdict.reason}) — no redial`,
+      );
+      return false;
+    }
+
+    const scheduledFor = new Date(Date.now() + ABANDONED_PITCH_RETRY_DELAY_SECONDS * 1000);
+    await this.db
+      .update(outboundCalls)
+      .set({
+        status: 'queued',
+        error: `abandoned_pitch_retry: ${verdict.reason}`,
+        // dispatchQueued only considers rows created in the last 15 minutes, so
+        // a requeue that does not reset createdAt is silently never dialled.
+        // This is the same reason the connection-failure path resets it.
+        createdAt: new Date(),
+        scheduledFor,
+        endedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(outboundCalls.id, call.id));
+
+    this.logger.warn(
+      `[outbound-voice] REDIALLING abandoned pitch call=${call.id} attempt=${call.attempts}/${maxAttempts} ` +
+        `reason=${verdict.reason} in ${ABANDONED_PITCH_RETRY_DELAY_SECONDS}s`,
+    );
+    return true;
+  }
+
+  /**
+   * The flip log row for a call. Matched on tenant + phone + recency because
+   * outbound_call_logs carries no foreign key to outbound_calls — the same join
+   * syncFlipActivityFromAnalysis uses, extracted so both agree on which row
+   * "this call" means.
+   */
+  private async findLatestCallLog(
+    call: OutboundCallRow,
+    withinHours?: number,
+  ): Promise<typeof outboundCallLogs.$inferSelect | undefined> {
+    const filters: SQL[] = [
+      eq(outboundCallLogs.tenantId, call.tenantId),
+      eq(outboundCallLogs.customerPhone, call.toPhone),
+    ];
+    if (withinHours != null) {
+      // Anchored on the call row's own clock rather than now(), so a redial
+      // whose createdAt was reset still resolves to the flip log that started
+      // the sequence.
+      const anchor = call.startedAt ?? call.createdAt ?? new Date();
+      filters.push(
+        sql`${outboundCallLogs.callTime} >= ${new Date(anchor.getTime() - withinHours * 3600_000)}`,
+      );
+      filters.push(
+        sql`${outboundCallLogs.callTime} <= ${new Date(anchor.getTime() + withinHours * 3600_000)}`,
+      );
+    }
+    const rows = await this.db
+      .select()
+      .from(outboundCallLogs)
+      .where(and(...filters))
+      .orderBy(desc(outboundCallLogs.callTime))
+      .limit(1);
+    return rows[0];
   }
 
   private async notifyManagersOfAttentionNeeded(
@@ -1524,6 +1892,97 @@ const TERMINAL_STATUSES = new Set([
   'rejected',
   'cancelled',
 ]);
+
+// ---------- abandoned-pitch retry config (Session 76) ----------
+
+function envInt(name: string, fallback: number): number {
+  const raw = (process.env[name] ?? '').trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
+/**
+ * Master switch. Default ON because the behaviour Chris asked for is the
+ * correction of a defect — a live call dying mid-pitch was simply never retried —
+ * but a single env var turns it off without a code change if redial volume
+ * misbehaves.
+ */
+const ABANDONED_PITCH_RETRY_ENABLED =
+  (process.env.OUTBOUND_ABANDONED_PITCH_RETRY ?? 'true').trim().toLowerCase() !== 'false';
+
+/**
+ * "No less than 3 attempts" (Chris, 2026-08-17). This is a FLOOR applied over
+ * whatever the row carries, so an old row enqueued with max_attempts=1 still
+ * gets its three tries rather than silently honouring the smaller number.
+ */
+const ABANDONED_PITCH_MIN_ATTEMPTS = Math.max(
+  envInt('OUTBOUND_ABANDONED_PITCH_MIN_ATTEMPTS', 3),
+  1,
+);
+
+/**
+ * Chris asked for "immediately". This defaults to 60 seconds rather than 0, and
+ * that deserves an explicit justification because it is a deliberate departure:
+ * dialling a customer back within a second or two of them hanging up reads as a
+ * malfunction (or harassment) to the person on the other end, and Retell needs a
+ * moment to finalise the call record we just judged. Sixty seconds is still
+ * "right away" to a customer standing next to a broken car, and it is one env
+ * var from zero. Raise it if redials start landing on people mid-tow.
+ */
+const ABANDONED_PITCH_RETRY_DELAY_SECONDS = envInt('OUTBOUND_ABANDONED_PITCH_DELAY_SECONDS', 60);
+
+/** See DEFAULT_INTAKE_COMPLETE_SECONDS in pitch-completion.ts. */
+const ABANDONED_PITCH_INTAKE_SECONDS = envInt(
+  'OUTBOUND_RETRY_INTAKE_COMPLETE_SECONDS',
+  DEFAULT_INTAKE_COMPLETE_SECONDS,
+);
+
+/**
+ * How far from a call's own timestamp we will look for its flip log row. Six
+ * hours is generous for a match that should be near-simultaneous, and still far
+ * tighter than the unbounded phone lookup it replaces.
+ */
+const ABANDONED_PITCH_LOG_MATCH_WINDOW_HOURS = envInt(
+  'OUTBOUND_ABANDONED_PITCH_LOG_WINDOW_HOURS',
+  6,
+);
+
+/**
+ * A call must be at least this old before the sweep will judge it without
+ * provider analysis. Long enough that `call_analyzed` has genuinely had its
+ * chance (it normally lands within a minute of `call_ended`), short enough that
+ * a customer still remembers the call they were on.
+ */
+const ABANDONED_PITCH_SWEEP_MIN_AGE_SECONDS = envInt(
+  'OUTBOUND_ABANDONED_PITCH_SWEEP_MIN_AGE_SECONDS',
+  600,
+);
+
+/**
+ * How long a row may sit in `dialing` / `in_progress` before the sweep treats it
+ * as stuck rather than live. No real outbound flip call approaches this — the
+ * longest on 2026-08-17 was 201 seconds — so anything past it has lost its
+ * webhook, not its customer. Set well above any plausible call length: the cost
+ * of being wrong here is dialling someone who is still on the phone with us.
+ */
+const ABANDONED_PITCH_STUCK_INFLIGHT_MINUTES = envInt(
+  'OUTBOUND_ABANDONED_PITCH_STUCK_MINUTES',
+  30,
+);
+
+// ---------- stalled-call reconciliation config (Session 76) ----------
+
+/**
+ * How long a call may sit in `dialing` / `in_progress` before we go and ask
+ * Retell what happened to it. Five minutes clears the longest observed call
+ * (201s) with room to spare, so we never force a terminal state onto a
+ * conversation that is still running.
+ */
+const RECONCILE_MIN_AGE_SECONDS = envInt('OUTBOUND_RECONCILE_MIN_AGE_SECONDS', 300);
+
+/** One GET per row, so keep a batch modest and let the 3-minute cron catch up. */
+const RECONCILE_BATCH_SIZE = envInt('OUTBOUND_RECONCILE_BATCH_SIZE', 25);
 
 function mapProviderStatus(raw: string): string | null {
   const s = raw.toLowerCase().trim();

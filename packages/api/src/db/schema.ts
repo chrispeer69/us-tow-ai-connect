@@ -365,6 +365,43 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
 });
 export type OutboundCallLogRow = typeof outboundCallLogs.$inferSelect;
 
+// ============ AI NOTE WRITES (Session 76 — dispatch write-back audit) ============
+// One row per attempt to append an AI Notes block to a job in the customer's own
+// dispatch system, successful or not, dry run or real. This writes into a live
+// ticket in software we do not own, so "which call put this note on this job, and
+// did we confirm it landed?" has to be answerable months later. It is also what
+// makes the dry-run rollout reviewable — the composed block is stored, so a day
+// of proposed writes can be read before any of them are real.
+export const aiNoteWrites = pgTable(
+  'ai_note_writes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    outboundCallId: uuid('outbound_call_id'),
+    callLogId: uuid('call_log_id'),
+    jobId: uuid('job_id'),
+    sourceAdapter: varchar('source_adapter', { length: 32 }).notNull(),
+    sourceJobId: varchar('source_job_id', { length: 120 }).notNull(),
+    /** written | dry_run | already_present | skipped | failed */
+    outcome: varchar('outcome', { length: 24 }).notNull(),
+    detail: text('detail'),
+    /** Only the block we composed — never the surrounding dispatcher text. */
+    notesBlock: text('notes_block'),
+    blockChars: integer('block_chars'),
+    verified: boolean('verified').notNull().default(false),
+    attemptedAt: timestamp('attempted_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    callIdx: index('ai_note_writes_call_idx').on(t.outboundCallId),
+    tenantAttemptedIdx: index('ai_note_writes_tenant_attempted_idx').on(t.tenantId, t.attemptedAt),
+    jobIdx: index('ai_note_writes_job_idx').on(t.tenantId, t.sourceAdapter, t.sourceJobId),
+  }),
+);
+export type AiNoteWriteRow = typeof aiNoteWrites.$inferSelect;
+
 // ============ CALL REVIEW (Session 73 — daily analyst loop) ============
 // One row per tenant per day. The daily cron samples yesterday's calls, sends
 // the transcripts to Claude for failure-mode classification, and stores the

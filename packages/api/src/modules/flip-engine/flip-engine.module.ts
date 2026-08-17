@@ -11,6 +11,8 @@ import { FlipNotifierService } from './flip-notifier.service';
 import { OutboundVoiceModule } from '../outbound-voice/outbound-voice.module';
 import { CommandCenterModule } from '../command-center/command-center.module';
 import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
+import { AdaptersModule } from '../adapters/adapters.module';
+import { AiNotesWriterService } from './ai-notes-writer.service';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -24,7 +26,15 @@ import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
  */
 @Global()
 @Module({
-  imports: [ScheduleModule.forRoot(), TenantsModule, OutboundVoiceModule, CommandCenterModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    TenantsModule,
+    OutboundVoiceModule,
+    CommandCenterModule,
+    // AI Notes write-back needs the dispatch adapters to reach the customer's
+    // own job records.
+    AdaptersModule,
+  ],
   controllers: [FlipEngineController, FlipActivityController],
   providers: [
     FlipEngineService,
@@ -32,6 +42,7 @@ import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
     IssueClassifierService,
     FlipOrchestratorService,
     FlipNotifierService,
+    AiNotesWriterService,
     SuperAdminAuthGuard,
   ],
   exports: [
@@ -40,6 +51,7 @@ import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
     IssueClassifierService,
     FlipOrchestratorService,
     FlipNotifierService,
+    AiNotesWriterService,
   ],
 })
 export class FlipEngineModule {}

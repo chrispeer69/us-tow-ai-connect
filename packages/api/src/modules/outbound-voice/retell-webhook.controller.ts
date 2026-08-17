@@ -12,6 +12,7 @@ import {
 import * as crypto from 'crypto';
 import type { Request } from 'express';
 import { OutboundVoiceService } from './outbound-voice.service';
+import { extractRetellAnalysis, mapRetellStatus } from './retell-call-mapping';
 
 /**
  * Session 68 — Retell outbound webhook receiver.
@@ -106,27 +107,18 @@ export class RetellWebhookController {
       rawOffer1: analysis.offer_1_result ?? custom.offer_1_result ?? null,
     });
 
-    // Extract everything, checking both root and custom_analysis_data
-    const analysisData = {
-      call_summary: analysis.call_summary as string | null,
-      call_successful: analysis.call_successful as boolean | null,
-      user_sentiment: analysis.user_sentiment as string | null,
-      flip_eligible: (analysis.flip_eligible ?? custom.flip_eligible) as boolean | null,
-      flip_outcome: (analysis.flip_outcome ?? custom.flip_outcome) as string | null,
-      offer_1_result: (analysis.offer_1_result ?? custom.offer_1_result) as string | null,
-      offer_2_result: (analysis.offer_2_result ?? custom.offer_2_result) as string | null,
-      offer_3_result: (analysis.offer_3_result ?? custom.offer_3_result) as string | null,
-      convini_link_sent: (analysis.convini_link_sent ?? custom.convini_link_sent) as boolean | null,
-      convini_sell_type: (analysis.convini_sell_type ?? custom.convini_sell_type) as string | null,
-      corrections_made: (analysis.corrections_made ?? custom.corrections_made) as string | null,
-      nearest_our_shop: (analysis.nearest_our_shop ?? custom.nearest_our_shop) as string | null,
-      destination_type: (analysis.destination_type ?? custom.destination_type) as string | null,
-    };
+    // Shared with the reconciliation sweep, which pulls this same object from
+    // GET /v2/get-call. See retell-call-mapping.ts.
+    const analysisData = extractRetellAnalysis(analysis as Record<string, unknown>);
 
     const result = await this.outboundVoice.handleProviderWebhookEvent({
       provider: 'retell',
       callId,
-      status: mapRetellStatus(body),
+      status: mapRetellStatus({
+        event: body.event,
+        call_status: body.call?.call_status,
+        disconnection_reason: body.call?.disconnection_reason,
+      }),
       durationSeconds: body.call.duration_ms != null
         ? Math.round(body.call.duration_ms / 1000)
         : null,
@@ -142,30 +134,6 @@ export class RetellWebhookController {
     });
     return { matched: result.matched };
   }
-}
-
-/** Retell event → ThinkrrStatus-equivalent string (mapThinkrrStatus handles it). */
-function mapRetellStatus(body: RetellWebhookBody): string {
-  const event = body.event;
-  const callStatus = body.call?.call_status;
-  // Retell `call_started` => in_progress in our schema
-  if (event === 'call_started') return 'in_progress';
-  // call_ended / call_analyzed — read disconnection_reason for the terminal mapping
-  if (event === 'call_ended' || event === 'call_analyzed') {
-    const reason = body.call?.disconnection_reason?.toLowerCase();
-    if (reason === 'user_hangup' || reason === 'agent_hangup' || reason === 'call_transfer') {
-      return 'completed';
-    }
-    if (reason === 'voicemail') return 'no_answer';
-    if (reason === 'dial_busy') return 'busy';
-    if (reason === 'dial_no_answer') return 'no_answer';
-    if (reason === 'dial_failed' || reason === 'error') return 'failed';
-    if (callStatus === 'ended') return 'completed';
-    if (callStatus === 'error') return 'failed';
-  }
-  if (callStatus === 'ongoing') return 'in_progress';
-  if (callStatus === 'registered') return 'dialing';
-  return 'failed';
 }
 
 /**

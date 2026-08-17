@@ -20,6 +20,8 @@ import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-aut
 import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
 import { FlipEngineService } from './flip-engine.service';
 import { FlipOrchestratorService } from './flip-orchestrator.service';
+import { AdapterFactory } from '../adapters/adapter.factory';
+import { AiNotesWriterService } from './ai-notes-writer.service';
 
 const ShopTypeEnum = z.enum(['REPAIR', 'BODY']);
 
@@ -145,6 +147,8 @@ export class FlipEngineController {
   constructor(
     private readonly service: FlipEngineService,
     private readonly orchestrator: FlipOrchestratorService,
+    private readonly adapters: AdapterFactory,
+    private readonly aiNotesWriter: AiNotesWriterService,
   ) {}
 
   // ----- shops -----
@@ -398,5 +402,66 @@ export class FlipEngineController {
 
     await this.orchestrator.pingSandbox(req.tenantId, body.phone);
     return { status: 'success', message: 'Test call triggered successfully' };
+  }
+
+  // ---------- AI Notes write-back (Session 76) ----------
+
+  /**
+   * Capture the Update Call modal's DOM structure for one job.
+   *
+   * This is the step that unblocks the whole write-back: the modal's selectors
+   * have never been captured, and without them `updateJobNotes` refuses to run.
+   * Read-only — it opens the record and reports element metadata (tag, id, class,
+   * name, label) and nothing else.
+   *
+   * It deliberately never returns field VALUES. The modal contains a Billing
+   * Notes field holding raw cardholder data, and a diagnostic endpoint must not
+   * become a way to read it. Super-admin only for the same reason.
+   */
+  @Post('ai-notes/discover-selectors')
+  @UseGuards(SuperAdminAuthGuard)
+  async discoverAiNotesSelectors(
+    @Req() req: AdminRequest,
+    @Body() body: { sourceJobId?: string; softwareType?: string },
+  ) {
+    if (!body?.sourceJobId) {
+      throw new BadRequestException('sourceJobId is required (the dispatch row data-id)');
+    }
+    const adapter = this.adapters.getAdapter((body.softwareType ?? 'TOWBOOK').toUpperCase());
+    const discover = (adapter as { discoverNotesModal?: unknown }).discoverNotesModal;
+    if (typeof discover !== 'function') {
+      throw new BadRequestException('this adapter has no selector discovery');
+    }
+    return (discover as (t: string, j: string) => Promise<unknown>).call(
+      adapter,
+      req.tenantId,
+      body.sourceJobId,
+    );
+  }
+
+  /**
+   * Run the AI Notes sweep now. Defaults to a dry run regardless of env config —
+   * an operator poking this by hand should not be able to write into live tickets
+   * without saying so explicitly.
+   */
+  @Post('ai-notes/run')
+  @UseGuards(SuperAdminAuthGuard)
+  async runAiNotesSweep(
+    @Req() req: AdminRequest,
+    @Body() body: { dryRun?: boolean; limit?: number },
+  ) {
+    return this.aiNotesWriter.writePending({
+      tenantId: req.tenantId,
+      dryRun: body?.dryRun !== false,
+      limit: body?.limit,
+    });
+  }
+
+  /** Recent write attempts — this is what a dry-run day is reviewed from. */
+  @Get('ai-notes/writes')
+  @UseGuards(AdminAuthGuard)
+  async listAiNoteWrites(@Req() req: AdminRequest) {
+    const items = await this.service.listAiNoteWrites(req.tenantId);
+    return { status: 'success', data: { items } };
   }
 }

@@ -1,11 +1,13 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   aaaBrandedBlocklist,
+  aiNoteWrites,
   alphaShops,
   tenants,
   platformSettings,
+  type AiNoteWriteRow,
   type AlphaShopInsert,
   type AlphaShopRow,
 } from '../../db/schema';
@@ -446,5 +448,21 @@ export class FlipEngineService {
     );
     if (!hit || hit.lat == null || hit.lng == null) return null;
     return { lat: Number(hit.lat), lng: Number(hit.lng) };
+  }
+
+  /**
+   * Recent AI Notes write attempts for a tenant.
+   *
+   * This is the review surface for the dry-run rollout: a day of `dry_run` rows
+   * shows exactly what would have been appended to which job, so the decision to
+   * go live is made from evidence rather than optimism.
+   */
+  async listAiNoteWrites(tenantId: string, limit = 100): Promise<AiNoteWriteRow[]> {
+    return this.db
+      .select()
+      .from(aiNoteWrites)
+      .where(eq(aiNoteWrites.tenantId, tenantId))
+      .orderBy(desc(aiNoteWrites.attemptedAt))
+      .limit(Math.min(Math.max(limit, 1), 500));
   }
 }

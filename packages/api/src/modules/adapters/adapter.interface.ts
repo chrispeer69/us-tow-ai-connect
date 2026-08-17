@@ -75,6 +75,12 @@ export interface TowingSoftwareAdapter {
    *     the text is actually there. A click that silently did nothing is the
    *     failure mode these portals actually have.
    *
+   *  5. VERIFY IDENTITY FIRST, FAIL CLOSED. Chris, 2026-08-15: a job can be
+   *     verified by phone number, customer name, or job number. Pass all three
+   *     you hold in `verify`; the implementation must refuse to write when any
+   *     of them contradicts the record it opened. Writing an AI note onto the
+   *     wrong customer's ticket is worse than not writing at all.
+   *
    * Optional: implemented only for portals whose job records we are permitted to
    * write to.
    */
@@ -82,7 +88,22 @@ export interface TowingSoftwareAdapter {
     tenantId: string,
     sourceJobId: string,
     notesBlock: string,
+    options?: UpdateJobNotesOptions,
   ): Promise<AdapterActionResult>;
+}
+
+/** Identity evidence and safety switches for an AI Notes write. */
+export interface UpdateJobNotesOptions {
+  /** Customer name we believe is on the job. Checked against the open record. */
+  expectCustomerName?: string | null;
+  /** Customer phone we believe is on the job. Digits are compared, not format. */
+  expectCustomerPhone?: string | null;
+  /**
+   * Do everything except the write: open the record, verify identity, compose the
+   * exact new field value, then report it and change nothing. The rollout path —
+   * run for a day, read the logs, then enable for real.
+   */
+  dryRun?: boolean;
 }
 
 export enum SoftwareType {

@@ -29,6 +29,23 @@ import type {
  * Webhook events arrive at /webhooks/retell/outbound-result (see
  * retell-webhook.controller.ts).
  */
+/**
+ * The subset of Retell's call object the reconciliation path reads. Mirrors the
+ * webhook body's `call` field, because it is the same object.
+ */
+export interface RetellCallSnapshot {
+  call_id: string;
+  call_status?: 'ongoing' | 'ended' | 'error' | 'registered';
+  disconnection_reason?: string;
+  duration_ms?: number;
+  transcript?: string;
+  recording_url?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
+  call_analysis?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
 @Injectable()
 export class RetellOutboundClient implements OutboundVoiceProvider {
   readonly providerName = 'retell' as const;
@@ -218,6 +235,43 @@ export class RetellOutboundClient implements OutboundVoiceProvider {
     } catch (err) {
       this.logger.warn(
         `[outbound-voice] Retell placeCall threw for ${params.callId}: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Pull a call's current state straight from Retell.
+   *
+   * Exists because the push path is not reliable. On 2026-08-17, 12 of 32 calls
+   * were still sitting in `in_progress` with no transcript, no duration and no
+   * analysis — their `call_ended` / `call_analyzed` webhooks never arrived, so
+   * better than a third of the day's calls had no recorded outcome at all. Every
+   * one of those rows already held a `retell_call_id`, which means the truth was
+   * always one GET away.
+   *
+   * Returns the raw Retell call object so the caller can feed it through exactly
+   * the same mapping the webhook controller uses — a reconciliation that parsed
+   * these fields its own way would drift from the push path, and then the two
+   * would disagree about what a call did.
+   */
+  async getCall(retellCallId: string): Promise<RetellCallSnapshot | null> {
+    if (!this.apiKey) return null;
+    try {
+      const res = await fetch(`${this.baseUrl}/v2/get-call/${encodeURIComponent(retellCallId)}`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${this.apiKey}` },
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `[outbound-voice] Retell getCall ${retellCallId} -> HTTP ${res.status}`,
+        );
+        return null;
+      }
+      return (await res.json()) as RetellCallSnapshot;
+    } catch (err) {
+      this.logger.warn(
+        `[outbound-voice] Retell getCall threw for ${retellCallId}: ${(err as Error).message}`,
       );
       return null;
     }

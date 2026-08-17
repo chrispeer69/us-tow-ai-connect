@@ -12,7 +12,9 @@ import {
   AdapterConnectionTestResult,
   DecryptedCredentials,
   TowingSoftwareAdapter,
+  UpdateJobNotesOptions,
 } from '../adapter.interface';
+import { alreadyContainsAiNote, appendAiNotes } from '../../flip-engine/ai-notes.composer';
 
 /**
  * Decision: Headless Chromium with sandboxing disabled — required on most
@@ -71,6 +73,85 @@ const RESERVED_COLUMN_IDS = new Set<string>([
 // address into the flip pipeline. See docs/TOWBOOK_DOM_MAP.md.
 const PICKUP_COLUMN_IDS = parseColumnIdList(process.env.TOWBOOK_PICKUP_COLUMN_IDS);
 const DROPOFF_COLUMN_IDS = parseColumnIdList(process.env.TOWBOOK_DROPOFF_COLUMN_IDS);
+
+// ---------- AI Notes write-back (Session 76) ----------
+//
+// The Update Call modal's DOM has never been captured from a live session, so
+// these are configuration rather than constants. `discoverNotesModal` dumps the
+// modal's structure to the log; set these two from that output and no redeploy
+// is needed to correct a wrong guess.
+//
+// UNSET IS THE SAFE STATE: with no selector, updateJobNotes returns
+// 'not-configured' instead of typing into whichever textarea happened to be
+// first — and the first one might be Billing Notes, which holds card data.
+const NOTES_TEXTAREA_SELECTOR = (process.env.TOWBOOK_NOTES_TEXTAREA_SELECTOR ?? '').trim();
+const SAVE_BUTTON_SELECTOR = (process.env.TOWBOOK_SAVE_BUTTON_SELECTOR ?? '').trim();
+
+/** Pause after clicking Save, before re-reading, so the POST can land. */
+const SAVE_SETTLE_MS = Number(process.env.TOWBOOK_SAVE_SETTLE_MS ?? 1500);
+
+/**
+ * Does this text look like it contains cardholder data?
+ *
+ * The Update Call modal's Billing Notes field holds full PAN, expiry, security
+ * code and billing ZIP (observed 2026-08-15). Storing a security code after
+ * authorization is prohibited under PCI DSS, and while that is Towbook's problem
+ * to own, it constrains us absolutely: we must never read, write, log or persist
+ * any of it. This is the tripwire — used on what we are about to write AND on
+ * what we just read, so a mis-pointed selector aborts instead of copying a card
+ * number into a note.
+ *
+ * Deliberately blunt. A false positive costs one skipped note; a false negative
+ * writes a card number into a dispatch ticket.
+ */
+export function looksLikeCardData(text: string | null | undefined): boolean {
+  const t = (text ?? '').trim();
+  if (!t) return false;
+  // 13-19 digit runs, allowing the spaces and dashes people actually type.
+  if (/(?:\d[ -]?){13,19}/.test(t)) {
+    const digitRuns = t.match(/(?:\d[ -]?){13,19}/g) ?? [];
+    for (const run of digitRuns) {
+      const digits = run.replace(/\D/g, '');
+      if (digits.length >= 13 && digits.length <= 19 && luhnValid(digits)) return true;
+    }
+  }
+  // Explicit labels, which appear even when the number is formatted oddly.
+  if (/\b(security\s*code|card\s*number|ccn|cvv|cvc|exp(?:iry|iration)?\s*(?:date)?)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/** Luhn check — keeps ordinary long digit strings (phone runs, job ids) out. */
+function luhnValid(digits: string): boolean {
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let d = digits.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) return false;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+
+/** Digits only, for comparing phone numbers whose formatting we don't control. */
+export function digitsOf(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+/**
+ * Escape a value being interpolated into an attribute selector. `source_job_id`
+ * comes from an external system; a stray quote would otherwise turn a lookup
+ * into a malformed (or wider-matching) selector.
+ */
+export function cssEscapeAttr(value: string): string {
+  return String(value).replace(/["\\]/g, '\\$&');
+}
 
 /** A single scraped dispatch row, reduced to its columnid→text cell map. */
 export interface TowbookRawRow {
@@ -410,6 +491,388 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       `[towbook] declineJob not-applicable (tenant=${tenantId}, job=${sourceJobId}, reason="${reason}")`,
     );
     return { success: false, error: 'not-applicable: Towbook is dispatch-out (no decline surface)' };
+  }
+
+  /**
+   * Session 76 — write an AI Notes block into a Towbook call's Notes field.
+   *
+   * Reads docs/TOWBOOK_AI_NOTES_WRITEBACK.md before it reads anything else. The
+   * short version of why this is so defensive:
+   *
+   *  - The Update Call modal contains a **Billing Notes** field holding raw
+   *    cardholder data — full PAN, expiry, security code, billing ZIP (observed
+   *    2026-08-15). We never read it, never write it, never log it, never
+   *    screenshot it. `assertNoCardData` is a belt-and-braces check on anything
+   *    we are about to persist, and the Notes selector is validated to be a
+   *    different element than any billing field before a single key is pressed.
+   *  - A dispatcher may be inside the record ("Users Editing: Chris Peer"). If
+   *    so we back off; a human hitting Save after us loses our note, or we
+   *    clobber theirs.
+   *  - Identity is verified three ways and fails closed.
+   *  - The write is append-only via `appendAiNotes`, then read back and
+   *    confirmed. A Save click that silently does nothing is the actual failure
+   *    mode of these portals.
+   *
+   * Selectors live in env vars because the modal's DOM has never been captured
+   * from a live session — `discoverNotesModal` below dumps the structure so they
+   * can be filled in without a code change. Until they are set, this returns a
+   * not-configured result rather than guessing at a field to type into.
+   */
+  async updateJobNotes(
+    tenantId: string,
+    sourceJobId: string,
+    notesBlock: string,
+    options: UpdateJobNotesOptions = {},
+  ): Promise<AdapterActionResult> {
+    const dryRun = options.dryRun ?? true; // safe default: never write unless asked
+    if (!notesBlock?.trim()) {
+      return { success: false, error: 'empty_notes_block' };
+    }
+    // Refuse to carry card-like data into a ticket even if a composer upstream
+    // somehow produced it. Cheap, and the one check that must never be skipped.
+    if (looksLikeCardData(notesBlock)) {
+      this.logger.error(
+        `[towbook] REFUSING AI notes write for job=${sourceJobId} — block matched card-data shape`,
+      );
+      return { success: false, error: 'refused_card_data_in_notes_block' };
+    }
+    if (!NOTES_TEXTAREA_SELECTOR || !SAVE_BUTTON_SELECTOR) {
+      return {
+        success: false,
+        error:
+          'not-configured: set TOWBOOK_NOTES_TEXTAREA_SELECTOR and TOWBOOK_SAVE_BUTTON_SELECTOR ' +
+          '(run discoverNotesModal to capture them)',
+      };
+    }
+
+    const stateJson = await this.redis.get(`session:towbook:${tenantId}`);
+    if (!stateJson) {
+      throw new SessionExpiredException(`No session context for tenant ${tenantId}`);
+    }
+
+    let browser: import('playwright').Browser | undefined;
+    try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
+      const context = await browser.newContext({ storageState: JSON.parse(stateJson) });
+      const page = await context.newPage();
+
+      const opened = await this.openJobModal(page, tenantId, sourceJobId);
+      if (!opened.success) return opened;
+
+      // --- concurrency: a human in the record wins, always ---
+      const editors = await this.readUsersEditing(page);
+      if (editors) {
+        this.logger.log(
+          `[towbook] job=${sourceJobId} is being edited (${editors}) — backing off`,
+        );
+        return { success: false, error: `deferred_users_editing: ${editors}` };
+      }
+
+      // --- identity: all available evidence must agree, or we do not write ---
+      const identity = await this.verifyJobIdentity(page, sourceJobId, options);
+      if (!identity.ok) {
+        this.logger.error(
+          `[towbook] identity mismatch for job=${sourceJobId}: ${identity.reason} — refusing write`,
+        );
+        return { success: false, error: `identity_mismatch: ${identity.reason}` };
+      }
+
+      // --- read the current Notes value ---
+      const notesField = page.locator(NOTES_TEXTAREA_SELECTOR).first();
+      if ((await notesField.count()) === 0) {
+        return { success: false, error: 'notes_field_not_found' };
+      }
+      const existing = (await notesField.inputValue().catch(() => '')) ?? '';
+
+      // Guard against a mis-pointed selector landing on the billing field. If
+      // what we just read looks like cardholder data, the selector is wrong and
+      // this is a bug to fix immediately, not to work around.
+      if (looksLikeCardData(existing)) {
+        this.logger.error(
+          `[towbook] ABORT job=${sourceJobId} — the configured notes selector read card-like ` +
+            `data. TOWBOOK_NOTES_TEXTAREA_SELECTOR is pointing at a billing field.`,
+        );
+        return { success: false, error: 'refused_selector_hit_billing_field' };
+      }
+
+      if (alreadyContainsAiNote(existing, notesBlock)) {
+        this.logger.log(`[towbook] job=${sourceJobId} already carries this AI note — no-op`);
+        return {
+          success: true,
+          confirmedAt: new Date().toISOString(),
+          confirmationEvidence: 'already_present',
+        };
+      }
+
+      const combined = appendAiNotes(existing, notesBlock);
+
+      if (dryRun) {
+        // Log the delta, never the existing dispatcher text — the point of a dry
+        // run is to prove what we would ADD, and the rest of the field is not
+        // ours to copy into logs.
+        this.logger.log(
+          `[towbook] DRY RUN job=${sourceJobId} would append ${notesBlock.length} chars ` +
+            `to a ${existing.length}-char Notes field (new length ${combined.length}). Block:\n${notesBlock}`,
+        );
+        return {
+          success: true,
+          confirmationEvidence: `dry_run_would_append_${notesBlock.length}_chars`,
+        };
+      }
+
+      // --- write, save, and prove it landed ---
+      await notesField.fill(combined);
+      await page.locator(SAVE_BUTTON_SELECTOR).first().click();
+      await page.waitForTimeout(SAVE_SETTLE_MS);
+
+      const verified = await this.verifyNoteLanded(page, tenantId, sourceJobId, notesBlock);
+      if (!verified) {
+        return { success: false, error: 'write_not_verified_after_save' };
+      }
+
+      this.logger.log(`[towbook] AI notes written and verified for job=${sourceJobId}`);
+      return {
+        success: true,
+        confirmedAt: new Date().toISOString(),
+        confirmationEvidence: 'written_and_reread_from_a_fresh_page_load',
+      };
+    } catch (error) {
+      // Contract rule 3: never throw. A failed write belongs in the audit trail.
+      const message = (error as Error).message;
+      if (error instanceof SessionExpiredException) throw error;
+      this.logger.warn(`[towbook] updateJobNotes failed job=${sourceJobId}: ${message}`);
+      return { success: false, error: `exception: ${message}` };
+    } finally {
+      if (browser) await browser.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Read-only capture of the Update Call modal's structure, so the Notes and
+   * Save selectors can be identified without a screenshot.
+   *
+   * Returns element metadata ONLY — tag, id, class, name, placeholder, aria-label,
+   * and the visible text of buttons. Never a field's value or textContent, because
+   * the modal contains raw cardholder data and a structural dump must not become
+   * a way to exfiltrate it. Anything whose label or attributes mention billing is
+   * reported as a name with its value suppressed, precisely so the operator can
+   * confirm which selector to AVOID.
+   */
+  async discoverNotesModal(
+    tenantId: string,
+    sourceJobId: string,
+  ): Promise<{ success: boolean; error?: string; fields?: unknown[]; buttons?: unknown[] }> {
+    const stateJson = await this.redis.get(`session:towbook:${tenantId}`);
+    if (!stateJson) {
+      throw new SessionExpiredException(`No session context for tenant ${tenantId}`);
+    }
+    let browser: import('playwright').Browser | undefined;
+    try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
+      const context = await browser.newContext({ storageState: JSON.parse(stateJson) });
+      const page = await context.newPage();
+
+      const opened = await this.openJobModal(page, tenantId, sourceJobId);
+      if (!opened.success) return { success: false, error: opened.error };
+
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const captured = await page.evaluate(() => {
+        const doc: any = (globalThis as any).document;
+        const describe = (el: any) => {
+          // Label text is static UI chrome, not customer data — safe and it is
+          // the only reliable way to tell Notes from Billing Notes.
+          let labelText = '';
+          const id = el.getAttribute('id');
+          if (id) {
+            const lab = doc.querySelector(`label[for="${id}"]`);
+            if (lab) labelText = (lab.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+          }
+          if (!labelText && el.closest) {
+            const wrap = el.closest('.field, .form-group, td, li, div');
+            const lab = wrap?.querySelector?.('label');
+            if (lab) labelText = (lab.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+          }
+          return {
+            tag: el.tagName?.toLowerCase() ?? '?',
+            id: id ?? null,
+            name: el.getAttribute('name'),
+            className: (el.getAttribute('class') ?? '').slice(0, 120),
+            placeholder: el.getAttribute('placeholder'),
+            ariaLabel: el.getAttribute('aria-label'),
+            rows: el.getAttribute('rows'),
+            label: labelText,
+            // Length only. Never the content — this modal holds card data.
+            valueLength: typeof el.value === 'string' ? el.value.length : null,
+          };
+        };
+        const fields = Array.from(doc.querySelectorAll('textarea, input[type="text"]')).map(describe);
+        const buttons = Array.from(
+          doc.querySelectorAll('button, input[type="submit"], input[type="button"], a.button'),
+        ).map((el: any) => ({
+          tag: el.tagName?.toLowerCase() ?? '?',
+          id: el.getAttribute('id'),
+          className: (el.getAttribute('class') ?? '').slice(0, 120),
+          text: (el.textContent ?? el.getAttribute('value') ?? '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 40),
+        }));
+        return { fields, buttons };
+      });
+      /* eslint-enable @typescript-eslint/no-explicit-any */
+
+      this.logger.log(
+        `[towbook-discover] job=${sourceJobId} ${captured.fields.length} text field(s), ` +
+          `${captured.buttons.length} button(s)`,
+      );
+      for (const f of captured.fields) {
+        this.logger.log(`[towbook-discover]   field ${JSON.stringify(f)}`);
+      }
+      for (const b of captured.buttons) {
+        this.logger.log(`[towbook-discover]   button ${JSON.stringify(b)}`);
+      }
+      this.logger.log(
+        '[towbook-discover] pick the NOTES field (label mentions Cross Street / Remain with ' +
+          'Vehicle) and the Save Changes button, then set TOWBOOK_NOTES_TEXTAREA_SELECTOR and ' +
+          'TOWBOOK_SAVE_BUTTON_SELECTOR. NEVER pick a field whose label mentions Billing.',
+      );
+
+      return { success: true, fields: captured.fields, buttons: captured.buttons };
+    } catch (error) {
+      if (error instanceof SessionExpiredException) throw error;
+      return { success: false, error: (error as Error).message };
+    } finally {
+      if (browser) await browser.close().catch(() => undefined);
+    }
+  }
+
+  /**
+   * Open a job's modal by clicking its dispatch row.
+   *
+   * Click-through, not the search bar: our `source_job_id` IS the row's
+   * `data-id`, an exact handle we already hold, whereas the modal's displayed
+   * call number is a different identifier (all 883 stored ids are 9 digits; the
+   * modal observed on 2026-08-15 read `Update Call #126258`). Searching by our id
+   * may find nothing. See docs/TOWBOOK_AI_NOTES_WRITEBACK.md.
+   */
+  private async openJobModal(
+    page: import('playwright').Page,
+    tenantId: string,
+    sourceJobId: string,
+  ): Promise<AdapterActionResult> {
+    await page.goto(this.DISPATCH_URL, { waitUntil: 'networkidle', timeout: 30_000 });
+    if (page.url().includes('/Security/Login')) {
+      await this.redis.del(`session:towbook:${tenantId}`);
+      throw new SessionExpiredException(`Session bounced to login for tenant ${tenantId}`);
+    }
+    await page.waitForSelector(ROW_SELECTOR, { timeout: 10_000 }).catch(() => undefined);
+
+    // Escape the id: it comes from an external system and lands in a selector.
+    const row = page.locator(`li.entryRow[data-id="${cssEscapeAttr(sourceJobId)}"]`).first();
+    if ((await row.count()) === 0) {
+      return {
+        success: false,
+        error: `job_row_not_found_on_board: ${sourceJobId} (closed jobs leave the DS4 list)`,
+      };
+    }
+    await row.click();
+    // The modal is a dialog rendered in-page; wait for the notes field if we
+    // know it, otherwise for any dialog-ish container.
+    const modalWait = NOTES_TEXTAREA_SELECTOR || '[role="dialog"], .modal, #dialog';
+    await page.waitForSelector(modalWait, { timeout: 10_000 }).catch(() => undefined);
+    return { success: true };
+  }
+
+  /** "Users Editing: Chris Peer" → the names, or null when nobody is in it. */
+  private async readUsersEditing(page: import('playwright').Page): Promise<string | null> {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    return page.evaluate(() => {
+      const doc: any = (globalThis as any).document;
+      const text = (doc.body?.innerText ?? '') as string;
+      const m = text.match(/Users?\s+Editing\s*:?\s*([^\n\r]{1,120})/i);
+      if (!m) return null;
+      const names = m[1].trim();
+      return names && !/^none$/i.test(names) ? names : null;
+    });
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  }
+
+  /**
+   * All three identity signals must agree before we write: the row id we clicked,
+   * the customer name, and the customer phone. Fails closed — an absent field on
+   * the page counts as a mismatch when we hold a value to check it against,
+   * because "we could not find the name" is not evidence that the name matches.
+   */
+  private async verifyJobIdentity(
+    page: import('playwright').Page,
+    sourceJobId: string,
+    options: UpdateJobNotesOptions,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const expectedName = (options.expectCustomerName ?? '').trim();
+    const expectedDigits = digitsOf(options.expectCustomerPhone ?? '');
+
+    // Nothing to check against. Refuse rather than write blind: the whole point
+    // of the gate is that an unverified write is the failure we cannot undo.
+    if (!expectedName && !expectedDigits) {
+      return { ok: false, reason: 'no_identity_evidence_supplied' };
+    }
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const pageText: string = await page.evaluate(() => {
+      const doc: any = (globalThis as any).document;
+      return (doc.body?.innerText ?? '') as string;
+    });
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    if (expectedDigits) {
+      const last10 = expectedDigits.slice(-10);
+      const digitsOnPage = pageText.replace(/\D/g, '');
+      if (!last10 || !digitsOnPage.includes(last10)) {
+        return { ok: false, reason: 'phone_not_found_on_record' };
+      }
+    }
+    if (expectedName) {
+      // Match on surname-and-forename tokens rather than the whole string: the
+      // board renders "Smith, John" where our record holds "John Smith".
+      const tokens = expectedName
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .filter((t) => t.length >= 2);
+      const haystack = pageText.toLowerCase();
+      const matched = tokens.filter((t) => haystack.includes(t)).length;
+      if (tokens.length > 0 && matched < Math.min(tokens.length, 2)) {
+        return { ok: false, reason: 'customer_name_not_found_on_record' };
+      }
+    }
+    this.logger.debug(`[towbook] identity verified for job=${sourceJobId}`);
+    return { ok: true };
+  }
+
+  /**
+   * Re-open the record from scratch and confirm the block is really there.
+   *
+   * Deliberately a fresh page load rather than re-reading the field we just
+   * typed into: the in-memory textarea holds our text whether or not Save did
+   * anything, and a Save that silently no-ops is exactly the failure this exists
+   * to catch.
+   */
+  private async verifyNoteLanded(
+    page: import('playwright').Page,
+    tenantId: string,
+    sourceJobId: string,
+    notesBlock: string,
+  ): Promise<boolean> {
+    const reopened = await this.openJobModal(page, tenantId, sourceJobId).catch(() => null);
+    if (!reopened?.success) {
+      this.logger.warn(
+        `[towbook] could not reopen job=${sourceJobId} to verify the write — reporting failure`,
+      );
+      return false;
+    }
+    const field = page.locator(NOTES_TEXTAREA_SELECTOR).first();
+    if ((await field.count()) === 0) return false;
+    const value = (await field.inputValue().catch(() => '')) ?? '';
+    return alreadyContainsAiNote(value, notesBlock);
   }
 
   private async dumpDiagnostics(
