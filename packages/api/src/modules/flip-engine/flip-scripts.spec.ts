@@ -98,11 +98,44 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
   // Session 75 — dispatch intake. These questions produce the AI Notes block a
   // driver actually reads, replacing motor-club notes that get deleted on
   // arrival.
-  it('asks the three intake questions the driver needs', () => {
+  // 3.3 — still three things, now two turns: access and tires share a turn,
+  // keys stays its own because it is a gate.
+  it('still asks for all three things the driver needs', () => {
     const body = renderCallBody('competitor_repair', base);
-    expect(body).toContain('nose-in or nose-out');
-    expect(body).toContain('are all four tires up, or is any of them flat');
+    expect(body).toContain("where's the vehicle sitting and which way is it facing");
+    expect(body).toContain('are all four tires up');
     expect(body).toContain('will you be there to meet the driver with the keys');
+  });
+
+  it('asks access and tires in one turn, keys in its own', () => {
+    const body = renderCallBody('competitor_repair', base);
+    const askLines = body.split('\n').filter((l) => l.startsWith('AI: "'));
+    const intakeAsks = askLines.filter(
+      (l) => /vehicle sitting|tires up|meet the driver with the keys/.test(l),
+    );
+    // Access + tires collapse into one spoken line; keys is the second.
+    expect(intakeAsks).toHaveLength(2);
+    expect(intakeAsks[0]).toContain('are all four tires up');
+    expect(intakeAsks[1]).toContain('meet the driver with the keys');
+  });
+
+  // 3.3 — Chris, 2026-08-17: "do not repeat answers - thats annoying". On 08-17
+  // the agent echoed every answer back as a full sentence, which is what pushed
+  // the median call to 191s and the offer past the 300s provider cap.
+  it('forbids repeating the customer answers back, and targets a two-minute call', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain("NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM");
+    expect(body).toContain('about two minutes');
+    // An address or a shop name still gets checked — that is accuracy, not echo.
+    expect(body).toContain('a street address, a phone number, or a shop name');
+    // ...and pace must never turn into rushing someone.
+    expect(body).toContain('a target, not a rule');
+  });
+
+  it('does not tell the agent to recite the issue back to the customer', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).not.toContain('acknowledge what they said in plain language');
+    expect(body).toContain('Do NOT recite the problem back to them');
   });
 
   it('asks color and drivetrain open rather than confirming them', () => {
@@ -127,7 +160,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     for (const scriptVariant of ['control', 'reframe'] as const) {
       const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
       expect(body).toContain('DISPATCH INTAKE');
-      expect(body).toContain('nose-in or nose-out');
+      expect(body).toContain("where's the vehicle sitting and which way is it facing");
     }
   });
 

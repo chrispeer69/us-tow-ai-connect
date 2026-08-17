@@ -61,6 +61,25 @@ function isReframe(ctx: ScriptContext): boolean {
 }
 
 /**
+ * Stable phrases that mean the agent reached its closing block.
+ *
+ * Lives here, beside the closing text itself, because the retry logic in
+ * outbound-voice depends on it: a call that reached the close is a completed
+ * conversation and must never be redialled, and a call that did not may be. If
+ * the close is reworded and this list is not, every completed call starts
+ * looking abandoned and customers get called back three times.
+ *
+ * Keep every entry a substring that BOTH A/B arms actually speak — both
+ * `conviniCloseFor` branches open on "You're all set" — and keep them lowercase
+ * and punctuation-free so transcript matching is not defeated by an apostrophe
+ * or a comma the TTS layer moves around.
+ */
+export const CLOSE_MARKERS: readonly string[] = [
+  "you're all set",
+  'you are all set',
+];
+
+/**
  * The app close, shared by every scenario. Was five identical copies of the
  * same string, which is how a wording change gets applied to four of them.
  *
@@ -110,7 +129,25 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.2';
+export const SCRIPT_VERSION = '3.3';
+// 3.3 (2026-08-17) — pace. Target the whole call at about two minutes.
+//
+//   On 08-17 the median outbound call ran 191s (84s on 08-13, 142s on 08-14)
+//   and 16 calls hit the provider's 300s hard cap, up from 2. Because the offer
+//   is the LAST thing on the call — it lands about 91% of the way in — the cap
+//   was cutting customers off mid-close, and the calls it cut were by definition
+//   the long ones, which are the only ones that ever produce a win.
+//
+//   Two changes, both aimed at seconds rather than content. No question was
+//   dropped and no offer wording changed:
+//     - Access and tires merged into a single intake turn (one question, one
+//       acknowledgement, same two answers).
+//     - A global PACE rule: acknowledge in a few words and move on, instead of
+//       repeating each answer back as a full sentence. The 08-17 transcripts
+//       show that echo on all ~8 questions of every call.
+//   Paired with raising the provider cap to 7 minutes, so pace is a target the
+//   agent aims at rather than a wall it hits.
+//
 // 3.2 (2026-08-15) — the ride home becomes part of the offer. Chris: "come to
 //   Wayne's and we'll get you home — this is the pitch."
 //
@@ -651,7 +688,7 @@ AI: "What color is it? And do you happen to know if it's front-wheel, rear-wheel
 
   const defaultIssue = `[STEP 5 — CLARIFY THE ISSUE]
 ${clarifyIssueLine}
-[AGENT: Ask this, then STOP TALKING and let them finish. Do not speak over them, do not start the next sentence while they are still describing the problem, and do not move on during a pause — wait until they have clearly finished. If they ask you to hold, wait; never end the call because they went quiet for a moment. Then acknowledge what they said in plain language so they feel heard. This detail will be saved to the job notes for the driver and mechanic.]`;
+[AGENT: Ask this, then STOP TALKING and let them finish. Do not speak over them, do not start the next sentence while they are still describing the problem, and do not move on during a pause — wait until they have clearly finished. If they ask you to hold, wait; never end the call because they went quiet for a moment. Then acknowledge in a few words and move on — "Got it", or one short line of sympathy if they describe an accident or an injury. Do NOT recite the problem back to them and do not say it is being noted for the driver or the mechanic; it is captured either way. This detail will be saved to the job notes.]`;
 
   const defaultDestination = isWinchOut
     ? `[STEP 6 — CONFIRM WINCH-OUT SERVICE LOCATION]
@@ -711,32 +748,37 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
  * rebuilds them by talking to the customer. The AI is now the one talking to
  * the customer, so it should be the one building the note.
  *
- * Three questions, in the order they matter to a driver:
+ * Two turns, covering three things, in the order they matter to a driver:
  *
- *  1. ACCESS — where it sits and which way it faces. Decides approach, and
- *     sometimes whether the truck fits at all.
- *  2. CONDITION — tires and whether it rolls. This is the EQUIPMENT question.
- *     "All four full of air" and "left rear completely flat" are different
- *     trucks, and the ticket cannot tell us which.
- *  3. KEYS — a GATE, not a note. Chris's rule: the customer must be present
+ *  1. ACCESS + CONDITION — where it sits, which way it faces, and whether the
+ *     tires are up. Decides the approach, whether the truck fits at all, and
+ *     what equipment rolls. "All four full of air" and "left rear completely
+ *     flat" are different trucks, and the ticket cannot tell us which.
+ *     Merged into one turn in 3.3; see the comment at the question.
+ *  2. KEYS — a GATE, not a note. Chris's rule: the customer must be present
  *     with the keys or we do not tow, unless they leave the keys and sign a
  *     release. This is the only question on the call that can prevent a truck
- *     rolling to a job that cannot be done.
+ *     rolling to a job that cannot be done. It stays its own turn precisely
+ *     because it is a gate — it must not get lost in a compound question.
  *
- * Kept deliberately short. These sit on every call, and call length is not free.
+ * Kept deliberately short. These sit on every call, and call length is not free
+ * — on 2026-08-17 it was the intake that pushed the median call to 191s and the
+ * offer past the provider's 5-minute cap.
  */
 function dispatchIntakeBlock(): string {
   return [
     `[STEP 7 — DISPATCH INTAKE: WHAT THE DRIVER NEEDS TO ARRIVE READY]`,
-    `[AGENT: Ask these three briskly, one at a time, and wait for each answer. Accept "I don't know" and move on — an unknown recorded honestly is worth more than a guess. Never answer any of these from the ticket; if the customer does not say it, we do not know it.]`,
+    `[AGENT: Two questions, briskly. Wait for each answer, acknowledge in a few words, and move straight on — do not repeat their answer back. Accept "I don't know" and move on: an unknown recorded honestly is worth more than a guess. Never answer either of these from the ticket; if the customer does not say it, we do not know it.]`,
     ``,
-    `AI: "Just a couple of quick things so the driver turns up ready. Whereabouts is the vehicle sitting — a driveway, the street, a parking lot? And is it nose-in or nose-out?"`,
-    `[AGENT: Capture it the way they say it — "on the curb in front of the house", "nose out", "front open and accessible", "tight turn to get in". Note anything that would stop a truck getting to it: a low garage, a narrow lane, a locked gate, a parking structure.]`,
+    // 3.3 — access and tires merged into one turn. They were two questions and
+    // two acknowledgements for one picture: what the driver finds on arrival.
+    // The 08-17 transcripts show customers reliably answer a two-part question
+    // of this shape ("Parking lot and nose out", "empty warehouse, nose out"),
+    // so the merge costs no data and saves a turn.
+    `AI: "Couple of quick things so the driver arrives ready — where's the vehicle sitting and which way is it facing? And are all four tires up?"`,
+    `[AGENT: One turn, both halves. Capture it the way they say it — "on the curb in front of the house", "nose out", "tight turn to get in". Note anything that would stop a truck reaching it: a low garage, a narrow lane, a locked gate, a parking structure. If a tire is flat, capture WHICH one. If they say it will not roll, will not steer, or will not come out of park, capture that too — it matters as much as the tires. If they answer only one half, ask just for the missing half; do not re-ask the whole question.]`,
     ``,
-    `AI: "And are all four tires up, or is any of them flat?"`,
-    `[AGENT: This decides what equipment rolls, so get it clearly. If a tire is flat, capture WHICH one. If they mention the vehicle will not roll, will not steer, or will not come out of park, capture that too — it matters as much as the tires.]`,
-    ``,
-    `AI: "Last thing — will you be there to meet the driver with the keys?"`,
+    `AI: "And will you be there to meet the driver with the keys?"`,
     `[AGENT: GATE. If YES, note that they will be on scene with the keys and move on.]`,
     `[AGENT: If NO, or if they say they will leave the keys somewhere — capture exactly what they said, for example "keys left in my mailbox". Then do NOT improvise what happens next. Do not promise we will tow without them, do not describe a release form, a signature, a waiver or photographs, and do not quote any policy. Say: "Thanks — I'll note that, and our office will call you to confirm the details before the driver heads over." Then continue. Committing us to a tow we cannot legally make, or turning one away that we could have done, are both worse than a callback.]`,
   ].join('\n');
@@ -798,6 +840,17 @@ function globalRules(ctx: ScriptContext): string {
     `- Never tell a customer whether their insurance or warranty covers something, what it will cost them, or who will pay. If they ask and this script has no written answer, say you'll have the office confirm and move on.`,
     `- Speak only the words inside the quotation marks after "AI:". Never say "AI", never read the quotation marks, and never read a step label, a bracketed instruction, or any placeholder in double braces.`,
     `- Ask one question at a time. After a question, stop and wait for the answer — never run a question and a sign-off together.`,
+    // 3.3 — pacing. The 08-17 transcripts showed the agent echoing every answer
+    // back as a full sentence ("Got it — in an empty warehouse, nose out. Thanks
+    // for that.") on every one of ~8 questions. That alone added 25-40s to each
+    // call and pushed the offer past the 5-minute cap, where it was cut off
+    // mid-close. Target the WHOLE call at about two minutes. It is a target, not
+    // a rule: never rush a customer who is upset, describing damage, or still
+    // answering, and never skip a question to save time.
+    `- NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM. It is annoying and it wastes the call. They said it; they know what they said. Acknowledge in one or two words — "Got it", "Thanks", "Perfect" — and go straight to the next question. Do not say "Got it, in a parking lot, nose out", do not say "so that's a 2015 white Kia", and never announce that you are noting something down, that the driver will have it, or that the mechanic will see it.`,
+    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, or a shop name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
+    `- PACE: aim to finish the whole call in about two minutes. Ask, listen, acknowledge in a word or two, ask the next thing. Do not spend words you do not need, and do not let the confirmation questions crowd out the offer and the close.`,
+    `- PACE: this is a target, not a rule. Never cut a customer off, never hurry someone who is shaken or describing damage, and never drop a question to save time. If the call needs longer, take longer.`,
     `- Never read a raw latitude/longitude pair aloud. If a location is only coordinates, say "the location we have on file" and ask the customer to describe it.`,
     `- The ONLY phone number you may give the customer is {{callback_number}}. Never read out the caller ID or any other number.`,
     ...(ctx.pitchConvini ? [
