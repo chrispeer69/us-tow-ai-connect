@@ -1,0 +1,92 @@
+[
+  {
+    "type": "boolean",
+    "name": "flip_eligible",
+    "description": "TRUE only when a shop flip was genuinely appropriate: the vehicle needed repair and was heading to a shop that is not ours. Applies to BOTH competitor_repair and car_repair destinations. FALSE for lockout, fuel, jump start, single flat tire and winch-out-only calls; for vehicles going to a residence; for vehicles already heading to one of our shops; and for AAA-branded destinations."
+  },
+  {
+    "name": "flip_outcome",
+    "description": "Outcome of the flip attempt. SUCCESS if customer redirected to our shop, FAILED if all 3 offers declined, NOT_ATTEMPTED if destination was not competitor_repair.",
+    "type": "enum",
+    "choices": [
+      "SUCCESS",
+      "FAILED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "name": "offer_1_result",
+    "description": "Result of the first flip offer (Convenience + Value). ACCEPTED, DECLINED, or NOT_ATTEMPTED.",
+    "type": "enum",
+    "choices": [
+      "ACCEPTED",
+      "DECLINED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "name": "offer_2_result",
+    "description": "Result of the second flip offer (Urgency + Priority Service). ACCEPTED, DECLINED, or NOT_ATTEMPTED.",
+    "type": "enum",
+    "choices": [
+      "ACCEPTED",
+      "DECLINED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "name": "offer_3_result",
+    "description": "Result of the third flip offer (Financial Incentive + Social Proof). ACCEPTED, DECLINED, or NOT_ATTEMPTED.",
+    "type": "enum",
+    "choices": [
+      "ACCEPTED",
+      "DECLINED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "type": "boolean",
+    "name": "convini_link_sent",
+    "description": "Was the CONVINIcar app download link sent to the customer via SMS?"
+  },
+  {
+    "name": "convini_sell_type",
+    "description": "Type of CONVINIcar pitch used. SOFT for Scenario A, MEDIUM for Scenario B, HARD for Scenario C/D.",
+    "type": "enum",
+    "choices": [
+      "SOFT",
+      "MEDIUM",
+      "HARD"
+    ]
+  },
+  {
+    "type": "string",
+    "name": "corrections_made",
+    "description": "Free text summary of any corrections made during confirmation (e.g., pickup address, vehicle details, etc.)."
+  },
+  {
+    "type": "string",
+    "name": "nearest_our_shop",
+    "description": "Name of the nearest owned shop to the customer's destination (from dispatch data)."
+  },
+  {
+    "type": "string",
+    "name": "destination_type",
+    "description": "Where the vehicle was actually being taken. Use exactly one of: competitor_repair, car_repair, auto_body, residence, residential_unknown, our_shop, aaa_branded, unknown. competitor_repair = a named chain, franchise or dealership service centre (Firestone, Midas, a brand dealership). car_repair = an independent or unbranded local repair shop. auto_body = collision or body work. residence / residential_unknown = a home or driveway. our_shop = already one of our own shops. aaa_branded = a AAA-branded facility. unknown only when the transcript does not say."
+  },
+  {
+    "type": "system-presets",
+    "name": "call_summary",
+    "description": "Write a 1-3 sentence summary of the call based on the call transcript. Should capture the important information and actions taken during the call."
+  },
+  {
+    "type": "system-presets",
+    "name": "call_successful",
+    "description": "Evaluate whether the agent had a successful call with the user. For a successful call, the agent should have a complete conversation with user, finished the task, and have not ran into technical issues, or caused user frustration. Besides, the agent was not blocked by a call screen or encountered voicemail."
+  },
+  {
+    "type": "system-presets",
+    "name": "user_sentiment",
+    "description": "Evaluate user's sentiment, mood and satisfaction level."
+  }
+]
