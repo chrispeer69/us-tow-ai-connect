@@ -1,0 +1,19 @@
+{
+  "name": "Flip Activity",
+  "short_name": "Flips",
+  "description": "Live flip wins for Roadside Towing, for the phone",
+  "start_url": "/m/flip",
+  "scope": "/m",
+  "display": "standalone",
+  "background_color": "#050a18",
+  "theme_color": "#050a18",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/flip-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -23,6 +23,9 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 export const metadata: Metadata = {
   title: 'Flip Activity',
   robots: { index: false, follow: false },
+  // manifest + appleWebApp live on the PAGE, not here: a nested layout's
+  // `manifest` loses to the root layout's and never reaches the HTML. See
+  // m/flip/page.tsx.
 };
 
 export const viewport: Viewport = {

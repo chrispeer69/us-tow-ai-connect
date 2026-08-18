@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Flip Activity">
+  <!-- Maskable: everything meaningful stays inside the safe zone (centre 80%),
+       because Android crops this to a circle or squircle depending on the
+       launcher. Full-bleed background, no transparent corners. -->
+  <rect width="512" height="512" fill="#050a18"/>
+  <!-- The upward arrow is the whole point of the icon: a flip won. Emerald to
+       match the win colour on the board itself, so the icon and the thing it
+       opens agree. -->
+  <g transform="translate(256 262)">
+    <path d="M0 -104 L84 4 L34 4 L34 96 L-34 96 L-34 4 L-84 4 Z"
+          fill="#34d399"/>
+  </g>
+  <circle cx="256" cy="262" r="150" fill="none" stroke="#34d399" stroke-opacity="0.35" stroke-width="14"/>
+</svg>
