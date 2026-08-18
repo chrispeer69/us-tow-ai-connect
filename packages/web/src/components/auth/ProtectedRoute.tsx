@@ -1,19 +1,35 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+
+/**
+ * Send an unauthenticated visitor to sign-in WITHOUT losing where they were
+ * going. Reported 2026-08-18: a /m/flip link opened on a phone bounced to
+ * sign-in and then dropped the user on the command center, so the link they
+ * actually followed never opened.
+ *
+ * Only same-origin paths are ever passed through, so this cannot be used to
+ * bounce someone to another site after login.
+ */
+function signInHref(pathname: string | null): string {
+  if (!pathname || pathname === '/sign-in' || !pathname.startsWith('/')) return '/sign-in';
+  if (pathname.startsWith('//')) return '/sign-in';
+  return `/sign-in?redirect=${encodeURIComponent(pathname)}`;
+}
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     if (loading) return;
     if (!token) {
       setIsReady(false);
-      router.push('/sign-in');
+      router.push(signInHref(pathname));
       return;
     }
 
@@ -40,7 +56,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     } catch (e) {
       // If token parsing fails, force sign in
       setIsReady(false);
-      router.push('/sign-in');
+      router.push(signInHref(pathname));
       return;
     }
 

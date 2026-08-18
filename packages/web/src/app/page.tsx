@@ -255,9 +255,15 @@ export default function Home() {
             >
               Try Demo
             </Link>
+            {/* NOT hidden on small screens. This was `hidden sm:inline-flex`,
+                which meant that on any phone narrower than 640px the Log In
+                button did not render at all and an existing customer had no way
+                into the app from the home page — they landed on marketing and
+                stopped. Reported 2026-08-18. Padding tightens on small screens
+                instead of the control disappearing. */}
             <Link
               href="/sign-in"
-              className="hidden sm:inline-flex items-center rounded-full border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm font-bold text-blue-100 transition-colors hover:border-blue-300 hover:bg-blue-500/20 hover:text-white"
+              className="inline-flex items-center rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-sm font-bold text-blue-100 transition-colors hover:border-blue-300 hover:bg-blue-500/20 hover:text-white sm:px-4"
             >
               Log In
             </Link>

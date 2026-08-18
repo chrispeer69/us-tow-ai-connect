@@ -10,6 +10,25 @@ type Mode = 'LOGIN' | 'FORGOT_EMAIL' | 'FORGOT_OTP';
 export default function SignInPage() {
   const { setToken } = useAuth();
   const router = useRouter();
+  /**
+   * Where to land after login. Defaults to the command center, but honours a
+   * ?redirect= set by ProtectedRoute so that following a deep link -- /m/flip
+   * from a phone, say -- actually opens that page instead of silently dumping
+   * the user somewhere else.
+   *
+   * Read off window.location rather than useSearchParams: this page is
+   * statically prerendered, and useSearchParams forces a client bail-out that
+   * Next refuses to build without a Suspense boundary around the whole form.
+   * The value is only needed at submit time, long after hydration.
+   *
+   * Same-origin paths only -- anything not a single leading slash is discarded,
+   * so this cannot be turned into an open redirect.
+   */
+  const [redirectTo, setRedirectTo] = useState('/admin/command-center');
+  React.useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('redirect');
+    if (raw && raw.startsWith('/') && !raw.startsWith('//')) setRedirectTo(raw);
+  }, []);
   
   const [mode, setMode] = useState<Mode>('LOGIN');
   const [email, setEmail] = useState('');
@@ -56,7 +75,7 @@ export default function SignInPage() {
       }
 
       setToken(data.access_token);
-      router.push('/admin/command-center');
+      router.push(redirectTo);
     } catch (err: any) {
       setError(err.message);
     } finally {
