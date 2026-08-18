@@ -776,10 +776,46 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       };
     }
     await row.click();
-    // The modal is a dialog rendered in-page; wait for the notes field if we
-    // know it, otherwise for any dialog-ish container.
+
+    // Clicking the row only EXPANDS it inline — dispatch numbers, notes preview,
+    // an action strip. The Notes textarea does not exist yet at this point; it
+    // lives inside the Update Call editor, which the "Modify" action opens.
+    //
+    // This was the whole of the 2026-08-18 `notes_field_not_found` run: 13
+    // attempts that navigated correctly, found the right job, passed the
+    // identity check, and then looked for a field that was never on the page.
     const modalWait = NOTES_TEXTAREA_SELECTOR || '[role="dialog"], .modal, #dialog';
-    await page.waitForSelector(modalWait, { timeout: 10_000 }).catch(() => undefined);
+    const alreadyOpen = await page
+      .locator(modalWait)
+      .first()
+      .count()
+      .catch(() => 0);
+
+    if (!alreadyOpen) {
+      // Scope the Modify click to the row ITSELF, not its parent.
+      //
+      // Verified against the live board 2026-08-18: every visible job carries
+      // its own "Modify" link and all of them share one parent <ul>, so a
+      // parent-scoped `.first()` would click whichever row happens to come
+      // first in the DOM and write the note onto the wrong ticket. The link for
+      // the row we clicked is a descendant of that row's own <li>.
+      const scope = row;
+      const modify = scope
+        .getByRole('link', { name: /^\s*modify\s*$/i })
+        .or(scope.getByRole('button', { name: /^\s*modify\s*$/i }))
+        .or(scope.locator('a:has-text("Modify"), button:has-text("Modify")'))
+        .first();
+
+      if ((await modify.count().catch(() => 0)) === 0) {
+        return {
+          success: false,
+          error: 'modify_action_not_found: the row expanded but had no Modify control',
+        };
+      }
+      await modify.click();
+    }
+
+    await page.waitForSelector(modalWait, { timeout: 15_000 }).catch(() => undefined);
     return { success: true };
   }
 
