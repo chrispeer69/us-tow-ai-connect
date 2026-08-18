@@ -258,6 +258,33 @@ export class AiNotesWriterService {
                  WHERE w.call_log_id = ${outboundCallLogs.id}
                    AND w.attempted_at > NOW() - (${AI_NOTES_RETRY_BACKOFF_HOURS} * INTERVAL '1 hour')
               )`,
+          // ONE job per call. The join matches on phone + a 14-hour window, and
+          // a repeat customer inside that window matches more than one job: on
+          // 2026-08-18, 10 of the last 72 hours' calls matched two jobs each.
+          // Without this the note is written to BOTH, and one of them is the
+          // wrong ticket — a driver reading "keys in the mailbox" on a job that
+          // never had that call is worse than no note at all.
+          //
+          // Keep the job whose creation time is nearest the call. Ties break on
+          // id so the choice is deterministic rather than whatever the planner
+          // returned first.
+          sql`NOT EXISTS (
+                SELECT 1 FROM unified_jobs j2
+                 WHERE j2.tenant_id = ${outboundCallLogs.tenantId}
+                   AND regexp_replace(COALESCE(j2.caller_phone, ''), '\\D', '', 'g')
+                       = regexp_replace(${outboundCallLogs.customerPhone}, '\\D', '', 'g')
+                   AND j2.created_at BETWEEN ${outboundCallLogs.callTime} - INTERVAL '12 hours'
+                                         AND ${outboundCallLogs.callTime} + INTERVAL '2 hours'
+                   AND (
+                     ABS(EXTRACT(EPOCH FROM (j2.created_at - ${outboundCallLogs.callTime})))
+                       < ABS(EXTRACT(EPOCH FROM (${unifiedJobs.createdAt} - ${outboundCallLogs.callTime})))
+                     OR (
+                       ABS(EXTRACT(EPOCH FROM (j2.created_at - ${outboundCallLogs.callTime})))
+                         = ABS(EXTRACT(EPOCH FROM (${unifiedJobs.createdAt} - ${outboundCallLogs.callTime})))
+                       AND j2.id < ${unifiedJobs.id}
+                     )
+                   )
+              )`,
           tenantId ? eq(outboundCallLogs.tenantId, tenantId) : sql`true`,
         ),
       )
