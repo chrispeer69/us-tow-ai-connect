@@ -2184,10 +2184,21 @@ function SettingsField({
 
 // ---------- activity tab ----------
 
+// A win is the only row on this table anyone is scanning for, so it is the only
+// one given a solid fill. The old WIN badge was bg-emerald-900 on a dark table,
+// which at a glance reads as one more grey chip among fifty.
 const OUTCOME_COLOR: Record<string, string> = {
-  WIN: 'bg-emerald-900 text-emerald-200',
+  WIN: 'bg-emerald-500 text-emerald-950 font-bold',
   LOSS: 'bg-rose-900 text-rose-200',
   SKIPPED: 'bg-zinc-800 text-zinc-300',
+};
+
+/** Row treatment per outcome. Wins get a tinted row and a left edge, so the eye
+ *  finds them while scrolling without reading a single word. */
+const OUTCOME_ROW: Record<string, string> = {
+  WIN: 'bg-emerald-500/10 border-l-4 border-l-emerald-400 hover:bg-emerald-500/15',
+  LOSS: '',
+  SKIPPED: 'opacity-70',
 };
 
 const NO_FLIP_REASON_LABELS: Record<string, string> = {
@@ -2213,7 +2224,9 @@ function formatNoFlipReason(reason: string | null): string | null {
 }
 
 function bucketOutcome(r: FlipActivityRow): 'WIN' | 'LOSS' | 'SKIPPED' {
-  if (r.flipOutcome && /WIN|ACCEPTED/i.test(r.flipOutcome)) return 'WIN';
+  // SUCCESS is Retell's spelling; our column normalises to ACCEPTED. Accept both
+  // or a raw value silently buckets a win as a loss.
+  if (r.flipOutcome && /WIN|ACCEPTED|SUCCESS/i.test(r.flipOutcome)) return 'WIN';
   if (!r.flipEligible) return 'SKIPPED';
   return 'LOSS';
 }
@@ -2309,7 +2322,7 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
             {data?.items.map((r) => {
               const bucket = bucketOutcome(r);
               return (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} className={OUTCOME_ROW[bucket] ?? ''}>
                   <TableCell className="text-xs text-zinc-400">
                     {new Date(r.callTime).toLocaleString()}
                   </TableCell>
@@ -2332,7 +2345,15 @@ function ActivityTab({ setError }: { setError: (s: string | null) => void }) {
                   <TableCell className="text-xs">
                     <div>{r.originalDestination ?? '—'}</div>
                     {r.nearestOurShop && (
-                      <div className="text-emerald-300">→ {r.nearestOurShop}</div>
+                      <div
+                        className={
+                          bucket === 'WIN'
+                            ? 'font-semibold text-emerald-300'
+                            : 'text-emerald-300/60'
+                        }
+                      >
+                        → {r.nearestOurShop}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell>

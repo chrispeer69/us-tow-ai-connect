@@ -5,18 +5,23 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 /**
  * Session 77 — the phone shell.
  *
- * Deliberately NOT nested under /admin. The admin layout carries a TopBar, a
+ * Deliberately NOT nested under /admin. That layout carries a TopBar, a
  * UtilityBar and a Sidebar, which is the right chrome for a desk and the wrong
- * chrome for a phone held one-handed on the sofa at 9pm. This shell is the
- * auth check and nothing else, so the page gets the whole screen.
+ * chrome for a phone held one-handed on the sofa at 9pm. This shell is the auth
+ * check and nothing else, so the page gets the whole screen.
  *
- * Auth still comes from the same place — ProtectedRoute reads the same token
- * the admin app stores — so signing in on the phone once is enough and there is
- * no second credential to manage.
+ * THEME: the dark palette lives in `.dark { }` (globals.css) and
+ * `[data-theme='dark'] { }` (design-tokens.css), and nothing in the tree sets
+ * either on this route — so the first build rendered on a white background with
+ * every colour washed out, because the page was written for a dark surface.
+ *
+ * Both hooks are set here explicitly, AND the page itself uses literal colours
+ * rather than theme variables. Belt and braces on purpose: this screen is
+ * checked in the dark at a glance, and "it renders, but you cannot read it" is a
+ * failure that looks like success in a screenshot.
  */
 export const metadata: Metadata = {
   title: 'Flip Activity',
-  // A monitoring screen has no business in search results.
   robots: { index: false, follow: false },
 };
 
@@ -25,16 +30,19 @@ export const viewport: Viewport = {
   colorScheme: 'dark',
   width: 'device-width',
   initialScale: 1,
-  // Do NOT lock zoom. Pinching to read a shop name is a reasonable thing to
-  // want to do, and maximumScale:1 is an accessibility failure, not a polish
-  // detail.
+  // Zoom stays unlocked. Pinching to read a shop name is reasonable, and
+  // maximumScale:1 is an accessibility failure rather than a polish detail.
   viewportFit: 'cover',
 };
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-[var(--surface-bg)] text-[var(--text-main)] antialiased">
+      <div
+        className="dark min-h-screen bg-[#050a18] text-white antialiased"
+        data-theme="dark"
+        style={{ colorScheme: 'dark' }}
+      >
         {children}
       </div>
     </ProtectedRoute>

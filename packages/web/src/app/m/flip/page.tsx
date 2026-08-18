@@ -6,27 +6,29 @@ import { api } from '@/lib/utils';
 /**
  * Session 77 — Flip Activity, for a phone in the evening.
  *
- * Chris, 2026-08-18: "so that in the evening we can monitor it on mobile".
+ * Chris, 2026-08-18: "so that in the evening we can monitor it on mobile",
+ * then "only show the wins and when a win occurs alert my phone by popping up
+ * a window".
  *
- * The desk version is a seven-column table, which on a phone is either a
- * horizontal scroll or four-point type. Same data, rebuilt as a stack of cards
- * with one job per card and the outcome readable without zooming.
+ * Decisions worth keeping:
  *
- * Three decisions worth keeping:
- *
- *  1. WINS ARE THE POINT. This screen is checked to answer one question — "are
- *     we winning tonight?" — so the win count is the biggest thing on it and
- *     wins are visually loud. Losses are present but quiet.
- *  2. It polls itself. Nobody wants to pull-to-refresh a monitoring screen every
- *     two minutes, and the desk version's manual Refresh button is a desk
- *     affordance. It refreshes on a timer and whenever the phone comes back to
- *     the foreground, which is the actual interaction: unlock, glance, pocket.
- *  3. It never blanks. A refresh keeps the previous data on screen and shows a
- *     thin progress line instead — a screen that empties itself every 60s reads
- *     as broken when you glance at it mid-fetch.
+ *  1. COLOURS ARE LITERAL, NOT THEME VARIABLES. The first build inherited
+ *     var(--text-muted) etc., which live in `.dark {}` — a class nothing sets on
+ *     this route — so the page rendered on white with every badge washed out.
+ *     It "worked" in every automated sense and was unreadable. Nothing here
+ *     depends on a theme being applied.
+ *  2. WINS ARE THE POINT. Wins-only is a real mode, remembered between visits,
+ *     and a new win fires a notification.
+ *  3. NEVER ALERT FOR HISTORY. The seen-set is seeded from the first load and
+ *     persisted, so opening the page never fires a burst of notifications for
+ *     wins that happened hours ago. Only genuinely new ones alert.
+ *  4. It never blanks on refresh — an empty screen mid-fetch reads as "no
+ *     activity", which is the one wrong answer this screen must never give.
  */
 
 const REFRESH_MS = 60_000;
+const SEEN_KEY = 'flip_seen_win_ids';
+const WINS_ONLY_KEY = 'flip_wins_only';
 
 interface FlipActivityRow {
   id: string;
@@ -61,8 +63,6 @@ function bucketOutcome(r: FlipActivityRow): Bucket {
   return 'LOSS';
 }
 
-/** How far the offer ladder actually got. The single best predictor of a win,
- *  and invisible on the desk table unless you read three separate columns. */
 function offersMade(r: FlipActivityRow): number {
   return [r.offer1Result, r.offer2Result, r.offer3Result].filter(
     (o) => o && /ACCEPTED|DECLINED/i.test(o),
@@ -85,7 +85,7 @@ function formatNoFlipReason(reason: string | null): string | null {
   if (!reason) return null;
   if (reason.startsWith('no_flip_category_')) {
     const parts = reason.replace('no_flip_category_', '').split('_conf_');
-    return `Non-flip type: ${(parts[0] ?? '').replace(/_/g, ' ')}`;
+    return `Non-flip: ${(parts[0] ?? '').replace(/_/g, ' ')}`;
   }
   return NO_FLIP_REASON_LABELS[reason] ?? reason.replace(/_/g, ' ');
 }
@@ -99,19 +99,68 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+function clockTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 export default function MobileFlipActivityPage() {
   const [data, setData] = useState<FlipActivityResponse | null>(null);
-  const [filter, setFilter] = useState<'ALL' | 'WIN' | 'LOSS'>('ALL');
+  const [winsOnly, setWinsOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
-  // Ref, not state: the poll callback must not be rebuilt (and the interval
-  // torn down and recreated) every time a fetch flips `busy`.
+  const [notifyState, setNotifyState] = useState<'unsupported' | 'default' | 'granted' | 'denied'>(
+    'default',
+  );
+  /** The win that just landed, shown as an in-page popup as well as a system
+   *  notification — the notification may be suppressed by the OS, the popup
+   *  never is. */
+  const [popup, setPopup] = useState<FlipActivityRow | null>(null);
+
   const busyRef = useRef(false);
+  const seenRef = useRef<Set<string> | null>(null);
+
+  // Restore preferences before the first fetch resolves.
+  useEffect(() => {
+    try {
+      setWinsOnly(localStorage.getItem(WINS_ONLY_KEY) === '1');
+      const raw = localStorage.getItem(SEEN_KEY);
+      seenRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      seenRef.current = new Set();
+    }
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifyState(Notification.permission as 'default' | 'granted' | 'denied');
+    } else {
+      setNotifyState('unsupported');
+    }
+  }, []);
+
+  const announce = useCallback((win: FlipActivityRow) => {
+    setPopup(win);
+    try {
+      navigator.vibrate?.([200, 100, 200]);
+    } catch {
+      /* vibration is a nicety, never a failure */
+    }
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const n = new Notification('Flip win', {
+          body: `${win.customerName || 'Customer'}${
+            win.nearestOurShop ? ` → ${win.nearestOurShop}` : ''
+          }`,
+          tag: `flip-win-${win.id}`, // dedupes if the OS replays it
+          icon: '/favicon.ico',
+        });
+        n.onclick = () => {
+          window.focus();
+          n.close();
+        };
+      }
+    } catch {
+      /* notification failure must never break the refresh loop */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (busyRef.current) return;
@@ -122,7 +171,26 @@ export default function MobileFlipActivityPage() {
       const res = await api<{ data: FlipActivityResponse }>(
         `/v1/admin/flip-engine/activity?${qp.toString()}`,
       );
-      setData(res.data);
+      const next = res.data;
+
+      // Alert on genuinely new wins only. On the very first load we seed the
+      // set silently: opening the page must never fire five notifications for
+      // wins that happened this morning.
+      const seen = seenRef.current;
+      if (seen) {
+        const wins = next.items.filter((r) => bucketOutcome(r) === 'WIN');
+        const firstLoad = seen.size === 0 && data === null;
+        const fresh = wins.filter((w) => !seen.has(w.id));
+        for (const w of wins) seen.add(w.id);
+        try {
+          localStorage.setItem(SEEN_KEY, JSON.stringify([...seen].slice(-500)));
+        } catch {
+          /* private mode — alerting still works for this session */
+        }
+        if (!firstLoad && fresh.length > 0) announce(fresh[0]);
+      }
+
+      setData(next);
       setUpdatedAt(new Date());
       setError(null);
     } catch (err) {
@@ -133,77 +201,107 @@ export default function MobileFlipActivityPage() {
       busyRef.current = false;
       setBusy(false);
     }
-  }, []);
+  }, [announce, data]);
 
+  // Deliberately depends on nothing: re-creating the interval on every fetch
+  // would reset the timer forever and it would never actually fire.
+  const loadRef = useRef(load);
+  loadRef.current = load;
   useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), REFRESH_MS);
-    // Unlock-and-glance is the real interaction, so refresh on focus too —
-    // otherwise the first thing seen is up to a minute stale.
+    void loadRef.current();
+    const t = setInterval(() => void loadRef.current(), REFRESH_MS);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void load();
+      if (document.visibilityState === 'visible') void loadRef.current();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(t);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [load]);
+  }, []);
+
+  const askNotify = async () => {
+    if (!('Notification' in window)) return;
+    const p = await Notification.requestPermission();
+    setNotifyState(p as 'default' | 'granted' | 'denied');
+  };
+
+  const toggleWinsOnly = () => {
+    setWinsOnly((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(WINS_ONLY_KEY, next ? '1' : '0');
+      } catch {
+        /* preference is a nicety */
+      }
+      return next;
+    });
+  };
 
   const today = data?.today;
-  const items = (data?.items ?? []).filter((r) => {
-    if (filter === 'ALL') return true;
-    return bucketOutcome(r) === filter;
-  });
+  const items = (data?.items ?? []).filter((r) => !winsOnly || bucketOutcome(r) === 'WIN');
 
   return (
-    <main className="mx-auto w-full max-w-lg px-4 pb-16 pt-4">
-      {/* Sticky header: the numbers stay visible while the list scrolls. */}
-      <header className="sticky top-0 z-10 -mx-4 bg-[var(--surface-bg)]/95 px-4 pb-3 pt-1 backdrop-blur">
+    <main className="mx-auto w-full max-w-lg px-4 pb-16 pt-4 text-white">
+      {popup && <WinPopup row={popup} onClose={() => setPopup(null)} />}
+
+      <header className="sticky top-0 z-10 -mx-4 border-b border-slate-800 bg-[#050a18] px-4 pb-3 pt-1">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-semibold text-lg">Flip Activity</h1>
-          <span className="text-[11px] text-[var(--text-muted)]">
-            {updatedAt ? `updated ${clockTime(updatedAt.toISOString())}` : 'loading…'}
+          <h1 className="text-lg font-semibold text-white">Flip Activity</h1>
+          <span className="text-[11px] text-slate-400">
+            {updatedAt ? `updated ${clockTime(updatedAt)}` : 'loading…'}
           </span>
         </div>
 
-        {/* Progress line rather than a spinner that replaces content. */}
-        <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-white/5">
-          {busy && <div className="h-full w-1/3 animate-pulse rounded bg-sky-400/70" />}
+        <div className="mt-1 h-0.5 w-full overflow-hidden rounded bg-slate-800">
+          {busy && <div className="h-full w-1/3 animate-pulse rounded bg-sky-400" />}
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <StatTile
-            label="Wins today"
-            value={today?.wins ?? 0}
-            tone="win"
-            big
-          />
-          <StatTile label="Win rate" value={`${today?.winRate ?? 0}%`} tone="neutral" big />
-          <StatTile label="Calls" value={today?.total ?? 0} tone="muted" />
-          <StatTile label="Losses" value={today?.losses ?? 0} tone="muted" />
+          <StatTile label="Wins today" value={today?.wins ?? 0} tone="win" big />
+          <StatTile label="Win rate" value={`${today?.winRate ?? 0}%`} tone="info" big />
+          <StatTile label="Calls" value={today?.total ?? 0} tone="plain" />
+          <StatTile label="Losses" value={today?.losses ?? 0} tone="plain" />
         </div>
 
         <div className="mt-3 flex gap-2">
-          {(['ALL', 'WIN', 'LOSS'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              // min-h-11: a real thumb target, not a desktop-sized chip.
-              className={`min-h-11 flex-1 rounded-lg border px-3 text-sm font-medium transition ${
-                filter === f
-                  ? 'border-sky-400/60 bg-sky-500/15 text-sky-200'
-                  : 'border-white/10 bg-white/[0.03] text-[var(--text-muted)]'
-              }`}
-            >
-              {f === 'ALL' ? 'All' : f === 'WIN' ? 'Wins' : 'Losses'}
-            </button>
-          ))}
+          <button
+            onClick={toggleWinsOnly}
+            className={`min-h-11 flex-1 rounded-lg border px-3 text-sm font-semibold transition ${
+              winsOnly
+                ? 'border-emerald-400 bg-emerald-500/25 text-emerald-100'
+                : 'border-slate-700 bg-slate-800/60 text-slate-300'
+            }`}
+          >
+            {winsOnly ? '✓ Wins only' : 'Wins only'}
+          </button>
+          <button
+            onClick={() => void loadRef.current()}
+            disabled={busy}
+            className="min-h-11 rounded-lg border border-slate-700 bg-slate-800/60 px-4 text-sm font-medium text-slate-200 active:bg-slate-700 disabled:opacity-50"
+          >
+            {busy ? '…' : 'Refresh'}
+          </button>
         </div>
+
+        {notifyState === 'default' && (
+          <button
+            onClick={() => void askNotify()}
+            className="mt-2 min-h-11 w-full rounded-lg border border-sky-500 bg-sky-500/20 px-3 text-sm font-semibold text-sky-100"
+          >
+            Alert me when a win comes in
+          </button>
+        )}
+        {notifyState === 'denied' && (
+          <p className="mt-2 rounded-lg border border-amber-600 bg-amber-500/15 px-3 py-2 text-xs text-amber-200">
+            Notifications are blocked for this site. Turn them on in your browser&apos;s site
+            settings — the on-screen popup below still works either way.
+          </p>
+        )}
       </header>
 
       {error && (
-        <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <p className="mt-3 rounded-lg border border-amber-600 bg-amber-500/15 px-3 py-2 text-xs text-amber-200">
           Couldn&apos;t refresh: {error}
           {data ? ' — showing the last good data.' : ''}
         </p>
@@ -211,25 +309,53 @@ export default function MobileFlipActivityPage() {
 
       <div className="mt-3 space-y-2">
         {items.length === 0 && !busy && (
-          <p className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-10 text-center text-sm text-[var(--text-muted)]">
-            {filter === 'ALL'
-              ? 'No flip activity yet today.'
-              : `No ${filter === 'WIN' ? 'wins' : 'losses'} yet today.`}
+          <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-10 text-center text-sm text-slate-400">
+            {winsOnly ? 'No wins yet today.' : 'No flip activity yet today.'}
           </p>
         )}
         {items.map((r) => (
           <ActivityCard key={r.id} row={r} />
         ))}
       </div>
-
-      <button
-        onClick={() => void load()}
-        disabled={busy}
-        className="mt-4 min-h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] text-sm font-medium text-[var(--text-secondary)] active:bg-white/[0.08] disabled:opacity-50"
-      >
-        {busy ? 'Refreshing…' : 'Refresh now'}
-      </button>
     </main>
+  );
+}
+
+/** The in-page popup. Exists because a system notification can be silently
+ *  suppressed by the OS, by focus mode, or by an unsupported browser — this one
+ *  cannot be. */
+function WinPopup({ row, onClose }: { row: FlipActivityRow; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 30_000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-3">
+      <div className="w-full max-w-md rounded-xl border-2 border-emerald-400 bg-emerald-950 p-4 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+              Flip win
+            </div>
+            <div className="mt-1 truncate text-lg font-semibold text-white">
+              {row.customerName || 'Customer'}
+            </div>
+            {row.nearestOurShop && (
+              <div className="mt-0.5 truncate text-sm text-emerald-200">→ {row.nearestOurShop}</div>
+            )}
+            {row.vehicle && <div className="mt-0.5 truncate text-xs text-emerald-300/80">{row.vehicle}</div>}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Dismiss"
+            className="min-h-11 min-w-11 shrink-0 rounded-lg bg-emerald-900 text-lg font-bold text-emerald-200 active:bg-emerald-800"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -241,21 +367,19 @@ function StatTile({
 }: {
   label: string;
   value: string | number;
-  tone: 'win' | 'neutral' | 'muted';
+  tone: 'win' | 'info' | 'plain';
   big?: boolean;
 }) {
   const toneCls =
     tone === 'win'
-      ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
-      : tone === 'neutral'
-        ? 'border-sky-400/25 bg-sky-500/10 text-sky-200'
-        : 'border-white/10 bg-white/[0.03] text-[var(--text-secondary)]';
+      ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200'
+      : tone === 'info'
+        ? 'border-sky-500 bg-sky-500/15 text-sky-200'
+        : 'border-slate-700 bg-slate-800/60 text-slate-200';
   return (
     <div className={`rounded-xl border px-3 py-2 ${toneCls}`}>
-      <div className={big ? 'text-3xl font-semibold leading-tight' : 'text-xl font-semibold leading-tight'}>
-        {value}
-      </div>
-      <div className="text-[11px] uppercase tracking-wide opacity-70">{label}</div>
+      <div className={`${big ? 'text-3xl' : 'text-xl'} font-semibold leading-tight`}>{value}</div>
+      <div className="text-[11px] uppercase tracking-wide opacity-80">{label}</div>
     </div>
   );
 }
@@ -265,46 +389,40 @@ function ActivityCard({ row }: { row: FlipActivityRow }) {
   const offers = offersMade(row);
   const reason = formatNoFlipReason(row.noFlipReason);
 
-  // A win gets a coloured edge and a lit background; everything else stays
-  // quiet so wins are findable by thumb-scrolling without reading.
   const shell =
     bucket === 'WIN'
-      ? 'border-emerald-400/40 bg-emerald-500/[0.08]'
+      ? 'border-emerald-500 bg-emerald-500/12'
       : bucket === 'LOSS'
-        ? 'border-white/10 bg-white/[0.02]'
-        : 'border-white/[0.06] bg-white/[0.01]';
+        ? 'border-slate-700 bg-slate-900/70'
+        : 'border-slate-800 bg-slate-900/40';
 
   return (
     <article className={`rounded-xl border px-3 py-3 ${shell}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{row.customerName || 'Unknown'}</div>
-          <div className="truncate text-xs text-[var(--text-muted)]">
-            {row.vehicle || 'vehicle unknown'}
+          <div className="truncate text-sm font-semibold text-white">
+            {row.customerName || 'Unknown'}
           </div>
+          <div className="truncate text-xs text-slate-400">{row.vehicle || 'vehicle unknown'}</div>
         </div>
         <div className="shrink-0 text-right">
           <OutcomeBadge bucket={bucket} />
-          <div className="mt-1 text-[11px] text-[var(--text-muted)]">{timeAgo(row.callTime)}</div>
+          <div className="mt-1 text-[11px] text-slate-400">{timeAgo(row.callTime)}</div>
         </div>
       </div>
 
       {bucket === 'WIN' && row.nearestOurShop && (
-        <div className="mt-2 rounded-lg bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-200">
+        <div className="mt-2 rounded-lg bg-emerald-500/20 px-2 py-1.5 text-xs font-medium text-emerald-100">
           → {row.nearestOurShop}
         </div>
       )}
 
       {bucket !== 'WIN' && row.originalDestination && (
-        <div className="mt-2 truncate text-xs text-[var(--text-muted)]">
-          {row.originalDestination}
-        </div>
+        <div className="mt-2 truncate text-xs text-slate-400">{row.originalDestination}</div>
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {row.destinationType && <Chip>{row.destinationType.replace(/_/g, ' ')}</Chip>}
-        {/* Offers made is the leading indicator — zero offers on an eligible
-            call is an adherence problem, not a bad-luck problem. */}
         {row.flipEligible && (
           <Chip tone={offers === 0 ? 'warn' : 'plain'}>
             {offers === 0 ? 'no offer made' : `${offers} offer${offers > 1 ? 's' : ''}`}
@@ -320,12 +438,12 @@ function ActivityCard({ row }: { row: FlipActivityRow }) {
 function OutcomeBadge({ bucket }: { bucket: Bucket }) {
   const cls =
     bucket === 'WIN'
-      ? 'bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/40'
+      ? 'bg-emerald-500 text-emerald-950'
       : bucket === 'LOSS'
-        ? 'bg-rose-500/10 text-rose-200/80'
-        : 'bg-white/5 text-[var(--text-muted)]';
+        ? 'bg-rose-500/25 text-rose-200'
+        : 'bg-slate-700 text-slate-300';
   return (
-    <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide ${cls}`}>
+    <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide ${cls}`}>
       {bucket}
     </span>
   );
@@ -334,10 +452,8 @@ function OutcomeBadge({ bucket }: { bucket: Bucket }) {
 function Chip({ children, tone = 'plain' }: { children: React.ReactNode; tone?: 'plain' | 'warn' }) {
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-[10px] ${
-        tone === 'warn'
-          ? 'bg-amber-500/15 text-amber-200'
-          : 'bg-white/[0.06] text-[var(--text-muted)]'
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+        tone === 'warn' ? 'bg-amber-500/25 text-amber-200' : 'bg-slate-700/80 text-slate-300'
       }`}
     >
       {children}
