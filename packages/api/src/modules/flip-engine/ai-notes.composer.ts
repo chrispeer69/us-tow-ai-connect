@@ -148,7 +148,16 @@ export function composeAiNotes(input: AiNotesInput): string | null {
   // A destination change comes first because it is the one line that makes the
   // rest of the ticket wrong.
   const newDestination = clean(input.newDestination);
-  if (newDestination && (input.flipOutcome ?? '').toUpperCase() === 'ACCEPTED') {
+  // Accept both spellings of "the customer said yes".
+  //
+  // Retell emits flip_outcome = 'SUCCESS'; our own column normalises it to
+  // 'ACCEPTED'. This used to test for 'ACCEPTED' alone, which was correct for
+  // the stored path and silently wrong for anything reading the raw analysis —
+  // and the failure mode is the worst one available: the note still renders, so
+  // it looks fine, but the DESTINATION CHANGED line is the one thing on it that
+  // is urgent, and it is the line that disappears. Cheap to accept both.
+  const accepted = ['ACCEPTED', 'SUCCESS'].includes((input.flipOutcome ?? '').toUpperCase());
+  if (newDestination && accepted) {
     lines.push(`DESTINATION CHANGED — customer agreed to ${newDestination}.`);
   } else {
     const confirmed = clean(input.confirmedDestination);

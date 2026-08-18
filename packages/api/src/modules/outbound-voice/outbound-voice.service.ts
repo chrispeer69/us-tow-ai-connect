@@ -21,7 +21,11 @@ import {
   judgePitchCompletion,
   type PitchVerdict,
 } from './pitch-completion';
-import { extractRetellAnalysis, mapRetellStatus } from './retell-call-mapping';
+import {
+  extractRetellAnalysis,
+  mapRetellStatus,
+  type RetellAnalysisFields,
+} from './retell-call-mapping';
 import {
   MissingVariableError,
   type OutboundVoicePurpose,
@@ -1066,18 +1070,11 @@ export class OutboundVoiceService {
   private async syncFlipActivityFromAnalysis(
     call: typeof outboundCalls.$inferSelect,
     callPatch: Partial<typeof outboundCalls.$inferInsert>,
-    analysis: {
-      flip_eligible?: boolean | null;
-      flip_outcome?: string | null;
-      offer_1_result?: string | null;
-      offer_2_result?: string | null;
-      offer_3_result?: string | null;
-      convini_link_sent?: boolean | null;
-      convini_sell_type?: string | null;
-      corrections_made?: string | null;
-      nearest_our_shop?: string | null;
-      destination_type?: string | null;
-    },
+    // Partial<RetellAnalysisFields> rather than a hand-listed copy: this inline
+    // type had already drifted once (it was missing new_destination, which is
+    // why an accepted flip stored a null destination), and a second definition
+    // of the same shape will always drift again.
+    analysis: Partial<RetellAnalysisFields>,
   ): Promise<void> {
     const rows = await this.db
       .select()
@@ -1138,6 +1135,31 @@ export class OutboundVoiceService {
       update.conviniSellType = trimForColumn(analysis.convini_sell_type, 10);
     }
     if (analysis.corrections_made) update.correctionsMade = analysis.corrections_made;
+
+    // Session 77 — persist the dispatch intake answers.
+    //
+    // The script has asked all four of these on every call since 2026-08-15 and
+    // nothing has ever stored them, so the AI Notes block rendered empty. These
+    // are the columns the composer reads.
+    //
+    // Written with `assignIfPresent` rather than a plain truthiness check for a
+    // specific reason: an intake answer can legitimately be the string "unknown"
+    // (the agent is told to record an honest unknown rather than guess) and it
+    // must not be silently dropped, while a null from a call where the question
+    // was never reached must NOT overwrite an answer an earlier webhook already
+    // stored. Late `call_analyzed` events and the reconciliation sweep both
+    // re-enter this path for the same call.
+    assignIfPresent(update, 'keysAndPresence', analysis.keys_and_presence);
+    assignIfPresent(update, 'accessNotes', analysis.access_notes);
+    assignIfPresent(update, 'vehicleCondition', analysis.vehicle_condition);
+    assignIfPresent(update, 'vehicleDetails', analysis.vehicle_details);
+    assignIfPresent(update, 'issueDescription', analysis.issue_description);
+    assignIfPresent(update, 'confirmedDestination', analysis.confirmed_destination);
+    // new_destination has a column already but was never populated from the
+    // analysis, which is why both 2026-08-17 wins showed a null destination on a
+    // call where the customer plainly named the shop.
+    assignIfPresent(update, 'newDestination', analysis.new_destination);
+
     if (accepted) update.managementNotified = true;
 
     await this.db.update(outboundCallLogs).set(update).where(eq(outboundCallLogs.id, log.id));
@@ -1858,6 +1880,33 @@ function pickAcceptedOfferFromAnalysis(
   if (offer2 === 'ACCEPTED') return 2;
   if (offer3 === 'ACCEPTED') return 3;
   return outcomeMeansAccepted(flipOutcome) ? 1 : null;
+}
+
+/**
+ * Copy an analysis value onto the update only when the model actually returned
+ * one.
+ *
+ * Three cases have to stay distinct, and `if (value)` collapses all three:
+ *   - a real answer            -> write it
+ *   - the string "unknown"     -> write it. An honest unknown is information;
+ *                                 the agent is told to record it rather than
+ *                                 guess, and a driver reading "drivetrain
+ *                                 unknown" behaves differently to one reading
+ *                                 nothing at all.
+ *   - null / '' (not reached)  -> leave whatever is already stored alone, so a
+ *                                 late call_analyzed event or the reconcile
+ *                                 sweep cannot blank an answer an earlier
+ *                                 webhook captured.
+ */
+function assignIfPresent<K extends keyof typeof outboundCallLogs.$inferInsert>(
+  target: Partial<typeof outboundCallLogs.$inferInsert>,
+  key: K,
+  value: unknown,
+): void {
+  if (value == null) return;
+  const text = String(value).trim();
+  if (text === '') return;
+  (target as Record<string, unknown>)[key as string] = text;
 }
 
 function pickAcceptedOfferForSms(row: Partial<typeof outboundCallLogs.$inferInsert>): 1 | 2 | 3 {

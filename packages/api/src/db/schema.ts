@@ -362,6 +362,29 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
   scriptVersion: varchar('script_version', { length: 40 }),
   scenario: varchar('scenario', { length: 40 }),
   scriptVariant: varchar('script_variant', { length: 24 }).default('control'),
+  // Session 77 — the dispatch intake answers (migration 0045).
+  //
+  // The script has asked all four of these on every call since 2026-08-15 and
+  // every answer was thrown away: nothing extracted them and nothing stored
+  // them, so the AI Notes composer's KEYS / ACCESS / CONDITION / VEHICLE lines
+  // never had anything to render. We were paying the seconds and getting no
+  // note — and on 2026-08-17 those seconds are what pushed the median call to
+  // 191s and shoved the offer past Retell's 300s cap.
+  //
+  // Free text on purpose. A driver's note is prose: "on the curb in front of
+  // the house, nose out, tight turn to get in" is the useful answer and it does
+  // not survive an enum. 'unknown' is a legitimate value — the agent is told to
+  // record an honest unknown rather than guess.
+  keysAndPresence: text('keys_and_presence'),
+  accessNotes: text('access_notes'),
+  vehicleCondition: text('vehicle_condition'),
+  vehicleDetails: text('vehicle_details'),
+  issueDescription: text('issue_description'),
+  // Distinct from newDestination, which only fills on an accepted flip. This
+  // catches "the ticket says AutoZone, the customer says a storage facility" —
+  // a real 2026-08-17 call, and exactly the kind of thing a driver needs before
+  // they roll rather than after.
+  confirmedDestination: text('confirmed_destination'),
 });
 export type OutboundCallLogRow = typeof outboundCallLogs.$inferSelect;
 

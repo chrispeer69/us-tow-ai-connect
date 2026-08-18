@@ -32,12 +32,17 @@ import { composeAiNotes } from './ai-notes.composer';
  *     integration.
  *  4. Every attempt is audited, including the ones that decline to write.
  *
- * WHAT IS STILL MISSING, deliberately visible rather than papered over: the
- * KEYS / ACCESS / CONDITION / VEHICLE lines need Retell post-call analysis
- * fields that the agent does not emit yet (see RetellAnalysisFields). Until it
- * does, this writes the corrections and destination lines only — which is
- * already the 24.7% of calls the 2026-08-14 dry run measured — and the composer
- * correctly renders nothing for the rest rather than inventing it.
+ * CLOSED IN SESSION 77: the KEYS / ACCESS / CONDITION / VEHICLE lines now have
+ * data. The Retell agent emits a post-call analysis field per line, the
+ * extractor reads them, migration 0045 stores them, and this sweep selects
+ * them. Before that the write-back could only carry the corrections and
+ * destination lines — 24.7% of calls — because the other four were structurally
+ * always null.
+ *
+ * The composer is still the gate, and still returns null for a call that
+ * captured nothing. That is deliberate: a details box full of "nothing to
+ * report" teaches dispatchers to skip the block, which would cost more than it
+ * gains.
  */
 @Injectable()
 export class AiNotesWriterService {
@@ -95,8 +100,6 @@ export class AiNotesWriterService {
         newDestination: c.newDestination,
         flipOutcome: c.flipOutcome,
         callTimeIso: c.callTime ? new Date(c.callTime).toISOString() : null,
-        // Present in the analysis shape and read by the extractor; still null
-        // until the Retell agent emits them.
         keysAndPresence: c.keysAndPresence,
         accessNotes: c.accessNotes,
         vehicleCondition: c.vehicleCondition,
@@ -200,6 +203,14 @@ export class AiNotesWriterService {
         newDestination: outboundCallLogs.newDestination,
         flipOutcome: outboundCallLogs.flipOutcome,
         callTime: outboundCallLogs.callTime,
+        // Session 77 — the intake answers are stored now (migration 0045), so
+        // these come out of the row instead of being hardcoded null.
+        keysAndPresence: outboundCallLogs.keysAndPresence,
+        accessNotes: outboundCallLogs.accessNotes,
+        vehicleCondition: outboundCallLogs.vehicleCondition,
+        vehicleDetails: outboundCallLogs.vehicleDetails,
+        issueDescription: outboundCallLogs.issueDescription,
+        confirmedDestination: outboundCallLogs.confirmedDestination,
         jobId: unifiedJobs.id,
         source: unifiedJobs.source,
         sourceJobId: unifiedJobs.sourceJobId,
@@ -225,8 +236,20 @@ export class AiNotesWriterService {
           sql`COALESCE(${outboundCallLogs.callDurationSeconds}, 0) > 0`,
           // Something worth writing. Mirrors composeAiNotes' inputs so we do not
           // open a browser for a row that would compose to null anyway.
+          //
+          // Session 77 — the intake fields join the test. Before them this was
+          // corrections/destination only, which fired on 24.7% of calls; the
+          // intake answers turn the note into the normal case rather than the
+          // exception. composeAiNotes remains the real gate — this clause only
+          // has to be no NARROWER than it, or a job silently never gets a note.
           sql`(COALESCE(${outboundCallLogs.correctionsMade}, '') <> ''
-               OR COALESCE(${outboundCallLogs.newDestination}, '') <> '')`,
+               OR COALESCE(${outboundCallLogs.newDestination}, '') <> ''
+               OR COALESCE(${outboundCallLogs.keysAndPresence}, '') <> ''
+               OR COALESCE(${outboundCallLogs.accessNotes}, '') <> ''
+               OR COALESCE(${outboundCallLogs.vehicleCondition}, '') <> ''
+               OR COALESCE(${outboundCallLogs.vehicleDetails}, '') <> ''
+               OR COALESCE(${outboundCallLogs.issueDescription}, '') <> ''
+               OR COALESCE(${outboundCallLogs.confirmedDestination}, '') <> '')`,
           // Never retry a job we already attempted and failed on in this window;
           // a broken selector would otherwise re-open a browser every 5 minutes
           // for every call, forever.
@@ -241,16 +264,7 @@ export class AiNotesWriterService {
       .orderBy(desc(outboundCallLogs.callTime))
       .limit(limit);
 
-    return rows.map((r) => ({
-      ...r,
-      // Not yet emitted by the Retell agent; see the class docblock.
-      keysAndPresence: null,
-      accessNotes: null,
-      vehicleCondition: null,
-      vehicleDetails: null,
-      issueDescription: null,
-      confirmedDestination: null,
-    }));
+    return rows;
   }
 
   private async markLogWritten(callLogId: string): Promise<void> {

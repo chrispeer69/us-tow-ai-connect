@@ -1,11 +1,12 @@
 # Towbook AI Notes write-back — design
 
-> Status (2026-08-17): **built, off, and blocked on two selectors.** The
-> composer, the adapter contract, the browser automation, the sweep, the audit
-> table and the admin endpoints all exist and are tested. Nothing writes yet.
+> Status (2026-08-18): **complete except for two selectors.** The intake
+> capture chain is closed end to end — the agent emits the fields, they are
+> extracted, stored (migration `0045`), selected and composed. The write-back
+> itself is still `AI_NOTES_WRITEBACK_ENABLED=false`.
 >
 > **The one remaining step** is capturing the Notes textarea and Save Changes
-> selectors from a live Update Call modal, which no longer needs a developer:
+> selectors from a live Update Call modal, which does not need a developer:
 >
 > ```
 > POST /v1/admin/flip-engine/ai-notes/discover-selectors   { "sourceJobId": "<row data-id>" }
@@ -33,19 +34,54 @@ Review a dry-run day from `ai_note_writes` (migration `0044`), or
 the ones that decline to write; the composed block is stored so the decision to
 go live is made from evidence.
 
-## Known gap — the intake lines are still empty
+## The intake lines — closed 2026-08-18 (Session 77)
 
-`composeAiNotes` renders `KEYS / ACCESS / CONDITION / VEHICLE` from post-call
-analysis fields (`keys_and_presence`, `access_notes`, `vehicle_condition`,
-`vehicle_details`, `issue_description`, `confirmed_destination`) that
-`extractRetellAnalysis` now reads — but **the Retell agent does not emit them
-yet**. Until a post-call analysis field is added per line, the write-back carries
-the corrections and destination lines only. That is still the 24.7% of calls the
-2026-08-14 dry run measured, and the composer correctly renders nothing for the
-rest rather than inventing it.
+`composeAiNotes` renders `KEYS / ACCESS / CONDITION / VEHICLE / ISSUE` from
+post-call analysis fields. Until 2026-08-18 **not one of them could ever
+render**, because the chain was broken in three places at once and each piece
+passed its own tests:
 
-This is the highest-value remaining piece: the script has been *asking* all four
-questions on every call since 2026-08-15 and throwing every answer away.
+1. the Retell agent emitted no field for any of them,
+2. so `extractRetellAnalysis` read nulls,
+3. and `findCandidates` hardcoded `null` on top of that anyway,
+4. with no column to store them in if it had not.
+
+All four are fixed:
+
+| Piece | Where |
+|---|---|
+| 7 post-call analysis fields on the agent | Retell agent version, backed up under `docs/backups/2026-08-18-retell-agent-v*-post-call-analysis.json` |
+| Extraction | `retell-call-mapping.ts` (already read them; unchanged) |
+| Storage | migration `0045_intake_answers` — 6 new `outbound_call_logs` columns |
+| Persist on webhook AND reconcile | `outbound-voice.service.ts`, `assignIfPresent` |
+| Selection | `ai-notes-writer.service.ts` — real columns, widened candidate filter |
+
+**`new_destination` was in the same state** and is the reason both 2026-08-17
+wins stored a null destination on calls where the customer plainly named the
+shop. It now has a field, and the agent is told to leave it empty unless the
+customer gave an unambiguous yes.
+
+### Why `assignIfPresent` rather than `if (value)`
+
+Three cases have to stay distinct and a truthiness check collapses them:
+
+- a real answer → store it;
+- the literal string `unknown` → **store it**. The agent is instructed to record
+  an honest unknown rather than guess, and a driver reading "drivetrain unknown"
+  behaves differently from one reading nothing — it means *check before you put
+  it on dollies*;
+- `null` / `''` (question never reached) → **leave what is already stored**. Late
+  `call_analyzed` events and the reconciliation sweep both re-enter this path for
+  the same call, and a later empty must not blank an earlier answer.
+
+### Expected coverage change
+
+The candidate filter used to be `corrections_made OR new_destination`, which the
+2026-08-14 dry run measured at **24.7%** of calls. The intake answers are
+captured on every call that gets past the opening, so a note becomes the normal
+case rather than the exception. `composeAiNotes` remains the real gate and still
+returns `null` for a call that captured nothing — silence beats noise, and a
+details box full of "nothing to report" teaches dispatchers to skip the block.
 
 ## Why
 
