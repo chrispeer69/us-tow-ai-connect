@@ -26,8 +26,8 @@
 | `AI_NOTES_WRITEBACK_ENABLED` | `false` | Master switch for the sweep. |
 | `AI_NOTES_WRITEBACK_DRY_RUN` | `true` | Compose and verify, write nothing. Two switches, because "enabled" and "actually writing" are separate decisions and the interesting day is the one where the first is true and the second is not. |
 | `AI_NOTES_BATCH_SIZE` | `10` | One Playwright session per job. |
-| `AI_NOTES_LOOKBACK_HOURS` | `6` | A note is worthless once the tow is done. |
-| `AI_NOTES_RETRY_BACKOFF_HOURS` | `2` | Stops a broken selector re-opening a browser every 5 minutes forever. |
+| `AI_NOTES_LOOKBACK_HOURS` | `3` | A note is worthless once the tow is done — and unreachable, because a closed job leaves the dispatch board. Jobs live a median 124 min. |
+| `AI_NOTES_RETRY_BACKOFF_MINUTES` | `25` | Stops a broken selector re-opening a browser every cycle forever, without waiting so long that the retry lands after the job has closed. |
 
 Review a dry-run day from `ai_note_writes` (migration `0044`), or
 `GET /v1/admin/flip-engine/ai-notes/writes`. Every attempt is audited, including
@@ -95,6 +95,36 @@ Dry run over those same 421 calls: **104 (24.7%) would produce a note**, 317
 correctly produce nothing.
 
 ---
+
+## The 15-minute SLA
+
+Chris, 2026-08-18: *"from the time a job is accepted to the time the notes should
+be entered should be less than 10 minutes total in most cases — possibly 15
+minutes tops — my admin team will be looking for them at 15 minutes and after."*
+
+Measured over 3 days / 189 real jobs, **job accepted → call ended**:
+
+| | minutes |
+|---|---|
+| median | 3.0 |
+| p90 | 5.6 |
+| max | 6.8 |
+| ended after 10 min | **0 of 175** |
+
+The call is reliably finished by ~7 minutes, so the sweep interval is the only
+part of the budget we control. The cron is therefore **every 2 minutes**, not 5:
+
+- worst case ≈ 6.8 (call) + 2 (sweep wait) + ~1 (browser session) ≈ **10 min**
+- median ≈ 3.0 + 1 + ~0.5 ≈ **4.5 min**
+
+At the old 5-minute cadence the worst case was ~12.5 min — inside 15, but one
+slow Towbook session away from missing it. The tighter loop costs nothing when
+idle: `findCandidates` is a single indexed query and no browser opens unless a
+note actually composes.
+
+**This SLA is also why the lookback shrank to 3 hours.** A job lives a median of
+124 minutes, so anything older than that cannot be written to at all — the row
+has left the dispatch board.
 
 ## ⚠️ Never touch Billing Notes
 

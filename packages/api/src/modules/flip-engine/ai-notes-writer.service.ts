@@ -54,7 +54,27 @@ export class AiNotesWriterService {
     private readonly adapters: AdapterFactory,
   ) {}
 
-  @Cron('45 */5 * * * *')
+  /**
+   * Every two minutes, and the number is not arbitrary.
+   *
+   * Chris, 2026-08-18: the note must be on the job within 10 minutes of the job
+   * being accepted, 15 at the outside, because the admin team starts looking for
+   * it at 15.
+   *
+   * Measured over 3 days / 189 real jobs, job accepted -> call ended:
+   *   median 3.0 min, p90 5.6 min, max 6.8 min, and 0 of 175 ended after 10 min.
+   *
+   * So the call is reliably done by ~7 minutes and the sweep interval is the
+   * only part of the budget we control. At the old 5-minute cadence the worst
+   * case was 6.8 + 5 + write time ~= 12.5 min: inside 15, but with almost
+   * nothing spare, and a single slow Towbook session would blow it. At two
+   * minutes the worst case is ~10 min and the median lands near 4.5.
+   *
+   * Cost of the tighter loop is nothing when there is no work: findCandidates is
+   * one indexed query and returns empty, and no browser is opened unless a note
+   * actually composes.
+   */
+  @Cron('45 */2 * * * *')
   async writePendingCron(): Promise<void> {
     if (!AI_NOTES_WRITEBACK_ENABLED) return;
     if (this.running) return; // one browser session at a time
@@ -256,7 +276,7 @@ export class AiNotesWriterService {
           sql`NOT EXISTS (
                 SELECT 1 FROM ai_note_writes w
                  WHERE w.call_log_id = ${outboundCallLogs.id}
-                   AND w.attempted_at > NOW() - (${AI_NOTES_RETRY_BACKOFF_HOURS} * INTERVAL '1 hour')
+                   AND w.attempted_at > NOW() - (${AI_NOTES_RETRY_BACKOFF_MINUTES} * INTERVAL '1 minute')
               )`,
           // ONE job per call. The join matches on phone + a 14-hour window, and
           // a repeat customer inside that window matches more than one job: on
@@ -388,8 +408,31 @@ const AI_NOTES_WRITEBACK_DRY_RUN = envFlag('AI_NOTES_WRITEBACK_DRY_RUN', true);
 /** One Playwright session per job, so keep the batch small. */
 const AI_NOTES_BATCH_SIZE = envInt('AI_NOTES_BATCH_SIZE', 10);
 
-/** A note is worthless once the tow is finished. */
-const AI_NOTES_LOOKBACK_HOURS = envInt('AI_NOTES_LOOKBACK_HOURS', 6);
+/**
+ * A note is worthless once the tow is finished, and unreachable too: the adapter
+ * navigates by clicking the job's row on the dispatch board, and a closed job
+ * leaves that board.
+ *
+ * Measured 2026-08-18: a job lives a median of 124 minutes (p25 82) from created
+ * to closed. A 6-hour lookback therefore spent most of its range retrying jobs
+ * that could never be written to -- the first live sweep failed 6 for 6 with
+ * `job_row_not_found_on_board`, every one of them genuinely completed. Three
+ * hours still comfortably covers a late webhook or a reconciled call while
+ * cutting the doomed attempts.
+ */
+const AI_NOTES_LOOKBACK_HOURS = envInt('AI_NOTES_LOOKBACK_HOURS', 3);
 
-/** Do not re-attempt the same call for this long after any attempt. */
-const AI_NOTES_RETRY_BACKOFF_HOURS = envInt('AI_NOTES_RETRY_BACKOFF_HOURS', 2);
+/**
+ * Do not re-attempt the same call for this long after any attempt.
+ *
+ * Was 2 hours, which was the wrong shape for the failure it guards. The point of
+ * a backoff here is to stop a broken selector reopening a browser every cycle
+ * forever. But a first attempt usually fails on something transient -- a slow
+ * modal, a session that needed re-login -- and waiting 2 hours to retry means
+ * retrying a job that has since closed and can no longer be written to at all.
+ *
+ * 25 minutes gives a transient failure a few real chances inside the job's
+ * ~124-minute life, while still capping a genuinely broken run at ~2 attempts
+ * per job per hour.
+ */
+const AI_NOTES_RETRY_BACKOFF_MINUTES = envInt('AI_NOTES_RETRY_BACKOFF_MINUTES', 25);
