@@ -103,6 +103,26 @@ function clockTime(d: Date): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+
+/**
+ * The Push API wants the VAPID public key as a Uint8Array, but it is served as
+ * base64url. Browsers do not do this conversion for you and the failure mode is
+ * an opaque InvalidCharacterError from pushManager.subscribe.
+ */
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  // Backed by a concrete ArrayBuffer rather than the default ArrayBufferLike:
+  // applicationServerKey is typed as BufferSource, and a SharedArrayBuffer-
+  // capable Uint8Array does not satisfy it under newer TS libs.
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+type PushState = 'unsupported' | 'idle' | 'subscribing' | 'on' | 'blocked' | 'error';
+
 export default function FlipBoard() {
   const [data, setData] = useState<FlipActivityResponse | null>(null);
   const [winsOnly, setWinsOnly] = useState(false);
@@ -116,6 +136,9 @@ export default function FlipBoard() {
    *  notification — the notification may be suppressed by the OS, the popup
    *  never is. */
   const [popup, setPopup] = useState<FlipActivityRow | null>(null);
+
+  const [pushState, setPushState] = useState<PushState>('idle');
+  const [pushNote, setPushNote] = useState<string | null>(null);
 
   const busyRef = useRef(false);
   const seenRef = useRef<Set<string> | null>(null);
@@ -133,6 +156,21 @@ export default function FlipBoard() {
       setNotifyState(Notification.permission as 'default' | 'granted' | 'denied');
     } else {
       setNotifyState('unsupported');
+    }
+    // If this device already granted permission on a previous visit, re-assert
+    // the subscription quietly. Browsers drop push subscriptions on their own
+    // schedule, and a silently-dead one looks identical to a working one.
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'granted' &&
+      'serviceWorker' in navigator
+    ) {
+      void (async () => {
+        const reg = await navigator.serviceWorker.getRegistration('/m/');
+        const sub = await reg?.pushManager.getSubscription();
+        if (sub) setPushState('on');
+      })();
     }
   }, []);
 
@@ -224,7 +262,88 @@ export default function FlipBoard() {
     if (!('Notification' in window)) return;
     const p = await Notification.requestPermission();
     setNotifyState(p as 'default' | 'granted' | 'denied');
+    if (p === 'granted') void enablePush();
   };
+
+  /**
+   * Register for REAL push — the kind that buzzes a locked phone with the app
+   * closed. The board's own Notification call only fires while this page is
+   * alive; everything below exists to survive the page being gone.
+   *
+   * Order matters and every step can fail independently, so each reports its
+   * own reason rather than collapsing to "didn't work".
+   */
+  const enablePush = useCallback(async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushState('unsupported');
+      setPushNote('This browser cannot do background push. On iPhone, add this page to your Home Screen first.');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setPushState('blocked');
+      return;
+    }
+    setPushState('subscribing');
+    setPushNote(null);
+    try {
+      const key = await api<{ data: { enabled: boolean; publicKey: string | null } }>(
+        '/v1/admin/flip-push/public-key',
+      );
+      if (!key.data.enabled || !key.data.publicKey) {
+        setPushState('error');
+        setPushNote('Push is not configured on the server yet (VAPID keys missing).');
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.register('/flip-sw.js', { scope: '/m/' });
+      // Without this the very first subscribe can race the worker's activation
+      // and fail with "no active Service Worker".
+      await navigator.serviceWorker.ready;
+
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          // Chrome refuses a subscription without this, and Apple requires the
+          // payload to be encrypted for the device regardless.
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key.data.publicKey),
+        });
+      }
+
+      const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+      await api('/v1/admin/flip-push/subscribe', {
+        method: 'POST',
+        json: {
+          endpoint: json.endpoint,
+          keys: json.keys,
+          label: navigator.platform || 'phone',
+        },
+      });
+      setPushState('on');
+      setPushNote(null);
+    } catch (err) {
+      setPushState('error');
+      setPushNote((err as Error).message);
+    }
+  }, []);
+
+  /** Fire a test push so this can be verified without waiting for a real win. */
+  const sendTestPush = useCallback(async () => {
+    try {
+      const res = await api<{ data: { sent: number; removed: number; skipped: boolean } }>(
+        '/v1/admin/flip-push/test',
+        { method: 'POST' },
+      );
+      const d = res.data;
+      setPushNote(
+        d.skipped
+          ? 'Nothing sent — no registered devices, or push is not configured.'
+          : `Sent to ${d.sent} device${d.sent === 1 ? '' : 's'}. Lock your phone and it should still arrive.`,
+      );
+    } catch (err) {
+      setPushNote((err as Error).message);
+    }
+  }, []);
 
   const toggleWinsOnly = () => {
     setWinsOnly((v) => {
@@ -284,18 +403,42 @@ export default function FlipBoard() {
           </button>
         </div>
 
-        {notifyState === 'default' && (
+        {/* Push controls. "on" is the state that matters: it means a win will
+            reach this phone with the screen off and the app closed. */}
+        {pushState !== 'on' && notifyState !== 'denied' && (
           <button
             onClick={() => void askNotify()}
-            className="mt-2 min-h-11 w-full rounded-lg border border-sky-500 bg-sky-500/20 px-3 text-sm font-semibold text-sky-100"
+            disabled={pushState === 'subscribing'}
+            className="mt-2 min-h-11 w-full rounded-lg border border-sky-500 bg-sky-500/20 px-3 text-sm font-semibold text-sky-100 disabled:opacity-60"
           >
-            Alert me when a win comes in
+            {pushState === 'subscribing' ? 'Setting up…' : 'Buzz my phone when a win comes in'}
           </button>
         )}
+
+        {pushState === 'on' && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="flex-1 rounded-lg border border-emerald-600 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200">
+              ✓ Alerts on — this phone will buzz on a win, even locked
+            </span>
+            <button
+              onClick={() => void sendTestPush()}
+              className="min-h-11 rounded-lg border border-slate-600 bg-slate-800 px-3 text-xs font-medium text-slate-200 active:bg-slate-700"
+            >
+              Test
+            </button>
+          </div>
+        )}
+
         {notifyState === 'denied' && (
           <p className="mt-2 rounded-lg border border-amber-600 bg-amber-500/15 px-3 py-2 text-xs text-amber-200">
             Notifications are blocked for this site. Turn them on in your browser&apos;s site
-            settings — the on-screen popup below still works either way.
+            settings — the on-screen popup still works either way.
+          </p>
+        )}
+
+        {pushNote && (
+          <p className="mt-2 rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-xs text-slate-200">
+            {pushNote}
           </p>
         )}
       </header>

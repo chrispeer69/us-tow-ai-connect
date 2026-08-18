@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { GeocoderService } from '../command-center/geocoder.service';
 import { DbModule } from '../../db/db.module';
 import { OutboundSmsModule } from '../outbound-sms/outbound-sms.module';
+import { PushModule } from '../push/push.module';
 import { OutboundVoiceController } from './outbound-voice.controller';
 import { OutboundVoiceWebhookController } from './outbound-voice-webhook.controller';
 import { PublicDemoCallController } from './public-demo-call.controller';
@@ -25,7 +26,9 @@ import {
  *   - Rollback is a single env var flip with zero code change.
  */
 @Module({
-  imports: [DbModule, OutboundSmsModule],
+  // PushModule: a flip win buzzes every registered manager device (Session 77),
+  // alongside the manager SMS that already fires from the same place.
+  imports: [DbModule, OutboundSmsModule, PushModule],
   controllers: [
     OutboundVoiceController,
     OutboundVoiceWebhookController,

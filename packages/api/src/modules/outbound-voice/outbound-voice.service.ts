@@ -26,6 +26,7 @@ import {
   mapRetellStatus,
   type RetellAnalysisFields,
 } from './retell-call-mapping';
+import { PushService } from '../push/push.service';
 import {
   MissingVariableError,
   type OutboundVoicePurpose,
@@ -74,6 +75,7 @@ export class OutboundVoiceService {
     private readonly retell: RetellOutboundClient,
     @Inject(OUTBOUND_VOICE_PROVIDER) private readonly provider: OutboundVoiceProvider,
     private readonly sms: TwilioSmsService,
+    private readonly push: PushService,
     private readonly geocoder: GeocoderService,
   ) {
     this.logger.log(`[outbound-voice] active provider: ${this.provider.providerName}`);
@@ -1190,6 +1192,21 @@ export class OutboundVoiceService {
     }
 
     if (shouldNotifyManagers) {
+      // Buzz every registered device before the SMS fan-out. Deliberately fired
+      // and not awaited into the same failure path: sendFlipWin swallows its own
+      // errors, because a dead push endpoint must never stop a win being
+      // recorded or the managers being texted.
+      // Optional-chained on purpose. sendFlipWin already swallows its own
+      // errors, but if the dependency itself is ever missing, a throw here
+      // would land BEFORE the manager SMS and cost us the notification that
+      // actually matters. Push is the garnish; the SMS is the meal.
+      void this.push?.sendFlipWin?.(log.tenantId, {
+        id: log.id,
+        customerName: log.customerName,
+        shop: update.nearestOurShop ?? log.nearestOurShop ?? null,
+        vehicle: log.vehicle,
+      });
+
       await this.notifyManagersOfFlipWin(log, {
         ...update,
         offer1Result: update.offer1Result ?? log.offer1Result,

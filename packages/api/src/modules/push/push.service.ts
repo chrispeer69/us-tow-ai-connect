@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import webpush from 'web-push';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { driverPushSubscriptions, drivers } from '../../db/schema';
+import { driverPushSubscriptions, drivers, pushSubscriptions } from '../../db/schema';
 
 export interface PushSubscribeInput {
   driver_phone: string;
@@ -183,5 +183,161 @@ export class PushService {
     );
 
     return { sent, removed, skipped: false };
+  }
+
+  // ==========================================================================
+  // Session 77 — manager/admin devices, for flip wins.
+  //
+  // Deliberately a SEPARATE table from driver_push_subscriptions rather than a
+  // sentinel phone number on that one. The two are different subjects with
+  // different auth: a driver device is keyed by driver phone and registers with
+  // the tenant API key from the driver PWA, while a manager device is
+  // tenant-wide and registers with the admin JWT from the flip board. Sharing a
+  // table would mean a driver could be pushed a flip win, or a manager could be
+  // pushed a job assignment, depending only on how the phone column happened to
+  // be filled.
+  //
+  // The VAPID config, the encryption and the dead-endpoint pruning are all
+  // shared, which is the part that actually matters.
+  // ==========================================================================
+
+  /** Register a manager/admin device against a tenant. Upsert on endpoint, so a
+   *  browser re-subscribing replaces its row instead of adding one — otherwise a
+   *  single handset buzzes once per stale row. */
+  async subscribeAdminDevice(input: {
+    tenantId: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    label?: string | null;
+    userAgent?: string | null;
+  }): Promise<{ ok: true }> {
+    await this.db
+      .insert(pushSubscriptions)
+      .values({
+        tenantId: input.tenantId,
+        endpoint: input.endpoint,
+        p256dh: input.p256dh,
+        auth: input.auth,
+        label: input.label ?? null,
+        userAgent: input.userAgent ?? null,
+      })
+      .onConflictDoUpdate({
+        target: pushSubscriptions.endpoint,
+        set: {
+          tenantId: input.tenantId,
+          p256dh: input.p256dh,
+          auth: input.auth,
+          label: input.label ?? null,
+          userAgent: input.userAgent ?? null,
+          // A device that just re-subscribed is healthy by definition.
+          failureCount: 0,
+        },
+      });
+    return { ok: true };
+  }
+
+  async unsubscribeAdminDevice(tenantId: string, endpoint: string): Promise<number> {
+    const result = await this.db
+      .delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.tenantId, tenantId), eq(pushSubscriptions.endpoint, endpoint)));
+    return (result as { rowCount?: number }).rowCount ?? 0;
+  }
+
+  async listAdminDevices(tenantId: string) {
+    return this.db
+      .select({
+        id: pushSubscriptions.id,
+        label: pushSubscriptions.label,
+        userAgent: pushSubscriptions.userAgent,
+        failureCount: pushSubscriptions.failureCount,
+        createdAt: pushSubscriptions.createdAt,
+        lastUsedAt: pushSubscriptions.lastUsedAt,
+      })
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.tenantId, tenantId));
+  }
+
+  /** Fan a payload out to every manager device on a tenant. Never throws: the
+   *  caller is the flip-win path, and a dead push endpoint must not disturb the
+   *  thing that recorded the win. */
+  async sendToTenantAdmins(tenantId: string, payload: PushPayload): Promise<SendResult> {
+    if (!this.configured) {
+      this.logger.warn(`Push not sent (VAPID unset): "${payload.title}" → tenant ${tenantId}`);
+      return { sent: 0, removed: 0, skipped: true };
+    }
+
+    const subs = await this.db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.tenantId, tenantId));
+    if (subs.length === 0) return { sent: 0, removed: 0, skipped: true };
+
+    const body = JSON.stringify(payload);
+    let sent = 0;
+    let removed = 0;
+
+    await Promise.all(
+      subs.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            body,
+            // urgency high: the entire point is waking a locked device rather
+            // than being batched until it is next picked up.
+            { TTL: 3600, urgency: 'high' },
+          );
+          sent += 1;
+          await this.db
+            .update(pushSubscriptions)
+            .set({ lastUsedAt: new Date(), failureCount: 0 })
+            .where(eq(pushSubscriptions.id, sub.id));
+        } catch (err) {
+          const statusCode = (err as { statusCode?: number }).statusCode;
+          if (statusCode === 404 || statusCode === 410) {
+            // The browser threw the subscription away — PWA uninstalled, site
+            // data cleared, permission revoked. It will never work again.
+            await this.db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+            removed += 1;
+          } else {
+            await this.db
+              .update(pushSubscriptions)
+              .set({ failureCount: sql`${pushSubscriptions.failureCount} + 1` })
+              .where(eq(pushSubscriptions.id, sub.id));
+            this.logger.error(`Admin push failed for ${sub.id}: ${(err as Error).message}`);
+          }
+        }
+      }),
+    );
+
+    // Retire endpoints failing for softer reasons than a 410, so a permanently
+    // broken device is not retried on every win forever.
+    await this.db
+      .delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.tenantId, tenantId), sql`failure_count >= 8`));
+
+    return { sent, removed, skipped: false };
+  }
+
+  /** The flip-win payload, in one place so the wording cannot drift. */
+  async sendFlipWin(
+    tenantId: string,
+    win: { id: string; customerName: string | null; shop: string | null; vehicle: string | null },
+  ): Promise<void> {
+    const shop = win.shop?.trim();
+    try {
+      await this.sendToTenantAdmins(tenantId, {
+        title: shop ? `Flip win → ${shop}` : 'Flip win',
+        body: [win.customerName?.trim() || 'Customer', win.vehicle?.trim()]
+          .filter(Boolean)
+          .join(' · '),
+        url: '/m/flip',
+        // Dedupes a redelivery: a retry should replace the notification rather
+        // than stack a second one for the same win.
+        tag: `flip-win-${win.id}`,
+      });
+    } catch (err) {
+      this.logger.warn(`Flip win push failed: ${(err as Error).message}`);
+    }
   }
 }

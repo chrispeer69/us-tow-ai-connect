@@ -388,6 +388,34 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
 });
 export type OutboundCallLogRow = typeof outboundCallLogs.$inferSelect;
 
+// ============ PUSH SUBSCRIPTIONS (Session 77 — buzz a locked phone) ============
+// One row per DEVICE, not per user: the same person on a phone and a tablet is
+// two subscriptions and should get two buzzes. `endpoint` is the identity and is
+// unique, so re-subscribing the same browser updates in place rather than
+// accumulating duplicates — otherwise one win becomes five buzzes on one handset.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull().unique(),
+    // Both keys are required to encrypt a payload for this device.
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    label: text('label'),
+    userAgent: text('user_agent'),
+    failureCount: integer('failure_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => ({
+    tenantIdx: index('push_subscriptions_tenant_idx').on(t.tenantId),
+  }),
+);
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+
 // ============ AI NOTE WRITES (Session 76 — dispatch write-back audit) ============
 // One row per attempt to append an AI Notes block to a job in the customer's own
 // dispatch system, successful or not, dry run or real. This writes into a live

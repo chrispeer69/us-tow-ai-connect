@@ -151,7 +151,13 @@ function createSvc(db: any) {
     cancelCall: vi.fn(async () => false),
   } as any;
   const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
-  return new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+  return new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never, makePush() as never);
+}
+
+/** Session 77 — a flip win also buzzes registered manager devices. Stubbed so
+ *  the win path is exercised end to end rather than short-circuited. */
+function makePush() {
+  return { sendFlipWin: vi.fn().mockResolvedValue(undefined) };
 }
 
 describe('OutboundVoiceService', () => {
@@ -374,7 +380,7 @@ describe('OutboundVoiceService', () => {
       cancelCall: vi.fn(async () => false),
     } as any;
     const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
-    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never, makePush() as never);
 
     const result = await svc.handleProviderWebhookEvent({
       provider: 'retell',
@@ -474,7 +480,7 @@ describe('OutboundVoiceService', () => {
       cancelCall: vi.fn(async () => false),
     } as any;
     const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
-    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never, makePush() as never);
 
     const result = await svc.handleProviderWebhookEvent({
       provider: 'retell',
@@ -563,7 +569,7 @@ describe('OutboundVoiceService', () => {
       cancelCall: vi.fn(async () => false),
     } as any;
     const sms = { sendSms: vi.fn(async () => ({ id: 'sms-1', status: 'sent' })) };
-    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never);
+    const svc = new OutboundVoiceService(db as never, thinkrr, retell, provider, sms as never, makePush() as never);
 
     await svc.handleProviderWebhookEvent({
       provider: 'retell',
