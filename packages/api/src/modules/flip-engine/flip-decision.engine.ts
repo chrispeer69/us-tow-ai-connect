@@ -81,10 +81,25 @@ export function decideFlip(input: FlipDecisionInput): FlipDecision {
     };
   }
 
-  // Hard rule 3: auto body → no flip, soft mention our body shops.
+  // Rule 3: auto body → our own body shops, as a SOFT offer.
+  //
+  // This was a hard no-flip until 2026-08-18. It was written when we had
+  // nowhere to send a collision job, and that stopped being true when Excite
+  // Collision and T&C went live on 08-17 — both are active in `alpha_shops`.
+  //
+  // The cost of leaving it closed was the largest single gap in the funnel: on
+  // 2026-08-18, 16 of 79 calls (20%) went to a body shop, 9 of them held a real
+  // conversation, and not one received any offer at all.
+  //
+  // `flipEligible` is now true so the call is counted and an offer can be
+  // recorded, while `bodyShopSoftMention` still routes it to Scenario B. The two
+  // are independent: the orchestrator picks the scenario from the mention flag,
+  // not from eligibility. Scenario B stays a SOFT single ask — no ladder, no
+  // invented discount — because body work runs through insurance and a hard
+  // pitch on someone's wrecked car is the wrong instrument.
   if (input.destinationTag === 'auto_body') {
     return {
-      flipEligible: false,
+      flipEligible: true,
       conviniIntensity: 'medium',
       bodyShopSoftMention: true,
       reasonCode: 'destination_auto_body',

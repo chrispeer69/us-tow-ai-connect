@@ -1035,6 +1035,31 @@ export class OutboundVoiceService {
     if (!tenant) return;
     if (!readConfigBool(tenant, 'manager_alerts_for_unanswered_calls', true)) return;
 
+    // Session 77 — Chris, 2026-08-18: "after try #3 I need an alert sent to my
+    // admin staff to intervene with a human call and flip attempt ... their
+    // phone needs to tell them a call did not complete".
+    //
+    // This notifier is ALREADY the after-the-last-attempt path: the retry branch
+    // in handleProviderWebhookEvent returns early while attempts remain, so
+    // nothing reaches here until the dialling is genuinely finished. The SMS has
+    // always fired. What was missing is the phone buzzing.
+    //
+    // Pushed from inside the existing notifier rather than alongside it, so the
+    // two can never disagree about when an alert is warranted — and so the team
+    // does not get texted twice for one unanswered job.
+    //
+    // Fired before the SMS loop and not awaited: an unreachable customer is
+    // already the bad outcome, and a dead push endpoint must not stop the text.
+    void this.push?.sendToTenantAdmins?.(input.tenantId, {
+      title: 'Needs a human call',
+      body:
+        `${input.customerName || 'Customer'} — ${input.customerPhone || 'no phone on job'}. ` +
+        `${input.reason}. Call them and try the flip.`,
+      url: '/m/flip',
+      // One notification per job, so a redelivery replaces rather than stacks.
+      tag: `needs-human-${input.jobId ?? input.customerPhone ?? 'unknown'}`,
+    });
+
     const recipients = readManagerPhones(tenant);
     if (recipients.length === 0) return;
 
@@ -1173,8 +1198,17 @@ export class OutboundVoiceService {
       if (tenant) {
         const cfg = (tenant.flipEngineConfig as Record<string, unknown> | null) ?? {};
         if (cfg.sms_convini !== false) {
+          // The agent says "Roadside Emergency Management App" on the call —
+          // CONVINI was retired from everything spoken on 2026-08-15. This SMS
+          // was missed, so 25 customers on 2026-08-18 alone were told one brand
+          // and then texted a different one. Say the same thing twice.
+          //
+          // The URL is still the CONVINI one until Chris supplies the real
+          // Roadside app link; it stays tenant-overridable via
+          // flip_engine_config.convini_link so that is a config change, not a
+          // deploy.
           const conviniLink = (cfg.convini_link as string) || 'https://convini.live';
-          const body = `Hi from ${tenant.companyName}! Here is the free CONVINI app we mentioned to track your tow and get help faster next time: ${conviniLink}`;
+          const body = `Hi from ${tenant.companyName}! Here is the free Roadside Emergency Management App we mentioned — track your tow live and get help faster next time: ${conviniLink}`;
           
           await this.sms.sendSms({
             to: log.customerPhone,

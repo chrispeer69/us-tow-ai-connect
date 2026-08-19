@@ -1290,13 +1290,26 @@ function scenarioB(ctx: ScriptContext): string {
     ? `I'll have your driver come to you at {{pickup_location}} first, then take the vehicle to {{destination}} shortly`
     : `I'll have your driver come to you at {{pickup_location}} shortly`;
   // Only claim they have a shop commitment when a real destination is on file.
+  // 2026-08-18 — reworded because the offer made the old line self-contradicting.
+  //
+  // It used to say "you have a commitment with the insurance company ... and we
+  // respect that", which was exactly right while this was a referral with
+  // nothing to decline. Followed by "would you like to switch?", it says we
+  // respect the commitment and then asks them to break it in the same breath.
+  //
+  // The new line acknowledges the insurer without asserting anything about what
+  // the customer is or is not entitled to do. We do not tell people what their
+  // policy allows — that is the same rule as never quoting coverage or cost.
   const insuranceLine = hasSeparateDestination(ctx)
-    ? ` We know you have a commitment with the insurance company to go to the current shop listed and we respect that.`
+    ? ` We know the insurance company may have already lined that shop up, so it is entirely your call.`
     : ``;
 
+  // 2026-08-18 — Chris: "open up the body shop soft sales pitch". This was a
+  // statement the customer could not act on; it is now a question, so it can be
+  // accepted, recorded as offer 1, and measured. Still ONE ask, still no price.
   const bodyShopMention = isActiveDamageJob
-    ? `AI: "Understood, that sounds like ${damageKind}. Just to let you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} If we can ever be of help let us know. No pressure either way — ${closingLine}."`
-    : `AI: "Understood. Just to let you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. If we can ever be of help down the road, let us know — no pressure at all. ${closingLine.charAt(0).toUpperCase()}${closingLine.slice(1)}."`;
+    ? `AI: "Understood, that sounds like ${damageKind}. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`
+    : `AI: "Understood. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`;
 
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
@@ -1306,9 +1319,11 @@ function scenarioB(ctx: ScriptContext): string {
   ];
 
   return [
-    `# SCENARIO B — AUTO BODY / GLASS (SOFT REFERRAL, NEVER A FLIP OFFER)`,
-    `[AGENT: This is body, collision or glass work. Mention our body shops ONCE, as information. This is NOT an offer: do not quote a discount, do not mention a free diagnostic, do not ask to switch the drop-off, and do not repeat the mention if they do not take it up. If the customer asks to use our shop, say you'll pass it to dispatch to arrange — do not promise a price or a timescale.]`,
-    `[AGENT: The destination is an auto body shop. Confirm details, then gently mention our body shops before moving to the Convini pitch.]`,
+    `# SCENARIO B — AUTO BODY / GLASS (ONE SOFT OFFER, NO LADDER)`,
+    `[AGENT: This is body, collision or glass work, and we own body shops. Make the offer ONCE, softly, and ask the question. If they say no, accept it immediately and move on — there is no second or third offer on a body job. Never quote a price, a discount, a timescale or an insurance outcome: body work runs through an insurer and an invented number becomes a promise we have to honour.]`,
+    `[AGENT: If they accept, say you will get the drop-off updated and that the office will confirm with them. Do not promise the shop can start, or when.]`,
+    `[AGENT: Read the room. If the customer is shaken, was just in a collision, or is dealing with injuries, make the offer gently or not at all — a hard sell on somebody's wrecked car is the wrong instrument and costs more than the job is worth.]`,
+    `[AGENT: NEVER tell the customer what their insurance policy does or does not allow, whether they can change shops, or who pays. If they raise it, say the office will confirm with them and move on. Acknowledging that an insurer lined a shop up is fine; advising them about it is not.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
     openingBlock(ctx, vars),
@@ -1317,9 +1332,18 @@ function scenarioB(ctx: ScriptContext): string {
     ``,
     issueGuidanceBlock(ctx),
     ``,
-    `=== PHASE 2: BODY SHOP SOFT MENTION ===`,
-    `[STEP 7 — BRAND AWARENESS]`,
+    `=== PHASE 2: BODY SHOP SOFT OFFER ===`,
+    `[STEP 7 — ONE SOFT OFFER]`,
     bodyShopMention,
+    `[AGENT: GATE. Only treat this as accepted on an unambiguous yes naming ours or agreeing to switch. Anything hedged — "maybe", "let me think", "I'd have to check with my insurance" — is a NO: thank them, leave it, and move on. A body job changed on a shrug is a job we have to unwind.]`,
+    `[AGENT: If YES — "Perfect, I'll get the drop-off updated and our office will confirm the details with you." Then close. Do not promise when they can start or what it will cost.]`,
+    `[AGENT: If NO — accept it in one line, reaffirm the plan they already have, and move on. There is no second offer on a body job.]`,
+    // Chris's 2026-08-12 reaffirmation. It used to sit inside the mention
+    // itself, which was right when there was nothing to decline. With a real
+    // question in front of it, saying the plan BEFORE the ask pre-empts the
+    // answer — so it moves to the decline path, where its job is to leave the
+    // customer certain the truck still comes to them first.
+    `AI: "No problem at all. ${closingLine}."`,
     ``,
     ...conviniBlock,
     ``,

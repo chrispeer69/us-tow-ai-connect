@@ -26,7 +26,10 @@ describe('decideFlip', () => {
     expect(r.reasonCode).toBe('destination_is_our_shop');
   });
 
-  it('marks auto_body destination for body-shop soft mention', () => {
+  // 2026-08-18 — auto_body became eligible when Excite Collision and T&C went
+  // live. It still routes to Scenario B via bodyShopSoftMention: eligibility and
+  // scenario selection are independent, and that separation is the point.
+  it('marks auto_body eligible AND routes it to the body-shop scenario', () => {
     const r = decideFlip({
       source: 'TOWBOOK',
       destinationTag: 'auto_body',
@@ -34,7 +37,7 @@ describe('decideFlip', () => {
       issueConfidence: 0.7,
       config: {},
     });
-    expect(r.flipEligible).toBe(false);
+    expect(r.flipEligible).toBe(true);
     expect(r.bodyShopSoftMention).toBe(true);
     expect(r.conviniIntensity).toBe('medium');
   });

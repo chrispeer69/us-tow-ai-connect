@@ -74,7 +74,12 @@ describe('collision + glass never reach a mechanical flip', () => {
   });
 });
 
-describe('body + glass jobs get a soft referral, never a flip offer', () => {
+// 2026-08-18 — Chris opened the body-shop pitch. These tests previously locked
+// in "never an offer", which was correct while we had nowhere to send a
+// collision job and stopped being correct when Excite Collision and T&C went
+// live. What must NOT change is the rest of the guardrail: one ask, no price,
+// no discount, no insurance advice, and no ladder.
+describe('body + glass jobs get ONE soft offer, and never a price or a ladder', () => {
   const base: any = {
     repName: 'Emily', companyName: 'Roadside Towing', motorClub: '',
     callbackNumber: '+16145550123', conviniLink: 'https://convini.live',
@@ -89,8 +94,8 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
   it('mentions our body shops in the present tense on a live collision job', () => {
     const body = renderCallBodyB({ ...base });
     expect(body).toContain('that sounds like auto body work');
-    expect(body).toContain('commitment with the insurance company to go to the current shop listed');
-    expect(body).toContain('If we can ever be of help let us know');
+    expect(body).toContain('the insurance company may have already lined that shop up');
+    expect(body).toContain('Would you like me to send it to one of ours instead');
     expect(body).toContain('Alpha Collision');
     expect(body).toContain('Westerville Body');
     expect(body).toContain("we own our own body shops");
@@ -106,32 +111,57 @@ describe('body + glass jobs get a soft referral, never a flip offer', () => {
     expect(body).not.toContain('auto body work');
   });
 
-  it('is a referral, not an offer — no discount, no diagnostic, no switch ask', () => {
+  it('asks once, and never carries mechanical offer terms onto a body job', () => {
     const body = renderCallBodyB({ ...base });
-    // Assert the OFFER is absent, not the words — the guard instruction itself
-    // legitimately names the things the agent must not say.
+    // The ask exists now...
+    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // ...but none of the mechanical ladder comes with it. These are the terms of
+    // a DIFFERENT offer and quoting them on body work invents a commitment.
     expect(body).not.toContain('one quick option and then');
     expect(body).not.toContain('10 percent off the repair');
-    expect(body).not.toContain("can I ask what's taking you to");
     expect(body).not.toContain('50 dollar credit');
-    expect(body).toContain('This is NOT an offer');
+    expect(body).not.toContain('free visual mechanical diagnostic');
+    expect(body).not.toContain('179');
+    // And there is no ladder: offer 2's reframe question must not appear.
+    expect(body).not.toContain("can I ask what's taking you to");
+    expect(body).toContain('There is no second offer on a body job');
   });
 
-  it('reaffirms the original destination so there is nothing to decline', () => {
+  it('refuses to advise on insurance, and gates the accept', () => {
+    const body = renderCallBodyB({ ...base });
+    expect(body).toContain('NEVER tell the customer what their insurance policy does or does not allow');
+    expect(body).toContain('GATE');
+    // A hedge is a no. A body job changed on a shrug has to be unwound.
+    expect(body).toContain('is a NO');
+  });
+
+  it('still reaffirms both legs when the offer is declined', () => {
     const body = renderCallBodyB({ ...base });
     // 2.3 — both legs are named so the customer does not think the truck is
-    // heading to the body shop instead of to them.
+    // heading to the body shop instead of to them. Chris's 2026-08-12 line.
+    //
+    // It moved on 08-18: it used to sit inside the mention, which was right
+    // while there was nothing to decline. With a real question in front of it,
+    // stating the plan BEFORE the ask pre-empts the answer, so it now sits on
+    // the decline path. The reassurance must survive the move.
     expect(body).toContain('come to you at');
     expect(body).toContain('shortly');
     expect(body).toContain('Crash Champions');
+    // ...and it must come AFTER the ask, not before it.
+    expect(body.indexOf('Would you like me to send it')).toBeLessThan(
+      body.indexOf('come to you at'),
+    );
   });
 
-  it('keeps the future-tense wording for an ordinary body-shop delivery', () => {
+  it('makes the same single ask on an ordinary body-shop delivery', () => {
     const body = renderCallBodyB({
       ...base,
       issue: 'a mechanical issue',
       issueSubcategory: 'mechanical',
     });
-    expect(body).toContain('If we can ever be of help down the road');
+    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // No live-collision framing on a job that is not one, and no insurance
+    // line when there is no insurer in the picture.
+    expect(body).not.toContain('that sounds like auto body work');
   });
 });

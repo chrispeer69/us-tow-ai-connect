@@ -1,0 +1,8 @@
+{
+  "voicemail_option": {
+    "action": {
+      "type": "static_text",
+      "text": "Hi {{user_name}}, this is Roadside Towing, sorry we could not reach you directly. Please give us a callback if you can."
+    }
+  }
+}

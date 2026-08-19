@@ -99,7 +99,12 @@ export function mapRetellStatus(input: {
     if (reason === 'user_hangup' || reason === 'agent_hangup' || reason === 'call_transfer') {
       return 'completed';
     }
-    if (reason === 'voicemail') return 'no_answer';
+    // Retell's actual reason string is `voicemail_reached`, not `voicemail`.
+    // This tested only the short form, so every voicemail fell through to the
+    // `call_status === 'ended'` branch below and was recorded as COMPLETED — a
+    // finished call that nobody answered. It therefore never entered the retry
+    // path: on 2026-08-18 that was 17 of 91 dials silently written off.
+    if (reason === 'voicemail' || reason === 'voicemail_reached') return 'no_answer';
     if (reason === 'dial_busy') return 'busy';
     if (reason === 'dial_no_answer') return 'no_answer';
     if (reason === 'dial_failed' || reason === 'error') return 'failed';

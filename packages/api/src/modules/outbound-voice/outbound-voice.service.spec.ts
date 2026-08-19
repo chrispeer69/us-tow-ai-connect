@@ -157,7 +157,10 @@ function createSvc(db: any) {
 /** Session 77 — a flip win also buzzes registered manager devices. Stubbed so
  *  the win path is exercised end to end rather than short-circuited. */
 function makePush() {
-  return { sendFlipWin: vi.fn().mockResolvedValue(undefined) };
+  return {
+    sendFlipWin: vi.fn().mockResolvedValue(undefined),
+    sendToTenantAdmins: vi.fn().mockResolvedValue({ sent: 1, removed: 0, skipped: false }),
+  };
 }
 
 describe('OutboundVoiceService', () => {
@@ -401,6 +404,102 @@ describe('OutboundVoiceService', () => {
       expect.objectContaining({
         body: expect.stringContaining('no answer / voicemail'),
       }),
+    );
+  });
+
+  // Session 77 — Chris, 2026-08-18: three tries, then a human.
+  //
+  // The retry branch returns early while attempts remain, so the alert path is
+  // only reachable once dialling is genuinely finished. These two tests pin both
+  // halves of that: silence while there are tries left, and a push AND a text
+  // once there are not.
+  it('retries a voicemail instead of alerting, while attempts remain', async () => {
+    const { db } = makeFakeDb(
+      [{
+        id: 'voice-vm',
+        tenantId: TENANT_ID,
+        status: 'in_progress',
+        attempts: 1,
+        maxAttempts: 3,
+        toPhone: '+15551230000',
+        toName: 'Pat',
+        thinkrrCallId: null,
+        retellCallId: 'retell-vm',
+      }],
+      { managerPhones: ['+15557654321'] },
+    );
+    const sms = { sendSms: vi.fn(async () => ({ id: 's', status: 'sent' })) };
+    const push = makePush();
+    const thinkrr = new ThinkrrOutboundClient();
+    const retell = new RetellOutboundClient();
+    const provider = {
+      providerName: 'retell',
+      placeCall: vi.fn(async () => null),
+      cancelCall: vi.fn(async () => false),
+    } as any;
+    const svc = new OutboundVoiceService(
+      db as never, thinkrr, retell, provider, sms as never, push as never,
+    );
+
+    const res = await svc.handleProviderWebhookEvent({
+      provider: 'retell',
+      callId: 'retell-vm',
+      status: 'no_answer',
+      error: 'voicemail_reached',
+    });
+
+    // Re-queued for another go, and nobody disturbed.
+    expect(res.newStatus).toBe('queued');
+    expect(push.sendToTenantAdmins).not.toHaveBeenCalled();
+    expect(sms.sendSms).not.toHaveBeenCalled();
+  });
+
+  it('buzzes and texts the admins once the last attempt is spent', async () => {
+    const { db } = makeFakeDb(
+      [{
+        id: 'voice-done',
+        tenantId: TENANT_ID,
+        status: 'in_progress',
+        attempts: 3,
+        maxAttempts: 3,
+        toPhone: '+15551230000',
+        toName: 'Pat',
+        thinkrrCallId: null,
+        retellCallId: 'retell-done',
+      }],
+      { managerPhones: ['+15557654321'] },
+    );
+    const sms = { sendSms: vi.fn(async () => ({ id: 's', status: 'sent' })) };
+    const push = makePush();
+    const thinkrr = new ThinkrrOutboundClient();
+    const retell = new RetellOutboundClient();
+    const provider = {
+      providerName: 'retell',
+      placeCall: vi.fn(async () => null),
+      cancelCall: vi.fn(async () => false),
+    } as any;
+    const svc = new OutboundVoiceService(
+      db as never, thinkrr, retell, provider, sms as never, push as never,
+    );
+
+    await svc.handleProviderWebhookEvent({
+      provider: 'retell',
+      callId: 'retell-done',
+      status: 'no_answer',
+      error: 'voicemail_reached',
+    });
+
+    // The phone buzzes — that is the half that did not exist before.
+    expect(push.sendToTenantAdmins).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({
+        title: 'Needs a human call',
+        body: expect.stringContaining('Call them and try the flip'),
+      }),
+    );
+    // ...and the text still goes, so an unregistered device is not a silent gap.
+    expect(sms.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining('AI CALL NEEDS ATTENTION') }),
     );
   });
 
