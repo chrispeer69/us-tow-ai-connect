@@ -17,6 +17,13 @@ export interface PushPayload {
   url?: string;
   tag?: string;
   jobId?: string;
+  /**
+   * What sort of alert this is, so the service worker can give a win and a
+   * "nobody answered" different vibration rhythms. A win should not feel like
+   * every other buzz on the phone, and an unanswered call should not
+   * impersonate a win. See public/flip-sw.js.
+   */
+  kind?: 'win' | 'attention';
 }
 
 export interface SendResult {
@@ -332,6 +339,7 @@ export class PushService {
           .filter(Boolean)
           .join(' · '),
         url: '/m/flip',
+        kind: 'win',
         // Dedupes a redelivery: a retry should replace the notification rather
         // than stack a second one for the same win.
         tag: `flip-win-${win.id}`,

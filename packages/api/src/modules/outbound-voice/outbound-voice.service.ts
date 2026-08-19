@@ -1056,6 +1056,7 @@ export class OutboundVoiceService {
         `${input.customerName || 'Customer'} — ${input.customerPhone || 'no phone on job'}. ` +
         `${input.reason}. Call them and try the flip.`,
       url: '/m/flip',
+      kind: 'attention',
       // One notification per job, so a redelivery replaces rather than stacks.
       tag: `needs-human-${input.jobId ?? input.customerPhone ?? 'unknown'}`,
     });

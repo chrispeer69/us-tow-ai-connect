@@ -28,6 +28,7 @@ import { api } from '@/lib/utils';
 
 const REFRESH_MS = 60_000;
 const SEEN_KEY = 'flip_seen_win_ids';
+const DISMISSED_KEY = 'flip_dismissed_attention_ids';
 const WINS_ONLY_KEY = 'flip_wins_only';
 
 interface FlipActivityRow {
@@ -50,8 +51,23 @@ interface FlipActivityRow {
   callTime: string;
 }
 
+/** A job the dialler gave up on. Comes from outbound_calls, not the call log:
+ *  an unanswered call has no meaningful log row, and the fact that matters —
+ *  "we tried three times and stopped" — lives on the attempt counter. */
+interface NeedsAttentionRow {
+  id: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  attempts: number;
+  maxAttempts: number;
+  status: string;
+  error: string | null;
+  lastTriedAt: string;
+}
+
 interface FlipActivityResponse {
   items: FlipActivityRow[];
+  needsAttention?: NeedsAttentionRow[];
   today: { total: number; wins: number; losses: number; skipped: number; winRate: number };
 }
 
@@ -140,8 +156,15 @@ export default function FlipBoard() {
   const [pushState, setPushState] = useState<PushState>('idle');
   const [pushNote, setPushNote] = useState<string | null>(null);
 
+  // Dismissals are per-device and sticky: an alert you have already acted on
+  // must not reappear on the next 60-second refresh, or the board trains you to
+  // ignore it.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [attentionPopup, setAttentionPopup] = useState<NeedsAttentionRow | null>(null);
+
   const busyRef = useRef(false);
   const seenRef = useRef<Set<string> | null>(null);
+  const dismissedRef = useRef<Set<string>>(new Set());
 
   // Restore preferences before the first fetch resolves.
   useEffect(() => {
@@ -149,6 +172,10 @@ export default function FlipBoard() {
       setWinsOnly(localStorage.getItem(WINS_ONLY_KEY) === '1');
       const raw = localStorage.getItem(SEEN_KEY);
       seenRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+      const rawD = localStorage.getItem(DISMISSED_KEY);
+      const restored = new Set(rawD ? (JSON.parse(rawD) as string[]) : []);
+      setDismissed(restored);
+      dismissedRef.current = restored;
     } catch {
       seenRef.current = new Set();
     }
@@ -226,6 +253,14 @@ export default function FlipBoard() {
           /* private mode — alerting still works for this session */
         }
         if (!firstLoad && fresh.length > 0) announce(fresh[0]);
+      }
+
+      // Pop the newest unanswered job that has not already been dismissed on
+      // this device. Same rule as wins: never surprise someone with history on
+      // the first load.
+      const pending = (next.needsAttention ?? []).filter((a) => !dismissedRef.current.has(a.id));
+      if (data !== null && pending.length > 0) {
+        setAttentionPopup((cur) => cur ?? pending[0]);
       }
 
       setData(next);
@@ -345,6 +380,21 @@ export default function FlipBoard() {
     }
   }, []);
 
+  const dismissAttention = useCallback((id: string) => {
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      dismissedRef.current = next;
+      try {
+        localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next].slice(-300)));
+      } catch {
+        /* private mode — it stays dismissed for this session at least */
+      }
+      return next;
+    });
+    setAttentionPopup(null);
+  }, []);
+
   const toggleWinsOnly = () => {
     setWinsOnly((v) => {
       const next = !v;
@@ -359,10 +409,21 @@ export default function FlipBoard() {
 
   const today = data?.today;
   const items = (data?.items ?? []).filter((r) => !winsOnly || bucketOutcome(r) === 'WIN');
+  // Hidden in wins-only mode: that mode means "show me the good news".
+  const liveAttention = winsOnly
+    ? []
+    : (data?.needsAttention ?? []).filter((a) => !dismissed.has(a.id));
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 pt-4 text-white">
       {popup && <WinPopup row={popup} onClose={() => setPopup(null)} />}
+      {attentionPopup && (
+        <AttentionPopup
+          row={attentionPopup}
+          onDismiss={() => dismissAttention(attentionPopup.id)}
+          onLater={() => setAttentionPopup(null)}
+        />
+      )}
 
       <header className="sticky top-0 z-10 -mx-4 border-b border-slate-800 bg-[#050a18] px-4 pb-3 pt-1">
         <div className="flex items-baseline justify-between">
@@ -450,6 +511,17 @@ export default function FlipBoard() {
         </p>
       )}
 
+      {/* Unanswered jobs sit ABOVE everything, in red. These are the only rows on
+          this screen that need someone to do something right now, so they are
+          not mixed into the history below. */}
+      {liveAttention.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {liveAttention.map((a) => (
+            <AttentionCard key={a.id} row={a} onDismiss={() => dismissAttention(a.id)} />
+          ))}
+        </div>
+      )}
+
       <div className="mt-3 space-y-2">
         {items.length === 0 && !busy && (
           <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-10 text-center text-sm text-slate-400">
@@ -500,6 +572,118 @@ function WinPopup({ row, onClose }: { row: FlipActivityRow; onClose: () => void 
       </div>
     </div>
   );
+}
+
+/**
+ * The unanswered-job bubble. Red, blocking-ish, and explicit about the ask:
+ * three dials failed and a person needs to pick up the phone.
+ *
+ * Two ways out, deliberately. "Dismiss" is permanent for this device — the job
+ * has been dealt with. "Later" just closes the bubble and leaves the red card
+ * on the board, because a bubble you cannot postpone is a bubble you learn to
+ * swat without reading.
+ */
+function AttentionPopup({
+  row,
+  onDismiss,
+  onLater,
+}: {
+  row: NeedsAttentionRow;
+  onDismiss: () => void;
+  onLater: () => void;
+}) {
+  return (
+    <div className="fixed inset-x-0 top-0 z-50 flex justify-center px-3 pt-3">
+      <div className="w-full max-w-md rounded-xl border-2 border-rose-400 bg-rose-950 p-4 shadow-2xl">
+        <div className="text-xs font-bold uppercase tracking-wider text-rose-300">
+          Call did not complete
+        </div>
+        <div className="mt-1 truncate text-lg font-semibold text-white">
+          {row.customerName || 'Customer'}
+        </div>
+        {row.customerPhone && (
+          <a
+            href={`tel:${row.customerPhone}`}
+            className="mt-1 inline-block text-base font-semibold text-rose-100 underline"
+          >
+            {row.customerPhone}
+          </a>
+        )}
+        <div className="mt-1 text-xs text-rose-200">
+          {row.attempts} of {row.maxAttempts} attempts · {describeAttentionReason(row)}
+        </div>
+        <p className="mt-2 text-sm text-rose-100">
+          Needs a human call — confirm the tow and try the flip.
+        </p>
+        <div className="mt-3 flex gap-2">
+          {row.customerPhone && (
+            <a
+              href={`tel:${row.customerPhone}`}
+              className="flex min-h-12 flex-1 items-center justify-center rounded-lg bg-rose-500 text-sm font-bold text-white active:bg-rose-400"
+            >
+              Call now
+            </a>
+          )}
+          <button
+            onClick={onLater}
+            className="min-h-12 rounded-lg border border-rose-400 px-4 text-sm font-medium text-rose-100 active:bg-rose-900"
+          >
+            Later
+          </button>
+          <button
+            onClick={onDismiss}
+            className="min-h-12 rounded-lg border border-rose-400 px-4 text-sm font-medium text-rose-100 active:bg-rose-900"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The red row on the board. Stays until dismissed. */
+function AttentionCard({ row, onDismiss }: { row: NeedsAttentionRow; onDismiss: () => void }) {
+  return (
+    <article className="rounded-xl border-2 border-rose-500 bg-rose-500/15 px-3 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-300">
+            Call did not complete
+          </div>
+          <div className="truncate text-sm font-semibold text-white">
+            {row.customerName || 'Customer'}
+          </div>
+          {row.customerPhone && (
+            <a
+              href={`tel:${row.customerPhone}`}
+              className="text-sm font-medium text-rose-200 underline"
+            >
+              {row.customerPhone}
+            </a>
+          )}
+          <div className="mt-0.5 text-[11px] text-rose-200/80">
+            {row.attempts}/{row.maxAttempts} attempts · {describeAttentionReason(row)} ·{' '}
+            {timeAgo(row.lastTriedAt)}
+          </div>
+        </div>
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="min-h-11 min-w-11 shrink-0 rounded-lg bg-rose-900 text-lg font-bold text-rose-200 active:bg-rose-800"
+        >
+          ✕
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function describeAttentionReason(row: NeedsAttentionRow): string {
+  if (row.status === 'no_answer') return 'no answer / voicemail';
+  if (row.status === 'busy') return 'line busy';
+  if (row.status === 'rejected') return 'call rejected';
+  return 'call failed';
 }
 
 function StatTile({

@@ -2,7 +2,7 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { Inject } from '@nestjs/common';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs, tenants } from '../../db/schema';
+import { outboundCallLogs, outboundCalls, tenants } from '../../db/schema';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 
 /**
@@ -93,10 +93,51 @@ export class FlipActivityController {
     const todaySkipped = today.filter((r) => bucketOutcome(r) === 'SKIPPED').length;
     const todayLosses = today.length - todayWins - todaySkipped;
 
+    // Session 77 — Chris, 2026-08-19: "when a call does not complete, alert the
+    // cell phone, make that job red and pop it up in a bubble so we know we need
+    // to intervene."
+    //
+    // This cannot come from outbound_call_logs. A call nobody answered has no
+    // meaningful log row — no duration, no transcript, nothing to show — and the
+    // fact that MATTERS ("we dialled three times and gave up") lives on
+    // outbound_calls.attempts. So it is queried separately and returned
+    // alongside, rather than trying to squeeze it into the activity list.
+    //
+    // Scoped to the tenant's last 24 hours: an unanswered job from last week is
+    // history, not something anyone is going to intervene on now.
+    const needsAttention = await this.db
+      .select({
+        id: outboundCalls.id,
+        customerName: outboundCalls.toName,
+        customerPhone: outboundCalls.toPhone,
+        attempts: outboundCalls.attempts,
+        maxAttempts: outboundCalls.maxAttempts,
+        status: outboundCalls.status,
+        error: outboundCalls.error,
+        lastTriedAt: outboundCalls.updatedAt,
+      })
+      .from(outboundCalls)
+      .where(
+        and(
+          eq(outboundCalls.tenantId, req.tenantId),
+          // Terminal-and-unreachable only. 'failed' is included because a dial
+          // that never connected is the same problem for a dispatcher as one
+          // that rang out.
+          sql`${outboundCalls.status} IN ('no_answer', 'busy', 'rejected', 'failed')`,
+          // Only once the automated attempts are genuinely spent — otherwise the
+          // board would light up red for a job that is about to be redialled.
+          sql`${outboundCalls.attempts} >= ${outboundCalls.maxAttempts}`,
+          sql`${outboundCalls.updatedAt} > NOW() - INTERVAL '24 hours'`,
+        ),
+      )
+      .orderBy(desc(outboundCalls.updatedAt))
+      .limit(25);
+
     return {
       status: 'success',
       data: {
         items: filtered,
+        needsAttention,
         limit: lim,
         offset: off,
         today: {
