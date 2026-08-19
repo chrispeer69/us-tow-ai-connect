@@ -86,10 +86,31 @@ export function extractRetellAnalysis(
  * `call_status` and `disconnection_reason` carry the mapping on their own — which
  * they can, because `disconnection_reason` is only ever set on a finished call.
  */
+/**
+ * A call this short never reached a person, whatever the provider called it.
+ *
+ * 2026-08-19: four of the morning's ten dials were answering services — the
+ * screening kind that says "record your name and reason for calling and I'll
+ * see if this person is available". Retell does not flag those as voicemail
+ * (they genuinely are a live human voice), the agent correctly gives up, and
+ * the hangup arrives as `agent_hangup`. That mapped to COMPLETED regardless of
+ * length, so a 4-second call to a machine was filed as a finished conversation
+ * and never redialled.
+ *
+ * 30s is chosen from the data rather than taste: on 2026-08-18 no call under 40s
+ * ever produced an offer, and the real conversations that morning ran 126s,
+ * 217s and 252s. Nothing legitimate finishes in half a minute — the agent has
+ * not even confirmed the pickup address by then.
+ */
+const NOT_REALLY_CONNECTED_SECONDS = 30;
+
 export function mapRetellStatus(input: {
   event?: 'call_started' | 'call_ended' | 'call_analyzed';
   call_status?: string;
   disconnection_reason?: string;
+  /** Optional: when present, an implausibly short "completed" call is treated
+   *  as never connected so it re-enters the retry ladder. */
+  duration_seconds?: number | null;
 }): string {
   const { event, call_status: callStatus } = input;
   if (event === 'call_started') return 'in_progress';
@@ -97,6 +118,18 @@ export function mapRetellStatus(input: {
   const reason = input.disconnection_reason?.toLowerCase();
   if (event === 'call_ended' || event === 'call_analyzed' || !event) {
     if (reason === 'user_hangup' || reason === 'agent_hangup' || reason === 'call_transfer') {
+      // A hangup this fast is a machine, a wrong number, or a screening service
+      // — not a conversation. Send it back round the retry ladder instead of
+      // filing it as done. call_transfer is exempt: a transfer IS the outcome,
+      // however quickly it happens.
+      const secs = input.duration_seconds;
+      if (
+        reason !== 'call_transfer' &&
+        typeof secs === 'number' &&
+        secs < NOT_REALLY_CONNECTED_SECONDS
+      ) {
+        return 'no_answer';
+      }
       return 'completed';
     }
     // Retell's actual reason string is `voicemail_reached`, not `voicemail`.

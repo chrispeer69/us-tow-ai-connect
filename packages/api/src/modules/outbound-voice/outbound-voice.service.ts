@@ -547,6 +547,8 @@ export class OutboundVoiceService {
         status: mapRetellStatus({
           call_status: snapshot.call_status,
           disconnection_reason: snapshot.disconnection_reason,
+          duration_seconds:
+            snapshot.duration_ms != null ? Math.round(snapshot.duration_ms / 1000) : null,
         }),
         durationSeconds:
           snapshot.duration_ms != null ? Math.round(snapshot.duration_ms / 1000) : null,

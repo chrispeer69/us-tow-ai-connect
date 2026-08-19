@@ -118,6 +118,8 @@ export class RetellWebhookController {
         event: body.event,
         call_status: body.call?.call_status,
         disconnection_reason: body.call?.disconnection_reason,
+        duration_seconds:
+          body.call.duration_ms != null ? Math.round(body.call.duration_ms / 1000) : null,
       }),
       durationSeconds: body.call.duration_ms != null
         ? Math.round(body.call.duration_ms / 1000)
