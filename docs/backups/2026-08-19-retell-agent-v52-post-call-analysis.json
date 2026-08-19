@@ -1,0 +1,127 @@
+[
+  {
+    "type": "boolean",
+    "name": "flip_eligible",
+    "description": "TRUE only when a shop flip was genuinely appropriate: the vehicle needed repair and was heading to a shop that is not ours. Applies to BOTH competitor_repair and car_repair destinations. FALSE for lockout, fuel, jump start, single flat tire and winch-out-only calls; for vehicles going to a residence; for vehicles already heading to one of our shops; and for AAA-branded destinations."
+  },
+  {
+    "name": "flip_outcome",
+    "description": "Outcome of the flip attempt. SUCCESS if customer redirected to our shop, FAILED if all 3 offers declined, NOT_ATTEMPTED if destination was not competitor_repair.",
+    "type": "enum",
+    "choices": [
+      "SUCCESS",
+      "FAILED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "name": "offer_1_result",
+    "description": "Result of the FIRST flip offer — the agent offering one of OUR shops instead of the customer's chosen destination. It takes one of three forms and ALL THREE COUNT:\n(a) MECHANICAL: names our partner shops with distances and offers the free VIP visual mechanical diagnostic (inspection up to an hour, a $179 value) plus up to 10 percent off parts and labor, then asks whether one of those would work instead.\n(b) TIRE: a free brake inspection, tire condition and fluids check plus 10 percent off the NEXT visit.\n(c) BODY SHOP: \"we own our own body shops here in the area — would you like me to send it to one of ours instead, or would you rather keep the shop you have?\" This is a real offer even though it names no price or discount. Body work carries no quoted terms ON PURPOSE.\nACCEPTED if the customer agrees to switch to one of ours. DECLINED if they say no, or say they will keep their own shop. NOT_ATTEMPTED ONLY if the agent never asked to switch the destination at all.",
+    "type": "enum",
+    "choices": [
+      "ACCEPTED",
+      "DECLINED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "name": "offer_2_result",
+    "description": "Result of the SECOND flip offer. This is NOT a repeat of offer 1 and it is NOT an \"urgency\" pitch. Offer 2 is the agent responding to a decline by asking WHY — \"Totally fair, can I ask what is taking you to that shop?\" — and/or following up with the reassurance re-ask: that our shop is certified, gives a written estimate before any work starts, that the free diagnostic and discount still stand, and \"Want me to switch it?\". Mark ACCEPTED if the customer then agrees to switch, DECLINED if they refuse again or decline to answer, and NOT_ATTEMPTED only if the agent went straight to the close after the first decline without asking the question or re-offering.",
+    "type": "enum",
+    "choices": [
+      "ACCEPTED",
+      "DECLINED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "name": "offer_3_result",
+    "description": "Result of the THIRD and final flip offer: the agent offers a 50 dollar credit on the repair on top of the discount and offers to hold a priority slot at our shop, then asks to switch the drop-off. ACCEPTED if they agree, DECLINED if they refuse, NOT_ATTEMPTED if the agent never got this far. This one is rare — do not infer it from offer 1 or 2.",
+    "type": "enum",
+    "choices": [
+      "ACCEPTED",
+      "DECLINED",
+      "NOT_ATTEMPTED"
+    ]
+  },
+  {
+    "type": "boolean",
+    "name": "convini_link_sent",
+    "description": "Was the CONVINIcar app download link sent to the customer via SMS?"
+  },
+  {
+    "name": "convini_sell_type",
+    "description": "Type of CONVINIcar pitch used. SOFT for Scenario A, MEDIUM for Scenario B, HARD for Scenario C/D.",
+    "type": "enum",
+    "choices": [
+      "SOFT",
+      "MEDIUM",
+      "HARD"
+    ]
+  },
+  {
+    "type": "string",
+    "name": "corrections_made",
+    "description": "Free text summary of any corrections made during confirmation (e.g., pickup address, vehicle details, etc.)."
+  },
+  {
+    "type": "string",
+    "name": "nearest_our_shop",
+    "description": "Name of the nearest owned shop to the customer's destination (from dispatch data)."
+  },
+  {
+    "type": "string",
+    "name": "destination_type",
+    "description": "Where the vehicle was actually being taken. Use exactly one of: competitor_repair, car_repair, auto_body, residence, residential_unknown, our_shop, aaa_branded, unknown. competitor_repair = a named chain, franchise or dealership service centre (Firestone, Midas, a brand dealership). car_repair = an independent or unbranded local repair shop. auto_body = collision or body work. residence / residential_unknown = a home or driveway. our_shop = already one of our own shops. aaa_branded = a AAA-branded facility. unknown only when the transcript does not say."
+  },
+  {
+    "type": "string",
+    "name": "keys_and_presence",
+    "description": "Who is meeting the driver and where the keys will be, in the customer's own words. Examples: \"customer will be on scene with the keys\", \"keys left in the mailbox, customer at work\", \"neighbour has the keys\". This decides whether the truck can do the job at all, so capture it exactly as said, including anything unusual. Return an EMPTY STRING if the keys question was never asked or never answered. Never guess and never assume the customer will be present."
+  },
+  {
+    "type": "string",
+    "name": "access_notes",
+    "description": "Where the vehicle is sitting and which way it is facing, plus anything that would stop a tow truck reaching it. Use the customer's own words: \"parking lot, nose out\", \"on the curb in front of the house\", \"in an empty warehouse, nose out\", \"underground garage, low clearance\", \"narrow lane, locked gate\". Include a mentioned obstacle even if they were not asked about it. Return an EMPTY STRING if they did not say where it is parked."
+  },
+  {
+    "type": "string",
+    "name": "vehicle_condition",
+    "description": "The equipment question: tyres and whether the vehicle rolls. Record whether all four tyres are up, and if any is flat record WHICH one (\"left rear flat\", \"all four up\"). Also capture it here if the customer says the vehicle will not roll, will not steer, will not come out of park, is on a dolly, or has been in a collision. Return an EMPTY STRING if the tyre question was never asked or answered."
+  },
+  {
+    "type": "string",
+    "name": "vehicle_details",
+    "description": "Colour and drivetrain AS THE CUSTOMER GAVE THEM, not as the ticket had them — the ticket is wrong about half the time, which is why these are asked openly. Format: \"blue, rear-wheel drive\", \"white, drivetrain unknown\". If the customer says they do not know the drivetrain, write \"unknown\" for that part rather than guessing or copying the ticket: an honest unknown is useful and a wrong AWD is a damaged vehicle. Also record a corrected year/make/model here if they corrected one. EMPTY STRING if neither was answered."
+  },
+  {
+    "type": "string",
+    "name": "issue_description",
+    "description": "What the customer said is wrong with the vehicle, in their words: \"won't start, not the battery\", \"coolant leak\", \"check engine light and electric power control light\", \"was in an accident\". This is the only reliable source — the dispatch ticket says \"service request\" on almost every job. EMPTY STRING if they never described the problem."
+  },
+  {
+    "type": "string",
+    "name": "confirmed_destination",
+    "description": "Where the vehicle is ACTUALLY going, as confirmed by the customer on this call, and what kind of place it is. Fill this in whenever the customer confirms or corrects the destination, INCLUDING when it matches the ticket. It matters most when it does not: the ticket said \"AutoZone\" and the customer said a storage facility; the ticket said a repair shop and the customer said her residence. Format: \"270 Broad Street, Westerville - repair shop\" or \"her residence\". EMPTY STRING if the destination was never discussed. This is NOT the flip: leave it as the original destination if no flip was accepted."
+  },
+  {
+    "type": "string",
+    "name": "new_destination",
+    "description": "ONLY fill this when the customer ACCEPTED a flip and agreed to send the vehicle to one of our partner shops instead of their original destination. Write the exact shop name as read out on the call, e.g. \"Wayne's Auto Repair - Powell\", \"Wrench Recovery\". EMPTY STRING for every other call, including ones where an offer was made and declined, and ones where the customer said they would think about it. If you are not certain the customer gave an unambiguous yes, leave it EMPTY."
+  },
+  {
+    "type": "system-presets",
+    "name": "call_summary",
+    "description": "Write a 1-3 sentence summary of the call based on the call transcript. Should capture the important information and actions taken during the call."
+  },
+  {
+    "type": "system-presets",
+    "name": "call_successful",
+    "description": "Evaluate whether the agent had a successful call with the user. For a successful call, the agent should have a complete conversation with user, finished the task, and have not ran into technical issues, or caused user frustration. Besides, the agent was not blocked by a call screen or encountered voicemail."
+  },
+  {
+    "type": "system-presets",
+    "name": "user_sentiment",
+    "description": "Evaluate user's sentiment, mood and satisfaction level."
+  }
+]
