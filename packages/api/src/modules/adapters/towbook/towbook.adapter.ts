@@ -846,16 +846,61 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     return { success: true };
   }
 
-  /** "Users Editing: Chris Peer" → the names, or null when nobody is in it. */
+  /**
+   * "Users Editing: Chris Peer" → the names, EXCLUDING ourselves.
+   *
+   * 2026-08-19: this deferred on 100 consecutive writes with
+   * `deferred_users_editing: Chris Peer`. Towbook lists the session that has the
+   * record open, and the session that has it open is US — we just opened it. The
+   * guard was deferring to its own reflection, so the write-back could never
+   * complete a single note.
+   *
+   * The rule it protects is still right and still enforced: a human in the
+   * record wins. It just has to mean a DIFFERENT human. The logged-in user is
+   * read off the page chrome and removed from the list; if anyone else remains,
+   * we back off exactly as before.
+   *
+   * Fails CLOSED on the ambiguous case. If we cannot work out who we are, every
+   * name counts as somebody else and we defer — a missed note is cheap, writing
+   * over a dispatcher mid-edit is not.
+   */
   private async readUsersEditing(page: import('playwright').Page): Promise<string | null> {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     return page.evaluate(() => {
       const doc: any = (globalThis as any).document;
       const text = (doc.body?.innerText ?? '') as string;
+
       const m = text.match(/Users?\s+Editing\s*:?\s*([^\n\r]{1,120})/i);
       if (!m) return null;
-      const names = m[1].trim();
-      return names && !/^none$/i.test(names) ? names : null;
+      const raw = m[1].trim();
+      if (!raw || /^none$/i.test(raw)) return null;
+
+      // Who are we? Towbook renders the signed-in user in the top-right chrome,
+      // usually as "Name (Role)". Try the obvious hooks, then fall back to a
+      // "(Manager)"-style match anywhere in the header.
+      const selfFrom = (sel: string): string | null => {
+        const el = doc.querySelector(sel);
+        const t = (el?.textContent ?? '').trim();
+        return t || null;
+      };
+      const selfRaw =
+        selfFrom('#currentUserName') ||
+        selfFrom('.currentUser') ||
+        selfFrom('[class*="current-user"]') ||
+        selfFrom('[class*="userName"]') ||
+        (text.match(/([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})\s*\((?:Manager|Admin|Dispatcher|Owner)\)/) || [])[1] ||
+        null;
+
+      const norm = (v: string) => v.replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const self = selfRaw ? norm(selfRaw) : null;
+
+      const others = raw
+        .split(/[,;]+/)
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .filter((n) => !self || norm(n) !== self);
+
+      return others.length ? others.join(', ') : null;
     });
     /* eslint-enable @typescript-eslint/no-explicit-any */
   }
