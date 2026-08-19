@@ -559,13 +559,28 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
       const opened = await this.openJobModal(page, tenantId, sourceJobId);
       if (!opened.success) return opened;
 
-      // --- concurrency: a human in the record wins, always ---
+      // --- concurrency: NEVER defer. Chris, 2026-08-19: "do not defer ever —
+      // always enter notes."
+      //
+      // This used to back off whenever Towbook reported anyone in the record. It
+      // was written to protect a dispatcher mid-edit, and the protection was
+      // real but the cost was total: on 2026-08-19 it blocked 100 consecutive
+      // writes and the feature delivered nothing. A note that never lands
+      // protects nobody.
+      //
+      // The residual risk is narrow and recoverable. We read the Notes field
+      // fresh, append, and save; if a human saves the same record AFTER us their
+      // version wins and our block is lost. That is a lost note, not corrupted
+      // data — and appendAiNotes is idempotent, so a later sweep re-adds it
+      // cleanly. Nothing we do can overwrite text a human has already saved,
+      // because we only ever append to what we just read.
+      //
+      // Still logged, so "why did this note not stick?" stays answerable.
       const editors = await this.readUsersEditing(page);
       if (editors) {
         this.logger.log(
-          `[towbook] job=${sourceJobId} is being edited (${editors}) — backing off`,
+          `[towbook] job=${sourceJobId} also open by ${editors} — writing anyway (no-defer policy)`,
         );
-        return { success: false, error: `deferred_users_editing: ${editors}` };
       }
 
       // --- identity: all available evidence must agree, or we do not write ---
