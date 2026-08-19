@@ -4,10 +4,15 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
+import { Inject } from '@nestjs/common';
+import { DB_CLIENT, type DbClient } from '../../db/db.module';
+import { attentionDismissals, outboundCalls } from '../../db/schema';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 import { PushService } from './push.service';
 
@@ -25,7 +30,10 @@ import { PushService } from './push.service';
 @Controller('v1/admin/flip-push')
 @UseGuards(AdminAuthGuard)
 export class FlipPushController {
-  constructor(private readonly push: PushService) {}
+  constructor(
+    private readonly push: PushService,
+    @Inject(DB_CLIENT) private readonly db: DbClient,
+  ) {}
 
   /**
    * The client needs the VAPID public key before it can call
@@ -77,6 +85,51 @@ export class FlipPushController {
     if (!endpoint) throw new BadRequestException('endpoint is required');
     const removed = await this.push.unsubscribeAdminDevice(req.tenantId, endpoint);
     return { data: { removed } };
+  }
+
+
+  /**
+   * Mark an unanswered job as handled, for everybody.
+   *
+   * Chris, 2026-08-19, on the red card's dismiss button: "where does it go
+   * then?" It went nowhere — localStorage on one phone. For an admin team that
+   * is the wrong shape: two people see the same card, both ring the same
+   * customer, and nobody can say afterwards whether anyone did.
+   *
+   * A dismissal is now an event. It clears the card on every device on the next
+   * refresh, and the row is the record of the intervention.
+   */
+  @Post('attention/:id/dismiss')
+  async dismissAttention(
+    @Req() req: AdminRequest,
+    @Param('id') id: string,
+    @Body() body: { dismissedBy?: string; note?: string },
+  ) {
+    // Confirm the call belongs to the caller's tenant before writing anything.
+    // The id arrives from a phone; without this, one tenant could clear
+    // another's board by guessing a uuid.
+    const owned = await this.db
+      .select({ id: outboundCalls.id })
+      .from(outboundCalls)
+      .where(and(eq(outboundCalls.id, id), eq(outboundCalls.tenantId, req.tenantId)))
+      .limit(1);
+    if (owned.length === 0) {
+      throw new BadRequestException('unknown call for this tenant');
+    }
+
+    await this.db
+      .insert(attentionDismissals)
+      .values({
+        tenantId: req.tenantId,
+        outboundCallId: id,
+        dismissedBy: body?.dismissedBy?.slice(0, 80) ?? null,
+        note: body?.note?.slice(0, 500) ?? null,
+      })
+      // Two admins tapping at the same moment is one intervention, and the
+      // first one to land is the one that happened.
+      .onConflictDoNothing({ target: attentionDismissals.outboundCallId });
+
+    return { data: { ok: true } };
   }
 
   /**

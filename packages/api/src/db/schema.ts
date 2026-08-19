@@ -416,6 +416,32 @@ export const pushSubscriptions = pgTable(
 );
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 
+// ====== ATTENTION DISMISSALS (Session 77 — who called the customer back) ======
+// A dismissal of the red "call did not complete" card is an EVENT, not a UI
+// preference. It started in localStorage, which meant two admins both saw the
+// same card and both rang the same customer, and nobody could answer whether an
+// unreachable job had ever been followed up. One row per intervention: it clears
+// the card on every device, and it is the audit trail.
+export const attentionDismissals = pgTable(
+  'attention_dismissals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    // Unique: dismissing twice is not two interventions, and two admins tapping
+    // at the same moment must not produce two rows.
+    outboundCallId: uuid('outbound_call_id').notNull().unique(),
+    dismissedBy: text('dismissed_by'),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }).notNull().defaultNow(),
+    note: text('note'),
+  },
+  (t) => ({
+    tenantIdx: index('attention_dismissals_tenant_idx').on(t.tenantId, t.dismissedAt),
+  }),
+);
+export type AttentionDismissalRow = typeof attentionDismissals.$inferSelect;
+
 // ============ AI NOTE WRITES (Session 76 — dispatch write-back audit) ============
 // One row per attempt to append an AI Notes block to a job in the customer's own
 // dispatch system, successful or not, dry run or real. This writes into a live

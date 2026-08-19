@@ -2,7 +2,12 @@ import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { Inject } from '@nestjs/common';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs, outboundCalls, tenants } from '../../db/schema';
+import {
+  attentionDismissals,
+  outboundCallLogs,
+  outboundCalls,
+  tenants,
+} from '../../db/schema';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 
 /**
@@ -115,8 +120,18 @@ export class FlipActivityController {
         status: outboundCalls.status,
         error: outboundCalls.error,
         lastTriedAt: outboundCalls.updatedAt,
+        // Chris, 2026-08-19: confirming you are handling a call must not make it
+        // disappear. "That call stays red in the flow so we know it was a non-AI
+        // call, and we can review those." So a dismissal marks the row as
+        // claimed; it never removes it. The tick replaces the X, the red stays.
+        handledBy: attentionDismissals.dismissedBy,
+        handledAt: attentionDismissals.dismissedAt,
       })
       .from(outboundCalls)
+      .leftJoin(
+        attentionDismissals,
+        eq(attentionDismissals.outboundCallId, outboundCalls.id),
+      )
       .where(
         and(
           eq(outboundCalls.tenantId, req.tenantId),

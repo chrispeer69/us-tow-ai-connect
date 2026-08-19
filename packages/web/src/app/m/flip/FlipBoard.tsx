@@ -29,6 +29,7 @@ import { api } from '@/lib/utils';
 const REFRESH_MS = 60_000;
 const SEEN_KEY = 'flip_seen_win_ids';
 const DISMISSED_KEY = 'flip_dismissed_attention_ids';
+const WHO_KEY = 'flip_dismissed_by';
 const WINS_ONLY_KEY = 'flip_wins_only';
 
 interface FlipActivityRow {
@@ -63,6 +64,10 @@ interface NeedsAttentionRow {
   status: string;
   error: string | null;
   lastTriedAt: string;
+  /** Set once somebody confirms they are handling it. The row STAYS on the
+   *  board either way — the tick is a record, not a removal. */
+  handledBy: string | null;
+  handledAt: string | null;
 }
 
 interface FlipActivityResponse {
@@ -159,8 +164,14 @@ export default function FlipBoard() {
   // Dismissals are per-device and sticky: an alert you have already acted on
   // must not reappear on the next 60-second refresh, or the board trains you to
   // ignore it.
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Only the ref is read now: handled rows stay on the board, so this set exists
+  // purely to stop the popup re-firing between the tap and the server round-trip.
+  const [, setDismissed] = useState<Set<string>>(new Set());
   const [attentionPopup, setAttentionPopup] = useState<NeedsAttentionRow | null>(null);
+  // Recorded alongside a dismissal so the audit trail says who handled it.
+  // Asked for once, remembered, and never allowed to block dismissing — an
+  // unnamed record beats no record.
+  const [who, setWho] = useState('');
 
   const busyRef = useRef(false);
   const seenRef = useRef<Set<string> | null>(null);
@@ -172,6 +183,7 @@ export default function FlipBoard() {
       setWinsOnly(localStorage.getItem(WINS_ONLY_KEY) === '1');
       const raw = localStorage.getItem(SEEN_KEY);
       seenRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+      setWho(localStorage.getItem(WHO_KEY) ?? '');
       const rawD = localStorage.getItem(DISMISSED_KEY);
       const restored = new Set(rawD ? (JSON.parse(rawD) as string[]) : []);
       setDismissed(restored);
@@ -258,7 +270,9 @@ export default function FlipBoard() {
       // Pop the newest unanswered job that has not already been dismissed on
       // this device. Same rule as wins: never surprise someone with history on
       // the first load.
-      const pending = (next.needsAttention ?? []).filter((a) => !dismissedRef.current.has(a.id));
+      const pending = (next.needsAttention ?? []).filter(
+        (a) => !a.handledBy && !a.handledAt && !dismissedRef.current.has(a.id),
+      );
       if (data !== null && pending.length > 0) {
         setAttentionPopup((cur) => cur ?? pending[0]);
       }
@@ -380,20 +394,59 @@ export default function FlipBoard() {
     }
   }, []);
 
-  const dismissAttention = useCallback((id: string) => {
-    setDismissed((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      dismissedRef.current = next;
-      try {
-        localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next].slice(-300)));
-      } catch {
-        /* private mode — it stays dismissed for this session at least */
-      }
-      return next;
-    });
-    setAttentionPopup(null);
-  }, []);
+  /**
+   * Dismissing is a TEAM action, not a local preference.
+   *
+   * Chris, 2026-08-19: "when you click on the red x where does it go then?" It
+   * used to go nowhere but this phone's localStorage, which meant two admins
+   * both saw the card, both rang the same customer, and nobody could say
+   * afterwards whether anyone had.
+   *
+   * The card is hidden locally FIRST so the tap feels instant, then the server
+   * is told. If that call fails the card comes back on the next refresh, which
+   * is the right failure: an unhandled job reappearing is recoverable, one that
+   * silently vanished for everyone is not.
+   */
+  const dismissAttention = useCallback(
+    (id: string) => {
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        dismissedRef.current = next;
+        try {
+          localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next].slice(-300)));
+        } catch {
+          /* private mode — still hidden for this session */
+        }
+        return next;
+      });
+      setAttentionPopup(null);
+
+      void api(`/v1/admin/flip-push/attention/${encodeURIComponent(id)}/dismiss`, {
+        method: 'POST',
+        json: { dismissedBy: who || undefined },
+      }).catch((err) => {
+        setPushNote(
+          `Could not clear that for the team (${(err as Error).message}). It will come back on the next refresh.`,
+        );
+        // Drop the local hide too, so what is on screen matches what the server
+        // believes. A card that is hidden here and live everywhere else is the
+        // worst of both.
+        setDismissed((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          dismissedRef.current = next;
+          try {
+            localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next]));
+          } catch {
+            /* ignore */
+          }
+          return next;
+        });
+      });
+    },
+    [who],
+  );
 
   const toggleWinsOnly = () => {
     setWinsOnly((v) => {
@@ -410,9 +463,11 @@ export default function FlipBoard() {
   const today = data?.today;
   const items = (data?.items ?? []).filter((r) => !winsOnly || bucketOutcome(r) === 'WIN');
   // Hidden in wins-only mode: that mode means "show me the good news".
-  const liveAttention = winsOnly
-    ? []
-    : (data?.needsAttention ?? []).filter((a) => !dismissed.has(a.id));
+  // Handled rows are NOT filtered out. Chris, 2026-08-19: "that call stays red
+  // in the flow so we know it was a non-AI call, and we can review those." The
+  // local `dismissed` set only suppresses the POPUP, so confirming feels
+  // instant before the server round-trip lands.
+  const liveAttention = winsOnly ? [] : (data?.needsAttention ?? []);
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 pt-4 text-white">
@@ -478,7 +533,10 @@ export default function FlipBoard() {
 
         {pushState === 'on' && (
           <div className="mt-2 flex items-center gap-2">
-            <span className="flex-1 rounded-lg border border-emerald-600 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200">
+            {/* Sky, not green. "WINS are always Green" (Chris, 2026-08-19) —
+                a settings confirmation is not a win, and if green ever means
+                two things it stops meaning anything at a glance. */}
+            <span className="flex-1 rounded-lg border border-sky-600 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-200">
               ✓ Alerts on — this phone will buzz on a win, even locked
             </span>
             <button
@@ -516,8 +574,31 @@ export default function FlipBoard() {
           not mixed into the history below. */}
       {liveAttention.length > 0 && (
         <div className="mt-3 space-y-2">
+          {/* Asked once, remembered, and never required. The audit trail is more
+              useful with a name on it, but an anonymous record of "somebody
+              called this customer" still beats no record at all. */}
+          {!who && liveAttention.some((a) => !a.handledBy && !a.handledAt) && (
+            <input
+              value={who}
+              onChange={(e) => {
+                setWho(e.target.value);
+                try {
+                  localStorage.setItem(WHO_KEY, e.target.value);
+                } catch {
+                  /* ignore */
+                }
+              }}
+              placeholder="Your name (so we know who handled it)"
+              className="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white placeholder:text-slate-500"
+            />
+          )}
           {liveAttention.map((a) => (
-            <AttentionCard key={a.id} row={a} onDismiss={() => dismissAttention(a.id)} />
+            <AttentionCard
+              key={a.id}
+              row={a}
+              canName={Boolean(who)}
+              onHandle={() => dismissAttention(a.id)}
+            />
           ))}
         </div>
       )}
@@ -632,9 +713,9 @@ function AttentionPopup({
           </button>
           <button
             onClick={onDismiss}
-            className="min-h-12 rounded-lg border border-rose-400 px-4 text-sm font-medium text-rose-100 active:bg-rose-900"
+            className="min-h-12 rounded-lg border border-rose-400 px-4 text-sm font-semibold text-rose-100 active:bg-rose-900"
           >
-            Dismiss
+            I&apos;ve got it
           </button>
         </div>
       </div>
@@ -642,14 +723,38 @@ function AttentionPopup({
   );
 }
 
-/** The red row on the board. Stays until dismissed. */
-function AttentionCard({ row, onDismiss }: { row: NeedsAttentionRow; onDismiss: () => void }) {
+/**
+ * The red row. It NEVER leaves the board.
+ *
+ * Chris, 2026-08-19: "that call stays red in the flow so we know it was a non-AI
+ * call, and we can review those." So confirming does not remove anything — the
+ * X becomes a tick, and the tick carries the name of whoever took it.
+ *
+ * Red is the signal that a human, not the agent, closed this job. That is the
+ * whole point of keeping it visible: it is the set of calls the AI could not
+ * complete, and it is reviewable precisely because nothing was cleared away.
+ */
+function AttentionCard({
+  row,
+  onHandle,
+  canName,
+}: {
+  row: NeedsAttentionRow;
+  onHandle: () => void;
+  canName: boolean;
+}) {
+  const handled = Boolean(row.handledBy || row.handledAt);
+
   return (
-    <article className="rounded-xl border-2 border-rose-500 bg-rose-500/15 px-3 py-3">
+    <article
+      className={`rounded-xl border-2 px-3 py-3 ${
+        handled ? 'border-rose-700 bg-rose-500/10' : 'border-rose-500 bg-rose-500/15'
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[11px] font-bold uppercase tracking-wide text-rose-300">
-            Call did not complete
+            {handled ? 'Handled by a person' : 'Call did not complete'}
           </div>
           <div className="truncate text-sm font-semibold text-white">
             {row.customerName || 'Customer'}
@@ -666,14 +771,39 @@ function AttentionCard({ row, onDismiss }: { row: NeedsAttentionRow; onDismiss: 
             {row.attempts}/{row.maxAttempts} attempts · {describeAttentionReason(row)} ·{' '}
             {timeAgo(row.lastTriedAt)}
           </div>
+          {/* Chris, 2026-08-19: "WINS are always Green". So a handled call is
+              NOT green, however tempting a tick makes it — green on this board
+              means the flip was won, and nothing else. A human rescuing an
+              unanswered job is a good outcome, but it is not a win, and two
+              different things must not share the one colour that carries
+              meaning at a glance. Amber: resolved, not won. */}
+          {handled && (
+            <div className="mt-1 text-[11px] font-semibold text-amber-300">
+              ✓ {row.handledBy?.trim() || 'Handled'}
+              {row.handledAt ? ` · ${timeAgo(row.handledAt)}` : ''}
+            </div>
+          )}
         </div>
-        <button
-          onClick={onDismiss}
-          aria-label="Dismiss"
-          className="min-h-11 min-w-11 shrink-0 rounded-lg bg-rose-900 text-lg font-bold text-rose-200 active:bg-rose-800"
-        >
-          ✕
-        </button>
+
+        {handled ? (
+          // Not a button any more: there is nothing left to do, and a tappable
+          // tick invites someone to "un-handle" a call that was already made.
+          <span
+            aria-label={`Handled${row.handledBy ? ` by ${row.handledBy}` : ''}`}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-lg font-bold text-amber-950"
+          >
+            ✓
+          </span>
+        ) : (
+          <button
+            onClick={onHandle}
+            aria-label="I am handling this call"
+            title={canName ? undefined : 'Add your name above so we know who handled it'}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg bg-rose-900 text-lg font-bold text-rose-200 active:bg-rose-800"
+          >
+            ✕
+          </button>
+        )}
       </div>
     </article>
   );
