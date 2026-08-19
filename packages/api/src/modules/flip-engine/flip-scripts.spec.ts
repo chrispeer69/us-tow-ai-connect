@@ -138,6 +138,36 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('Do NOT recite the problem back to them');
   });
 
+  // 3.4 — Chris decided ~2026-08-09 that the third offer was dead: it never won
+  // and it made the call too long. The decision did not ship for ten days. Since
+  // it was made: 18 attempts, 0 wins. All time 2 in 183, and on every call that
+  // reached it the median duration was 293-300s, hard against the 300s cap.
+  it('never makes a third offer', () => {
+    const body = renderCallBody('competitor_repair', base);
+    // Assert against the SPOKEN lines, not the whole body: the guard rule
+    // legitimately names the things the agent must not offer, so a naive
+    // not.toContain('priority slot') fails on the rule that forbids it.
+    const spoken = body
+      .split(String.fromCharCode(10))
+      .filter((l) => l.startsWith('AI: "'))
+      .join(' ');
+    expect(spoken).not.toContain('50 dollar credit');
+    expect(spoken).not.toContain('priority slot');
+    expect(body).not.toContain('3-TIER');
+    // ...and the ceiling is stated, so the agent cannot improvise a new one.
+    expect(body).toContain('THERE ARE AT MOST TWO OFFERS ON A CALL');
+    expect(body).toContain('There is no third offer');
+  });
+
+  it('still makes the offer and the one follow-up', () => {
+    const body = renderCallBody('competitor_repair', base);
+    // Removing rung three must not take rung two with it: offer 2 is 12 real
+    // wins at 4.0%, and it is the half Chris asked to strengthen.
+    expect(body).toContain("can I ask what's taking you to");
+    expect(body).toContain('still stand');
+    expect(body).toContain('Want me to switch it?');
+  });
+
   it('asks color and drivetrain open rather than confirming them', () => {
     const body = renderCallBody('competitor_repair', base);
     expect(body).toContain('What color is it?');

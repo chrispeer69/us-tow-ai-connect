@@ -129,7 +129,25 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.3';
+export const SCRIPT_VERSION = '3.4';
+// 3.4 (2026-08-19) — the third offer is gone.
+//
+//   Chris decided this around 2026-08-09: "the third offer never WINS and makes
+//   the call too long — we strengthen the first two offers instead." The
+//   decision was made and never shipped. It kept rendering for ten more days.
+//
+//   Since that decision: 18 attempts, 0 wins. All time: 2 wins in 183 (1.1%),
+//   against offer 1 at 7.4% and offer 2 at 4.0%.
+//
+//   And it was actively harmful, because of where it sat. On every call that
+//   reached it the median duration was 293-300s, hard against the provider's
+//   300s cap. A rung that never wins, positioned exactly where it pushes the
+//   calls that WERE winning off the end. The wins lost to the cap and the wins
+//   never gained from rung three are the same wins.
+//
+//   Two offers is now the stated ceiling in the global rules, so the agent
+//   cannot improvise a third out of a credit or a priority slot.
+
 // 3.3 (2026-08-17) — pace. Target the whole call at about two minutes.
 //
 //   On 08-17 the median outbound call ran 191s (84s on 08-13, 142s on 08-14)
@@ -824,7 +842,8 @@ function globalRules(ctx: ScriptContext): string {
     // They are low-value, not no-value, and they were being given away.
     `- Do not pitch repair-shop offers for lockout, fuel delivery, jump-start-only, or winch-out-only calls.`,
     `- A flat tire IS a repair job. If the vehicle is being towed somewhere and this script contains an offer, make it — a tire arriving at a competitor's shop is still a customer we handed over.`,
-    `- Make flip offers as one objection-handling flow, not three unrelated pitches. STOP the moment one is accepted.`,
+    `- Make the flip offer as one objection-handling flow, not a list of pitches. STOP the moment it is accepted.`,
+    `- THERE ARE AT MOST TWO OFFERS ON A CALL: the offer, and one follow-up if they decline. After a second decline you are finished pitching. Never invent a third — no extra credit, no priority slot, no held appointment, no "one last thing". A third offer has been tried 183 times and won twice, and it is what pushed calls past the time limit.`,
     `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
     ...(ctx.pitchConvini ? [
       `- ALWAYS send-frame the free Roadside Emergency Management App near the close, unless the customer hung up, opted out, or asked you to stop.`,
@@ -1114,17 +1133,27 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         ``,
         interpolate(consentGate, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: If they decline a second time, stop pitching. Only if the reason was genuinely "it's just what was on the ticket" AND they are still undecided -> make Offer 3. Otherwise jump to the CONVINI close.]`,
+        `[AGENT: If they decline a second time, STOP. There is no third offer. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go to the close. Two offers is the whole ladder — do not invent a discount, a credit, a priority slot or a held appointment to keep going.]`,
       ] : [];
 
-  const offer3Block = offersAllowed ? [
-        ``,
-        interpolate(ctx.scriptBlocks?.offer_3 ?? ctx.globalScriptBlocks?.offer_3 ?? defaultOffer3, vars),
-        ``,
-        interpolate(consentGate, vars),
-        `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Then jump to the CONVINI close.]`,
-        `[AGENT: If they say NO or hard decline -> say "Understood. I'll keep your original destination and focus on getting the driver routed." Then jump to the CONVINI close.]`,
-      ] : [];
+  // 3.4 — THE THIRD RUNG IS GONE.
+  //
+  // Chris decided this ~2026-08-09: "the third offer never WINS and makes the
+  // call too long — we strengthen the first two offers instead." The decision
+  // was made and never shipped; the block kept rendering for another ten days.
+  //
+  // The record since that decision: offer 3 made 18 times, won 0. All time it is
+  // 2 wins in 183 attempts (1.1%), against offer 1 at 7.4% and offer 2 at 4.0%.
+  //
+  // Worse than useless, because of WHERE it sits. On every call that reached
+  // offer 3 the median duration was 293-300s — hard against the provider's
+  // 300s cap. It is a rung that never wins, placed exactly where it pushes the
+  // calls that WERE winning off the end of the call. The wins we lost to the cap
+  // and the wins we never got from rung three are the same wins.
+  //
+  // defaultOffer3 is kept below only so a tenant with an `offer_3` script_block
+  // override does not silently render an empty string. Nothing reaches it.
+  const offer3Block: string[] = [];
 
   // Two objections now have authorized answers, both confirmed as real policy by
   // the operator on 2026-08-13. They exist because the agent reached for both on
@@ -1224,7 +1253,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   ];
 
   return [
-    `# SCENARIO A — COMPETITOR REPAIR (3-TIER FLIP)`,
+    `# SCENARIO A — COMPETITOR REPAIR (ONE OFFER, ONE FOLLOW-UP)`,
     `[AGENT: The destination appears to be a competitor repair shop. Confirm details, ask intended destination without locking it, then attempt one repair-shop flip flow unless the customer hard-declines.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
@@ -1247,7 +1276,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
           destinationIntent,
           ``,
         ]),
-    `=== PHASE 2: THE 3-TIER FLIP ===`,
+    `=== PHASE 2: THE OFFER ===`,
     ...noOfferNote,
     ...flipBlock,
     ...offer2Block,
