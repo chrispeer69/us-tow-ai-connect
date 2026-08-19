@@ -1,8 +1,8 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
-import { and, desc, eq, gte, type SQL } from 'drizzle-orm';
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { Inject } from '@nestjs/common';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { outboundCallLogs } from '../../db/schema';
+import { outboundCallLogs, tenants } from '../../db/schema';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
 
 /**
@@ -58,13 +58,36 @@ export class FlipActivityController {
     });
 
     // Today aggregates for the activity stats strip.
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    //
+    // "Today" MUST be the tenant's today, not the server's. This was
+    // `new Date(); setHours(0,0,0,0)`, which is the server's local midnight —
+    // UTC on Railway. At 8:14pm in Columbus it is already 00:14 UTC, so the
+    // window had started fourteen minutes earlier and the whole working day
+    // counted as yesterday: the board showed six wins in the list and 0 / 0 /
+    // 0% in the tiles above them.
+    //
+    // That is not a cosmetic bug. It breaks for the four hours between 8pm ET
+    // and midnight ET, which is exactly the evening window this board exists to
+    // be watched in.
+    //
+    // Done in SQL against the tenant's own zone rather than with JS date maths,
+    // so it stays correct across DST without anyone remembering it exists.
+    const tenantRow = await this.db
+      .select({ timezone: tenants.timezone })
+      .from(tenants)
+      .where(eq(tenants.id, req.tenantId))
+      .limit(1);
+    const tz = tenantRow[0]?.timezone || 'America/New_York';
+
     const today = await this.db
       .select()
       .from(outboundCallLogs)
       .where(
-        and(eq(outboundCallLogs.tenantId, req.tenantId), gte(outboundCallLogs.callTime, startOfDay)),
+        and(
+          eq(outboundCallLogs.tenantId, req.tenantId),
+          sql`(${outboundCallLogs.callTime} AT TIME ZONE ${tz})::date
+              = (now() AT TIME ZONE ${tz})::date`,
+        ),
       );
     const todayWins = today.filter((r) => bucketOutcome(r) === 'WIN').length;
     const todaySkipped = today.filter((r) => bucketOutcome(r) === 'SKIPPED').length;
