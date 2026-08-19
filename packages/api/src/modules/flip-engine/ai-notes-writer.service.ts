@@ -174,6 +174,17 @@ export class AiNotesWriterService {
           // reports success after re-reading the field from a fresh page load.
           await this.markLogWritten(c.callLogId);
           result.written += 1;
+        } else if ((res.error ?? '').startsWith('job_row_not_found_on_board')) {
+          // Expected, not broken. The job closed between the call and the sweep
+          // and has left the dispatch board. We write to ACTIVE jobs only
+          // (Chris, 2026-08-19), so this is the system declining correctly.
+          //
+          // Audited as SKIPPED rather than failed, so the failure log keeps
+          // meaning something. Nine of ten misses on 2026-08-19 were this, and
+          // burying real faults under them is how a broken selector goes
+          // unnoticed for a week.
+          await this.audit(c, 'skipped', res.error ?? null, block, false);
+          result.skipped += 1;
         } else {
           await this.audit(c, 'failed', res.error ?? 'no_result', block, false);
           result.failed += 1;
@@ -253,6 +264,18 @@ export class AiNotesWriterService {
           // Only calls that actually happened, and only recent ones — a note is
           // worthless once the tow is done.
           sql`${outboundCallLogs.callTime} > NOW() - (${AI_NOTES_LOOKBACK_HOURS} * INTERVAL '1 hour')`,
+          // ACTIVE JOBS ONLY. Chris, 2026-08-19: "do not reach closed jobs - we
+          // only want to add notes to active jobs."
+          //
+          // A closed job has left the DS4 board and the adapter navigates by
+          // clicking its row, so it was already unreachable — but we were only
+          // discovering that AFTER launching a browser, logging in and scraping
+          // the list. On 2026-08-19 nine of the ten misses were jobs that had
+          // already completed, each one costing a full Playwright session to
+          // learn nothing.
+          //
+          // We hold the status ourselves. Ask the database, not the browser.
+          sql`${unifiedJobs.status} NOT IN ('completed', 'canceled', 'cancelled')`,
           sql`COALESCE(${outboundCallLogs.callDurationSeconds}, 0) > 0`,
           // Something worth writing. Mirrors composeAiNotes' inputs so we do not
           // open a browser for a row that would compose to null anyway.
