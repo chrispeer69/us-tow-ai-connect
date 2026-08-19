@@ -30,6 +30,8 @@ const REFRESH_MS = 60_000;
 const SEEN_KEY = 'flip_seen_win_ids';
 const DISMISSED_KEY = 'flip_dismissed_attention_ids';
 const WHO_KEY = 'flip_dismissed_by';
+/** Past this many, the red section collapses rather than burying the board. */
+const ATTENTION_COLLAPSE_AT = 3;
 const WINS_ONLY_KEY = 'flip_wins_only';
 
 interface FlipActivityRow {
@@ -172,6 +174,11 @@ export default function FlipBoard() {
   // Asked for once, remembered, and never allowed to block dismissing — an
   // unnamed record beats no record.
   const [who, setWho] = useState('');
+  // The red section collapses past a few rows. Seven of them is most of a
+  // phone screen, and Chris, 2026-08-19: the board "is only reporting
+  // incompleted calls ... it is not reporting the other calls" — it was, they
+  // were just below the fold.
+  const [showAllAttention, setShowAllAttention] = useState(false);
 
   const busyRef = useRef(false);
   const seenRef = useRef<Set<string> | null>(null);
@@ -574,6 +581,19 @@ export default function FlipBoard() {
           not mixed into the history below. */}
       {liveAttention.length > 0 && (
         <div className="mt-3 space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-[11px] font-bold uppercase tracking-wide text-rose-300">
+              Needs a human call ({liveAttention.filter((a) => !a.handledBy).length})
+            </h2>
+            {liveAttention.length > ATTENTION_COLLAPSE_AT && (
+              <button
+                onClick={() => setShowAllAttention((v) => !v)}
+                className="text-[11px] font-semibold text-rose-200 underline"
+              >
+                {showAllAttention ? 'Show fewer' : `Show all ${liveAttention.length}`}
+              </button>
+            )}
+          </div>
           {/* Asked once, remembered, and never required. The audit trail is more
               useful with a name on it, but an anonymous record of "somebody
               called this customer" still beats no record at all. */}
@@ -592,7 +612,7 @@ export default function FlipBoard() {
               className="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white placeholder:text-slate-500"
             />
           )}
-          {liveAttention.map((a) => (
+          {(showAllAttention ? liveAttention : liveAttention.slice(0, ATTENTION_COLLAPSE_AT)).map((a) => (
             <AttentionCard
               key={a.id}
               row={a}
@@ -600,10 +620,23 @@ export default function FlipBoard() {
               onHandle={() => dismissAttention(a.id)}
             />
           ))}
+          {!showAllAttention && liveAttention.length > ATTENTION_COLLAPSE_AT && (
+            <button
+              onClick={() => setShowAllAttention(true)}
+              className="min-h-11 w-full rounded-lg border border-rose-800 bg-rose-500/10 text-xs font-semibold text-rose-200"
+            >
+              + {liveAttention.length - ATTENTION_COLLAPSE_AT} more needing a call
+            </button>
+          )}
         </div>
       )}
 
-      <div className="mt-3 space-y-2">
+      {/* Everything else. This list was always here — it was just under seven
+          full-width red cards, which on a phone is the whole first screen. */}
+      <div className="mt-4 space-y-2">
+        <h2 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          All calls
+        </h2>
         {items.length === 0 && !busy && (
           <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-10 text-center text-sm text-slate-400">
             {winsOnly ? 'No wins yet today.' : 'No flip activity yet today.'}
