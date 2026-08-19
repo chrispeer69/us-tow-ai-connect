@@ -470,11 +470,43 @@ export default function FlipBoard() {
   const today = data?.today;
   const items = (data?.items ?? []).filter((r) => !winsOnly || bucketOutcome(r) === 'WIN');
   // Hidden in wins-only mode: that mode means "show me the good news".
-  // Handled rows are NOT filtered out. Chris, 2026-08-19: "that call stays red
-  // in the flow so we know it was a non-AI call, and we can review those." The
-  // local `dismissed` set only suppresses the POPUP, so confirming feels
-  // instant before the server round-trip lands.
-  const liveAttention = winsOnly ? [] : (data?.needsAttention ?? []);
+  // Chris, 2026-08-19, twice over:
+  //   "that call stays red in the flow so we know it was a non-AI call"
+  //   "once addressed, let it fall back in line where it should be while
+  //    remaining red - rather than stacking up the top of the list"
+  //
+  // So acknowledgement changes POSITION, not visibility. An unhandled call is
+  // pinned at the top because somebody has to do something about it. The moment
+  // it is claimed it stops being a task and becomes history — it drops back to
+  // its own place in the timeline and stays red forever, because it is still a
+  // call the AI could not complete.
+  const allAttention = winsOnly ? [] : (data?.needsAttention ?? []);
+  const liveAttention = allAttention.filter((a) => !a.handledBy && !a.handledAt);
+  const handledAttention = allAttention.filter((a) => a.handledBy || a.handledAt);
+
+  // Merge the handled ones back into the call list in time order.
+  //
+  // These come from outbound_calls while the list comes from
+  // outbound_call_logs, so the same call can exist in both — an unanswered dial
+  // still writes a short log row. Drop the log twin, or the board shows one
+  // call twice and the red card is the less informative of the two.
+  const handledPhones = new Set(
+    handledAttention.map((a) => (a.customerPhone ?? '').replace(/\D/g, '')).filter(Boolean),
+  );
+  type TimelineEntry =
+    | { kind: 'call'; at: number; row: FlipActivityRow }
+    | { kind: 'handled'; at: number; row: NeedsAttentionRow };
+
+  const timeline: TimelineEntry[] = [
+    ...items
+      .filter((r) => !handledPhones.has((r.customerPhone ?? '').replace(/\D/g, '')))
+      .map((r) => ({ kind: 'call' as const, at: new Date(r.callTime).getTime(), row: r })),
+    ...handledAttention.map((a) => ({
+      kind: 'handled' as const,
+      at: new Date(a.lastTriedAt).getTime(),
+      row: a,
+    })),
+  ].sort((x, y) => y.at - x.at);
 
   return (
     <main className="mx-auto w-full max-w-lg px-4 pb-16 pt-4 text-white">
@@ -583,7 +615,7 @@ export default function FlipBoard() {
         <div className="mt-3 space-y-2">
           <div className="flex items-baseline justify-between">
             <h2 className="text-[11px] font-bold uppercase tracking-wide text-rose-300">
-              Needs a human call ({liveAttention.filter((a) => !a.handledBy).length})
+              Needs a human call ({liveAttention.length})
             </h2>
             {liveAttention.length > ATTENTION_COLLAPSE_AT && (
               <button
@@ -637,14 +669,19 @@ export default function FlipBoard() {
         <h2 className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
           All calls
         </h2>
-        {items.length === 0 && !busy && (
+        {timeline.length === 0 && !busy && (
           <p className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-10 text-center text-sm text-slate-400">
             {winsOnly ? 'No wins yet today.' : 'No flip activity yet today.'}
           </p>
         )}
-        {items.map((r) => (
-          <ActivityCard key={r.id} row={r} />
-        ))}
+        {timeline.map((e) =>
+          e.kind === 'call' ? (
+            <ActivityCard key={e.row.id} row={e.row} />
+          ) : (
+            // Still red, still marked, just no longer shouting from the top.
+            <AttentionCard key={e.row.id} row={e.row} canName={Boolean(who)} onHandle={() => {}} />
+          ),
+        )}
       </div>
     </main>
   );
