@@ -812,7 +812,34 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
           error: 'modify_action_not_found: the row expanded but had no Modify control',
         };
       }
-      await modify.click();
+
+      // Two-stage click, because Playwright's actionability checks and this
+      // control disagree.
+      //
+      // A normal .click() waits for the element to be visible, stable and
+      // hit-testable, and here it timed out at the default 30s. The action strip
+      // is revealed by the row expanding, and it does not settle into a state
+      // Playwright is willing to call stable. A plain DOM click works — that is
+      // how it was verified against the live board — so fall back to dispatching
+      // the event directly rather than waiting out a timeout on every job.
+      //
+      // The real click is tried FIRST because it is the honest one: it fails if
+      // the control is genuinely covered or disabled, which is information worth
+      // having. The fallback only runs once that has already failed.
+      try {
+        await modify.scrollIntoViewIfNeeded({ timeout: 3_000 });
+        await modify.click({ timeout: 5_000 });
+      } catch {
+        const dispatched = await modify
+          .evaluate((el: unknown) => {
+            (el as { click?: () => void }).click?.();
+            return true;
+          })
+          .catch(() => false);
+        if (!dispatched) {
+          return { success: false, error: 'modify_click_failed: could not open the call editor' };
+        }
+      }
     }
 
     await page.waitForSelector(modalWait, { timeout: 15_000 }).catch(() => undefined);
