@@ -29,6 +29,37 @@ describe('decideFlip', () => {
   // 2026-08-18 — auto_body became eligible when Excite Collision and T&C went
   // live. It still routes to Scenario B via bodyShopSoftMention: eligibility and
   // scenario selection are independent, and that separation is the point.
+  // 2026-08-19 — the Chara Booth loss. A bad alternator going to a shop tagged
+  // auto_body got the body-shop script and NO offer. The destination tag is a
+  // guess about a business; the issue is what the customer just said about their
+  // car. When they disagree, the car wins.
+  it('does NOT use the body-shop scenario for mechanical work at a body shop', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'auto_body',
+      issueSubcategory: 'mechanical',
+      issueConfidence: 0.9,
+      config: {},
+    } as never);
+    expect(r.bodyShopSoftMention).toBe(false);
+    expect(r.flipEligible).toBe(true);
+    expect(r.reasonCode).not.toBe('destination_auto_body');
+  });
+
+  it('still uses the body-shop scenario when the work really is body work', () => {
+    for (const sub of ['accident_minor', 'accident_with_airbags', 'glass_damage']) {
+      const r = decideFlip({
+        source: 'TOWBOOK',
+        destinationTag: 'auto_body',
+        issueSubcategory: sub,
+        issueConfidence: 0.7,
+        config: {},
+      } as never);
+      expect(r.bodyShopSoftMention).toBe(true);
+      expect(r.reasonCode).toBe('destination_auto_body');
+    }
+  });
+
   it('marks auto_body eligible AND routes it to the body-shop scenario', () => {
     const r = decideFlip({
       source: 'TOWBOOK',

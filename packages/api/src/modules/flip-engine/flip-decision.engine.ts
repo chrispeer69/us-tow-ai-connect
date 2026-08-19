@@ -98,12 +98,35 @@ export function decideFlip(input: FlipDecisionInput): FlipDecision {
   // invented discount — because body work runs through insurance and a hard
   // pitch on someone's wrecked car is the wrong instrument.
   if (input.destinationTag === 'auto_body') {
-    return {
-      flipEligible: true,
-      conviniIntensity: 'medium',
-      bodyShopSoftMention: true,
-      reasonCode: 'destination_auto_body',
-    };
+    // ...but ONLY when the work is actually body work.
+    //
+    // 2026-08-19, Chara Booth: a bad alternator, going to a shop the customer
+    // confirmed on the call as a repair shop, and the agent ran the body-shop
+    // script — "we own our own body shops here in the area, but since this is a
+    // mechanical issue with the alternator, that wouldn't apply here" — and then
+    // made no offer at all. A flip-eligible mechanical job, lost outright. The
+    // agent was reasoning correctly about a scenario it should never have been
+    // handed.
+    //
+    // The destination tag alone was choosing the scenario. It is a guess about a
+    // BUSINESS, made from a name and a map pin; the issue is what the customer
+    // just told us about their CAR. When they disagree, the car wins. A shop
+    // that does collision work also fixes alternators, and a customer with an
+    // alternator wants the mechanical offer.
+    //
+    // So body-shop routing now requires body-shop WORK. Anything else falls
+    // through to the normal repair-flip path below and gets the real offer.
+    const isBodyWork = ALWAYS_NO_FLIP_CATEGORIES.includes(input.issueSubcategory);
+    if (isBodyWork) {
+      return {
+        flipEligible: true,
+        conviniIntensity: 'medium',
+        bodyShopSoftMention: true,
+        reasonCode: 'destination_auto_body',
+      };
+    }
+    // Mechanical work heading to a body shop: treat it as the ordinary repair
+    // flip it is. Falls through deliberately rather than returning here.
   }
 
   // Hard rule 4: residential / unknown → no flip, hard CONVINI pitch.

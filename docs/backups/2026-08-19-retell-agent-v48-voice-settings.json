@@ -1,0 +1,7 @@
+{
+  "voice_speed": 0.9,
+  "responsiveness": 0.9,
+  "interruption_sensitivity": 0.75,
+  "enable_dynamic_voice_speed": true,
+  "reminder_trigger_ms": 10000
+}
