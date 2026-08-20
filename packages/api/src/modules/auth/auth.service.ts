@@ -356,13 +356,15 @@ export class AuthService {
       );
     const roleByTenant = new Map(memberships.map((m) => [m.tenantId, m.role]));
 
+    const cols = {
+      id: tenants.id,
+      companyName: tenants.companyName,
+      outboundVoiceConfig: tenants.outboundVoiceConfig,
+    };
     const rows = isSuperAdmin
-      ? await this.db
-          .select({ id: tenants.id, companyName: tenants.companyName })
-          .from(tenants)
-          .where(eq(tenants.isActive, true))
+      ? await this.db.select(cols).from(tenants).where(eq(tenants.isActive, true))
       : await this.db
-          .select({ id: tenants.id, companyName: tenants.companyName })
+          .select(cols)
           .from(tenants)
           .where(
             and(
@@ -381,6 +383,11 @@ export class AuthService {
       // A super admin with no membership lands as SUPPORT — the same role
       // impersonateTenant has always granted. Never OWNER by default.
       role: roleByTenant.get(t.id) ?? 'SUPPORT',
+      // Which console this tenant should see. Derived from config already on
+      // the row rather than a new column, and DEFAULTS TO 'full' — so every
+      // existing tenant keeps exactly the console it has today and only a
+      // tenant explicitly marked as outreach gets the campaign one.
+      consoleProfile: consoleProfileFor(t.outboundVoiceConfig),
     }));
 
     list.sort((a, b) => {
@@ -486,6 +493,29 @@ export class AuthService {
 
     try { return { access_token: this.jwtService.sign(payload) }; } catch (e: any) { throw new Error("JWT Crash: " + e.message); }
   }
+}
+
+/**
+ * Which admin console a tenant should see.
+ *
+ * A towing operator needs Command Center, Digital Dispatch, Drivers Live and
+ * Flip Engine. US Tow Alliance tows nothing — it runs a calling campaign — and
+ * every one of those pages is empty for it. Worse, it lands on a dispatch board
+ * with no jobs, which reads as broken rather than as not-applicable.
+ *
+ * Read off `outbound_voice_config.kind`, which is already stamped on the row,
+ * so this needs no migration and no change to a shared table.
+ *
+ * DEFAULTS TO 'full'. Anything not explicitly marked as outreach keeps exactly
+ * the console it has today — that is the property that makes this safe to ship
+ * against a live Command Center.
+ */
+export type ConsoleProfile = 'full' | 'campaign';
+
+function consoleProfileFor(config: unknown): ConsoleProfile {
+  if (!config || typeof config !== 'object') return 'full';
+  const kind = (config as Record<string, unknown>).kind;
+  return kind === 'outreach' ? 'campaign' : 'full';
 }
 
 function isConfiguredSuperAdminEmail(email: string): boolean {

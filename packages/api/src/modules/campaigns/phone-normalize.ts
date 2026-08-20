@@ -270,17 +270,41 @@ export interface CallWindow {
 }
 
 /**
+ * A window that covers every hour of every day.
+ *
+ * Chris, 2026-08-20: "we do not need a window guard for towing companies - we
+ * operate 24/7." He is right, and the 9-5 default was me importing an
+ * assumption from ordinary B2B outreach. A towing company staffs a phone around
+ * the clock — that IS the business — and the FTC's 8am-9pm restriction applies
+ * to calls to consumers and residences, not business-to-business.
+ *
+ * Expressed as configuration rather than a flag, so a campaign that DOES need
+ * a window (a future one selling to day-shift businesses) still gets one, and
+ * the two cases cannot drift apart in code.
+ */
+export function isRoundTheClock(window: CallWindow): boolean {
+  return (
+    window.startHour <= 0 &&
+    window.endHour >= 24 &&
+    [1, 2, 3, 4, 5, 6, 7].every((d) => window.days.includes(d))
+  );
+}
+
+/**
  * Is it inside the calling window where this number rings?
  *
- * An unknown timezone returns false. That is the conservative choice: we cannot
- * prove it is a legal hour there, so we do not dial. Those leads surface in the
- * status report as `unknown_timezone` rather than disappearing.
+ * An unknown timezone returns false UNLESS the campaign runs round the clock.
+ * The timezone only ever existed to prove the local hour is a legal one; when
+ * every hour is legal there is nothing left to prove, and refusing to dial a
+ * number whose area code we simply do not recognise would silently drop leads
+ * for no benefit.
  */
 export function isWithinCallWindow(
   timezone: string | null | undefined,
   window: CallWindow,
   now: Date = new Date(),
 ): { allowed: boolean; reason: string | null } {
+  if (isRoundTheClock(window)) return { allowed: true, reason: null };
   if (!timezone) return { allowed: false, reason: 'unknown_timezone' };
 
   let local: { hour: number; isoWeekday: number };

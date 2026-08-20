@@ -105,6 +105,8 @@ interface SwitchableTenant {
   companyName: string;
   role: string;
   isMember: boolean;
+  /** 'campaign' tenants get a console without the dispatch pages. */
+  consoleProfile?: 'full' | 'campaign';
 }
 
 /**
@@ -185,8 +187,19 @@ function TenantSwitcher() {
         { method: 'POST', json: { tenantId: tenant.id } },
       );
       setActiveTenant(res.tenant.id, res.tenant.companyName, res.access_token);
+      // Drop the cached console profile: it belongs to the tenant we are
+      // leaving, and carrying it across would show one company's nav under
+      // another company's name until the next fetch settled.
+      try {
+        window.localStorage.removeItem('console_profile');
+      } catch {
+        /* private mode — the profile hook refetches anyway */
+      }
+      // Land where this tenant's console starts. A campaign tenant has no
+      // dispatch board, so sending everyone to /admin/command-center was how
+      // US Tow Alliance opened onto an empty page.
       // Full reload, not a router push — see the note above.
-      window.location.href = '/admin/command-center';
+      window.location.href = tenant.consoleProfile === 'campaign' ? '/admin/campaigns' : '/admin/command-center';
     } catch (err) {
       setError((err as Error).message);
       setBusy(null);

@@ -73,6 +73,59 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/**
+ * Which console a tenant sees.
+ *
+ * Session 79. `NAV_GROUPS` is a single static array, so every tenant got the
+ * towing console — including US Tow Alliance, which tows nothing. It runs a
+ * calling campaign, and Command Center, Digital Dispatch, Drivers Live and Flip
+ * Engine are all empty for it. Landing on a dispatch board with no jobs reads
+ * as broken rather than as not-applicable.
+ *
+ * `NAV_GROUPS` IS DELIBERATELY LEFT UNTOUCHED. The demo page, the sidebar and
+ * the mobile drawer all consume it, and the safe way to add a second console to
+ * a live product is to add a filter beside the array rather than reshape the
+ * array everyone already depends on.
+ */
+export type ConsoleProfile = 'full' | 'campaign';
+
+/**
+ * Routes a campaign tenant has no use for. Everything NOT listed here stays,
+ * so a page added later shows up by default and nobody has to remember to
+ * allow-list it — the failure mode is a harmless extra link, not a missing one.
+ */
+const HIDDEN_FOR_CAMPAIGN = new Set([
+  '/admin/command-center',   // a dispatch board with no jobs
+  '/admin/digital-dispatch',
+  '/admin/drivers-live',
+  '/admin/flip-engine',
+  '/admin/outbound-voice',   // the TOW dialler, not this campaign
+  '/admin/routing',
+  '/admin/knowledge-pack',
+  '/admin/sms-log',
+]);
+
+/** Where a profile lands when it opens the console. */
+export const HOME_HREF: Record<ConsoleProfile, string> = {
+  full: '/admin/command-center',
+  campaign: '/admin/campaigns',
+};
+
+/**
+ * The nav for a profile.
+ *
+ * `full` returns NAV_GROUPS by reference — identical to before this existed,
+ * which is what makes shipping it against a live Command Center safe.
+ */
+export function navGroupsForProfile(profile: ConsoleProfile): NavGroup[] {
+  if (profile !== 'campaign') return NAV_GROUPS;
+
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !HIDDEN_FOR_CAMPAIGN.has(item.href)),
+  })).filter((group) => group.items.length > 0);
+}
+
 /** Flat href→label lookup for breadcrumb resolution. */
 export const NAV_LABELS: Record<string, string> = Object.fromEntries(
   NAV_GROUPS.flatMap((g) => g.items.map((i) => [i.href, i.label])),

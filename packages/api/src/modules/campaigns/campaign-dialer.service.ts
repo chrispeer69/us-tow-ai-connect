@@ -13,7 +13,7 @@ import {
 import { CampaignsService } from './campaigns.service';
 import { RetellCampaignClient } from './retell-campaign.client';
 import { decideDisposition, nextLeadStatus } from './campaign-disposition';
-import { isHoliday, isWithinCallWindow } from './phone-normalize';
+import { isHoliday, isRoundTheClock, isWithinCallWindow } from './phone-normalize';
 
 /**
  * Session 78 — the outreach dialler.
@@ -133,22 +133,37 @@ export class CampaignDialerService {
       const pool = await this.fetchDialable(campaign, budget * 6);
       result.considered = pool.length;
 
+      // Hoisted: identical for every lead in the batch, and `roundTheClock`
+      // decides whether two of the three guards below apply at all.
+      const window = {
+        startHour: campaign.callWindowStartHour,
+        endHour: campaign.callWindowEndHour,
+        days: (campaign.callDays as number[]) ?? [1, 2, 3, 4, 5],
+      };
+      const roundTheClock = isRoundTheClock(window);
+      // A campaign that dials weekends is not keeping office hours, so it has
+      // no business observing office holidays either.
+      const keepsBusinessCalendar =
+        !roundTheClock && !window.days.includes(6) && !window.days.includes(7);
+
       const eligible: CampaignLeadRow[] = [];
       for (const lead of pool) {
         if (eligible.length >= budget) break;
 
         // ---- Guard 2: the window, where THIS number rings. -----------------
-        const window = {
-          startHour: campaign.callWindowStartHour,
-          endHour: campaign.callWindowEndHour,
-          days: (campaign.callDays as number[]) ?? [1, 2, 3, 4, 5],
-        };
         const check = isWithinCallWindow(lead.timezone, window);
         if (!check.allowed) {
           skip(check.reason ?? 'outside_window');
           continue;
         }
-        if (isHoliday(lead.timezone)) {
+        // Holidays are skipped only for campaigns that keep a business
+        // calendar, and running weekends is the tell that this one does not.
+        //
+        // A towing company works Thanksgiving — it is one of their busiest days
+        // — so going quiet on federal holidays would mean honouring a calendar
+        // the prospects themselves do not keep. Derived from the configured
+        // days rather than a separate flag, so the two cannot contradict.
+        if (!keepsBusinessCalendar && isHoliday(lead.timezone)) {
           skip('us_holiday');
           continue;
         }
