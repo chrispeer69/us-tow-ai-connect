@@ -1,4 +1,13 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  Get,
+  Res,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 
@@ -48,6 +57,31 @@ export class AuthController {
     }
     await this.authService.resetPasswordWithOtp(body.email, body.otp, body.newPassword);
     return { success: true };
+  }
+
+  /**
+   * The tenants this login may switch into. Powers the UtilityBar switcher.
+   */
+  @Get('my-tenants')
+  @UseGuards(AuthGuard('jwt'))
+  async myTenants(@Request() req: any) {
+    return this.authService.listSwitchableTenants(req.user);
+  }
+
+  /**
+   * Re-issue the caller's token against another tenant they belong to.
+   *
+   * The body carries a tenant id and nothing else — the role is resolved
+   * server-side from tenant_members. Accepting a role here would let anyone
+   * POST {tenantId, role:'OWNER'} and own every tenant they can name.
+   */
+  @Post('switch-tenant')
+  @UseGuards(AuthGuard('jwt'))
+  async switchTenant(@Request() req: any, @Body() body: { tenantId?: string }) {
+    if (!body?.tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    return this.authService.switchTenant(req.user, body.tenantId);
   }
 
   @Post('impersonate')

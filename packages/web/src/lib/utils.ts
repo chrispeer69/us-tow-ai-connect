@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { getActiveTenantId } from './active-tenant';
 
 /**
  * Enhanced clsx-style class merger that supports tailwind-merge.
@@ -23,9 +24,15 @@ export async function api<T = any>(
   opts: RequestInit & { json?: any; direct?: boolean } = {},
 ): Promise<T> {
   const { json, direct, headers, ...rest } = opts;
+  // Session 79 — follow the ACTIVE tenant, not the build-time default. This
+  // header used to be hardcoded to Roadside's uuid for every user on every
+  // request, which was invisible with one real tenant and became wrong the
+  // moment the tenant switcher shipped: the JWT would say one tenant and the
+  // header another, and which wins is decided per-endpoint. See
+  // lib/active-tenant.ts.
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',
-    [TENANT_HEADER]: DEFAULT_TENANT_ID,
+    [TENANT_HEADER]: getActiveTenantId(),
     ...(headers as Record<string, string> | undefined),
   };
 

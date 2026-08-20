@@ -2,7 +2,7 @@ import { Injectable, UnauthorizedException, BadRequestException, Inject, Logger 
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
-import { eq, or, desc, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, desc, sql } from 'drizzle-orm';
 import { users, tenantMembers, tenants, passwordResetOtps, UserRow } from '../../db/schema';
 import { DB_CLIENT, DbClient } from '../../db/db.module';
 import { AuthEmailService } from './auth-email.service';
@@ -14,6 +14,14 @@ export interface JwtPayload {
   role?: string;
   platformRole?: string;
 }
+
+/**
+ * A uuid that cannot match any tenant, used as the sole element of an IN ()
+ * list when a user has no memberships. Drizzle renders an empty inArray as
+ * `in ()`, which is a Postgres syntax error — and the obvious "just skip the
+ * filter" alternative would return EVERY tenant to a user with none.
+ */
+const NO_TENANT = '00000000-0000-0000-0000-000000000000';
 
 @Injectable()
 export class AuthService {
@@ -295,6 +303,130 @@ export class AuthService {
 
     // Delete all OTPs for this user so they can't be reused
     await this.db.delete(passwordResetOtps).where(eq(passwordResetOtps.userId, user.id));
+  }
+
+  /**
+   * The tenants this person may switch into.
+   *
+   * Session 79 — Chris runs four businesses out of one login and the tenant
+   * switcher in the UtilityBar had been a "coming soon" stub since Session 47.
+   *
+   * Two populations:
+   *   - a normal user sees exactly their ACTIVE memberships
+   *   - a super admin sees every active tenant, because that is what super
+   *     admin already means here (`impersonateTenant` below has always allowed
+   *     it). Their own memberships sort first so the common case stays on top.
+   *
+   * `role` is the role they will actually get, resolved here rather than in the
+   * client, so the menu never offers a level of access the switch will refuse.
+   */
+  async listSwitchableTenants(user: JwtPayload) {
+    const isSuperAdmin =
+      user.platformRole === 'super_admin' || isConfiguredSuperAdminEmail(user.email ?? '');
+
+    const memberships = await this.db
+      .select({ tenantId: tenantMembers.tenantId, role: tenantMembers.role })
+      .from(tenantMembers)
+      .where(
+        and(
+          eq(tenantMembers.userId, user.userId),
+          eq(tenantMembers.status, 'ACTIVE'),
+        ),
+      );
+    const roleByTenant = new Map(memberships.map((m) => [m.tenantId, m.role]));
+
+    const rows = isSuperAdmin
+      ? await this.db
+          .select({ id: tenants.id, companyName: tenants.companyName })
+          .from(tenants)
+          .where(eq(tenants.isActive, true))
+      : await this.db
+          .select({ id: tenants.id, companyName: tenants.companyName })
+          .from(tenants)
+          .where(
+            and(
+              eq(tenants.isActive, true),
+              inArray(
+                tenants.id,
+                memberships.length > 0 ? memberships.map((m) => m.tenantId) : [NO_TENANT],
+              ),
+            ),
+          );
+
+    const list = rows.map((t) => ({
+      id: t.id,
+      companyName: t.companyName,
+      isMember: roleByTenant.has(t.id),
+      // A super admin with no membership lands as SUPPORT — the same role
+      // impersonateTenant has always granted. Never OWNER by default.
+      role: roleByTenant.get(t.id) ?? 'SUPPORT',
+    }));
+
+    list.sort((a, b) => {
+      if (a.isMember !== b.isMember) return a.isMember ? -1 : 1;
+      return a.companyName.localeCompare(b.companyName);
+    });
+
+    return { tenants: list, platformRole: user.platformRole ?? null, isSuperAdmin };
+  }
+
+  /**
+   * Re-issue this user's token against a different tenant.
+   *
+   * THE ROLE IS READ FROM THE DATABASE, NEVER FROM THE REQUEST. A switch
+   * endpoint that accepts a role from the client is a privilege escalation with
+   * extra steps: anyone could POST {tenantId, role:'OWNER'} and own every
+   * tenant they can name. The body carries a tenant id and nothing else.
+   */
+  async switchTenant(user: JwtPayload, targetTenantId: string) {
+    const [tenant] = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, targetTenantId))
+      .limit(1);
+    if (!tenant) throw new BadRequestException('Tenant not found');
+    if (!tenant.isActive) throw new UnauthorizedException('That tenant is not active');
+
+    const [membership] = await this.db
+      .select({ role: tenantMembers.role })
+      .from(tenantMembers)
+      .where(
+        and(
+          eq(tenantMembers.userId, user.userId),
+          eq(tenantMembers.tenantId, targetTenantId),
+          eq(tenantMembers.status, 'ACTIVE'),
+        ),
+      )
+      .limit(1);
+
+    const isSuperAdmin =
+      user.platformRole === 'super_admin' || isConfiguredSuperAdminEmail(user.email ?? '');
+
+    if (!membership && !isSuperAdmin) {
+      // Deliberately the same message whether the tenant exists or not — a
+      // distinct "no such tenant" reply turns this into a way to enumerate
+      // every tenant on the platform.
+      throw new UnauthorizedException('You do not have access to that tenant');
+    }
+
+    const payload: JwtPayload = {
+      userId: user.userId,
+      email: user.email,
+      tenantId: targetTenantId,
+      role: membership?.role ?? 'SUPPORT',
+      platformRole: user.platformRole,
+    };
+
+    this.logger.log(
+      `[auth] ${user.email} switched to ${tenant.companyName} as ${payload.role}` +
+        (membership ? '' : ' (super admin, no membership)'),
+    );
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      tenant: { id: tenant.id, companyName: tenant.companyName },
+      role: payload.role,
+    };
   }
 
   async impersonateTenant(adminUser: JwtPayload, targetTenantId: string) {
