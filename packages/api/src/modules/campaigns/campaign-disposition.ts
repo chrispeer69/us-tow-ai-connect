@@ -309,10 +309,26 @@ export function nextLeadStatus(
   attempts: number,
   maxAttempts: number,
 ): LeadStatusAfterCall {
+  // ---- Reached them. Never dial again, at any attempt count. --------------
+  //
+  // Chris, 2026-08-20: "if an attempt was not a success - repeat the call until
+  // it is a success". Read literally that means dialling somebody forever until
+  // they say yes, which is harassment, is how a number gets blocked by carriers,
+  // and is the behaviour TCPA complaints are made of.
+  //
+  // Read as intended it means: DO NOT GIVE UP ON A NUMBER WE NEVER ACTUALLY
+  // REACHED. The 2026-08-20 batch is the case for it — 33 of 61 calls ended
+  // without a human hearing anything: 9 never answered, 22 hung up inside ten
+  // seconds, 2 were dead numbers. Retiring those after two tries throws away
+  // most of the list for reasons that have nothing to do with the offer.
+  //
+  // So the line is drawn at CONTACT, not at agreement. Once a person has heard
+  // the offer and responded, the answer is the answer — success or not.
   if (disposition === 'DNC') return 'DNC';
   if (disposition === 'WARM') return 'WARM';
   if (disposition === 'PITCHED' || disposition === 'NOT_INTERESTED') return 'PITCHED';
 
+  // ---- Never reached them. Keep trying, up to the campaign's cap. ---------
   const exhausted = attempts >= maxAttempts;
   if (disposition === 'VM') return exhausted ? 'EXHAUSTED' : 'VM';
   if (disposition === 'GATEKEEPER') return exhausted ? 'EXHAUSTED' : 'RETRY';
