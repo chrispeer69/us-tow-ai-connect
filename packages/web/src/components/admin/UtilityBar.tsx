@@ -225,32 +225,7 @@ function TenantSwitcher() {
             <div className="px-3 py-3 text-sm text-[var(--text-muted)]">Loading…</div>
           )}
 
-          {/*
-            "US Tow AI Connect" is the PLATFORM, not a tenant — it has no row in
-            `tenants` and never did. Before the switcher, the bar printed it as a
-            fallback label whenever the current tenant had no branding name set,
-            which made it read like a fourth account. It belongs here, but as
-            what it actually is: the cross-tenant view, for super admins only.
-          */}
-          {isSuperAdmin && (
-            <>
-              <Link
-                href="/super-admin"
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-low)] hover:text-[var(--text-main)]"
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[var(--alliance-amber,#f59e0b)] font-display text-[10px] font-bold text-white">
-                  U
-                </span>
-                <span className="min-w-0 flex-1 truncate">US Tow AI Connect</span>
-                <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                  platform
-                </span>
-              </Link>
-              <div className="border-b border-[var(--border-color)]" />
-            </>
-          )}
+
 
           {tenants !== null && tenants.length === 0 && !error && (
             <div className="px-3 py-3 text-sm text-[var(--text-muted)]">
@@ -283,6 +258,36 @@ function TenantSwitcher() {
               </button>
             );
           })}
+
+          {/*
+            The cross-tenant view. It was briefly labelled "US Tow AI Connect"
+            and placed at the TOP of this menu, which was a mistake: Chris read
+            it as his Command Center, clicked it, and landed on a black page
+            called Platform Monitor with no sidebar and no way back. The label
+            promised an account and delivered a dashboard.
+
+            It is not an account. It has no row in `tenants` and never did — the
+            string only ever appeared because the bar fell back to it whenever
+            the current tenant had no branding name. So it now sits BELOW the
+            real accounts, behind a divider, named after the page it opens.
+          */}
+          {isSuperAdmin && (
+            <>
+              <div className="border-t border-[var(--border-color)]" />
+              <Link
+                href="/super-admin"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-low)] hover:text-[var(--text-main)]"
+              >
+                <Icon name="tenants" size={14} />
+                <span className="min-w-0 flex-1 truncate">Platform Monitor</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                  all tenants
+                </span>
+              </Link>
+            </>
+          )}
 
           {error && (
             <div className="border-t border-[var(--border-color)] px-3 py-2 text-xs text-[var(--danger,#e11d48)]">

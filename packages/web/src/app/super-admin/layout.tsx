@@ -15,6 +15,18 @@ export default function SuperAdminLayout({
             <span className="rounded bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-400 border border-rose-500/20">
               Super Admin Access
             </span>
+            {/*
+              This route renders its own shell — no sidebar, no breadcrumbs, no
+              tenant switcher. Landing here from the switcher was a dead end:
+              Chris clicked through on 2026-08-20 and had no way back to his
+              Command Center except the browser's back button.
+            */}
+            <a
+              href="/admin/command-center"
+              className="ml-auto rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+            >
+              ← Back to Command Center
+            </a>
           </div>
         </header>
         <main className="flex-1 p-6 sm:p-8">
