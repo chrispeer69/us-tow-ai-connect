@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { clearActiveTenant } from '@/lib/active-tenant';
 
 interface AuthContextType {
   token: string | null;
@@ -60,10 +61,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTokenState(newToken);
     if (newToken) {
       localStorage.setItem('access_token', newToken);
+      // A fresh token decides its own tenant. Any tenant left over from an
+      // earlier switch is now stale — keeping it would leave the switcher
+      // showing one company's name while the token belonged to another, and
+      // send that company's id in x-tenant-id on every request.
+      clearActiveTenant();
       const isImpersonating = !!sessionStorage.getItem('impersonationBanner');
       setIsSuperAdmin(!isImpersonating && isTokenForSuperAdmin(newToken));
     } else {
       localStorage.removeItem('access_token');
+      clearActiveTenant();
       setIsSuperAdmin(false);
     }
   };

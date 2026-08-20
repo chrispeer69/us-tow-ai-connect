@@ -49,17 +49,27 @@ export class AuthService {
     // to return. That is not stable between logins: the same person could see a
     // different company's data on consecutive sign-ins.
     //
-    // Deterministic rule: an ACTIVE membership always wins over a non-active
-    // one, and among those the most recently granted wins — being added to a
-    // tenant is the most recent statement of where someone is meant to be
-    // working. Multi-tenant users need a real tenant switcher; until then this
-    // at least stops the choice being random.
+    // Session 79 — LAND WHERE YOU LAST WORKED, not where you were most recently
+    // invited.
+    //
+    // The old rule was "most recently granted wins". That was a reasonable
+    // stand-in while there was no tenant switcher, and its own comment said so.
+    // It broke the moment one existed: on 2026-08-20 adding Chris and Hannah to
+    // the new US Tow Alliance tenant silently moved BOTH of their logins into
+    // it, and the first thing either of them saw was an empty Command Center
+    // belonging to a company that does not tow. Being invited somewhere is not
+    // a statement about where you work; where you last worked is.
+    //
+    // Order: ACTIVE first, then most recent lastLoginAt (stamped on login and
+    // on every switch), then invitedAt as the tie-break for somebody who has
+    // never signed in anywhere.
     let [member] = await this.db
       .select()
       .from(tenantMembers)
       .where(eq(tenantMembers.userId, user.id))
       .orderBy(
         sql`CASE WHEN ${tenantMembers.status} = 'ACTIVE' THEN 0 ELSE 1 END`,
+        sql`${tenantMembers.lastLoginAt} DESC NULLS LAST`,
         desc(tenantMembers.invitedAt),
       )
       .limit(1);
@@ -112,6 +122,17 @@ export class AuthService {
         message:
           'Your access has been turned off. Please contact your account owner.',
       });
+    }
+
+    // Stamp where they landed. The ordering above sorts on this, so without
+    // the write it would have nothing to sort by and would silently fall back
+    // to invitedAt — which is the rule that just dropped Chris into the wrong
+    // company.
+    if (member?.id) {
+      await this.db
+        .update(tenantMembers)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(tenantMembers.id, member.id));
     }
 
     const payload: JwtPayload = {
@@ -416,6 +437,21 @@ export class AuthService {
       role: membership?.role ?? 'SUPPORT',
       platformRole: user.platformRole,
     };
+
+    // Switching IS working there, so it decides where the next login lands.
+    // Without this, signing out and back in would throw you back to whichever
+    // tenant you had before, which makes the switcher feel broken.
+    if (membership) {
+      await this.db
+        .update(tenantMembers)
+        .set({ lastLoginAt: new Date() })
+        .where(
+          and(
+            eq(tenantMembers.userId, user.userId),
+            eq(tenantMembers.tenantId, targetTenantId),
+          ),
+        );
+    }
 
     this.logger.log(
       `[auth] ${user.email} switched to ${tenant.companyName} as ${payload.role}` +

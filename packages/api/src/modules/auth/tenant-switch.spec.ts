@@ -29,12 +29,25 @@ interface FakeRow {
  */
 function makeDb(queue: unknown[][]) {
   const remaining = [...queue];
+  const updates: Array<Record<string, unknown>> = [];
   const chain: any = {
     select: () => chain,
     from: () => chain,
     where: () => chain,
     limit: () => Promise.resolve(remaining.shift() ?? []),
     then: (resolve: (v: unknown) => unknown) => resolve(remaining.shift() ?? []),
+    // switchTenant stamps lastLoginAt on the membership so the next login lands
+    // where you last worked. The write is fire-and-await, not read, so it just
+    // has to resolve — but we record it so a test can assert it happened.
+    update: () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => {
+          updates.push(values);
+          return Promise.resolve([]);
+        },
+      }),
+    }),
+    __updates: updates,
   };
   return chain;
 }
@@ -46,7 +59,8 @@ function makeService(rows: FakeRow, opts: { superAdminEmails?: string } = {}) {
     rows.tenant ? [rows.tenant] : [],
     rows.membership ? [rows.membership] : [],
   ]);
-  return new AuthService(jwt as any, db as any, {} as any);
+  const service = new AuthService(jwt as any, db as any, {} as any);
+  return Object.assign(service, { __db: db });
 }
 
 beforeEach(() => {
@@ -130,6 +144,38 @@ describe('switchTenant — the role comes from the database', () => {
 
     expect(result.access_token).toContain(`"tenantId":"${ALLIANCE}"`);
     expect(result.tenant).toEqual({ id: ALLIANCE, companyName: 'US Tow Alliance' });
+  });
+
+  it('stamps lastLoginAt so the next login lands where you last worked', async () => {
+    // Without this, adding somebody to a new tenant silently moves their login
+    // into it — which on 2026-08-20 dropped Chris and Hannah into an empty
+    // Command Center belonging to a company that does not tow.
+    const service = makeService({
+      tenant: { id: ALLIANCE, companyName: 'US Tow Alliance', isActive: true },
+      membership: { role: 'OWNER' },
+    });
+
+    await service.switchTenant({ userId: 'u1', email: 'hannah@example.com' }, ALLIANCE);
+
+    const writes = (service as any).__db.__updates;
+    expect(writes).toHaveLength(1);
+    expect(writes[0].lastLoginAt).toBeInstanceOf(Date);
+  });
+
+  it('does NOT stamp when a super admin visits a tenant it does not belong to', async () => {
+    // Support dropping into a tenant is not "where they work" — stamping it
+    // would strand them there on their next sign-in.
+    const service = makeService({
+      tenant: { id: ALPHA, companyName: 'Alpha Automotive LLC', isActive: true },
+      membership: null,
+    });
+
+    await service.switchTenant(
+      { userId: 'u1', email: 'chris@example.com', platformRole: 'super_admin' },
+      ALPHA,
+    );
+
+    expect((service as any).__db.__updates).toHaveLength(0);
   });
 
   it('preserves platformRole across the switch', async () => {
