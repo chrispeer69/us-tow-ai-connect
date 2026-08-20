@@ -96,6 +96,8 @@ export class CampaignsService {
       callWindowStartHour: number;
       callWindowEndHour: number;
       callDays: number[];
+      testMode: boolean;
+      testOverrideNumber: string | null;
       outboundAgentId: string;
       outboundAgentVersion: string;
       inboundAgentId: string;
@@ -411,7 +413,10 @@ export class CampaignsService {
         maxAttempts: campaign.maxAttempts,
         fromNumber: campaign.fromNumber,
         outboundAgentId: campaign.outboundAgentId,
+        outboundAgentVersion: campaign.outboundAgentVersion,
         inboundAgentId: campaign.inboundAgentId,
+        testMode: campaign.testMode,
+        testOverrideNumber: campaign.testOverrideNumber,
         window: {
           startHour: campaign.callWindowStartHour,
           endHour: campaign.callWindowEndHour,
@@ -424,6 +429,135 @@ export class CampaignsService {
       today: byDisposition,
       dialedToday: Object.values(byDisposition).reduce((a, b) => a + b, 0),
       suppressedTotal,
+    };
+  }
+
+
+  /**
+   * What the campaign is actually doing — the numbers, not the call list.
+   *
+   * Session 79. On 2026-08-20 the first live batch ran across four agent
+   * versions in ninety minutes, and answering "is it getting better?" meant a
+   * human reading eighteen transcripts by hand. It was: median call length went
+   * 9s -> 32s. Nothing in the product could have told Chris that.
+   *
+   * This is the same attribution discipline the flip dialler learned the hard
+   * way — `script_version` is stamped on every row there precisely so two
+   * populations cannot merge silently. Stamping it is only half the job; being
+   * able to READ it is the other half.
+   *
+   * Everything is computed per AGENT VERSION, because that is the unit of
+   * change. Anything that groups all calls together answers the wrong question.
+   */
+  async analytics(tenantId: string, campaignId: string) {
+    await this.getCampaign(tenantId, campaignId);
+
+    // ---- By agent version. The headline. ----------------------------------
+    // `connected` deliberately excludes voicemail and sub-pitch-length calls:
+    // a batch can look busy while reaching nobody, and a dialler that reports
+    // its dial count as its reach is lying by omission.
+    const byVersion = await this.db.execute(sql`
+      SELECT
+        COALESCE(agent_version, '?')                              AS version,
+        COUNT(*)::int                                             AS calls,
+        COALESCE(ROUND(AVG(duration_seconds))::int, 0)            AS avg_seconds,
+        COALESCE(
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_seconds)::int, 0
+        )                                                          AS median_seconds,
+        COUNT(*) FILTER (WHERE disposition = 'PITCHED')::int       AS pitched,
+        COUNT(*) FILTER (WHERE disposition = 'WARM')::int          AS warm,
+        COUNT(*) FILTER (WHERE disposition = 'VM')::int            AS voicemail,
+        COUNT(*) FILTER (WHERE disposition = 'DNC')::int           AS opted_out,
+        COUNT(*) FILTER (WHERE disposition = 'GATEKEEPER')::int    AS gatekeeper,
+        COUNT(*) FILTER (
+          WHERE disposition IN ('PITCHED','WARM','NOT_INTERESTED','GATEKEEPER')
+        )::int                                                     AS connected
+      FROM campaign_call_logs
+      WHERE campaign_id = ${campaignId}
+        AND direction = 'OUTBOUND'
+      GROUP BY 1
+      ORDER BY 1
+    `);
+
+    // ---- The funnel. Where the losses actually are. ------------------------
+    const funnel = await this.db.execute(sql`
+      SELECT
+        COUNT(*)::int                                              AS dialed,
+        COUNT(*) FILTER (WHERE duration_seconds > 0)::int          AS answered,
+        COUNT(*) FILTER (WHERE disposition = 'VM')::int            AS machine,
+        COUNT(*) FILTER (
+          WHERE disposition IN ('PITCHED','WARM','NOT_INTERESTED','GATEKEEPER')
+        )::int                                                     AS human,
+        COUNT(*) FILTER (WHERE disposition IN ('PITCHED','WARM'))::int AS heard_offer,
+        COUNT(*) FILTER (WHERE disposition = 'WARM')::int          AS warm
+      FROM campaign_call_logs
+      WHERE campaign_id = ${campaignId}
+        AND direction = 'OUTBOUND'
+    `);
+
+    // ---- Hour of day, in the TENANT's clock. ------------------------------
+    // Which hours actually reach a person. A 9-5 window is an assumption, and
+    // this is the only thing that can correct it.
+    const byHour = await this.db.execute(sql`
+      SELECT
+        EXTRACT(HOUR FROM created_at AT TIME ZONE 'America/New_York')::int AS hour,
+        COUNT(*)::int                                              AS calls,
+        COUNT(*) FILTER (
+          WHERE disposition IN ('PITCHED','WARM','NOT_INTERESTED','GATEKEEPER')
+        )::int                                                     AS reached_human
+      FROM campaign_call_logs
+      WHERE campaign_id = ${campaignId}
+        AND direction = 'OUTBOUND'
+      GROUP BY 1
+      ORDER BY 1
+    `);
+
+    // ---- Needs a human. The only rows worth Chris's attention. -------------
+    // WARM said they would claim it; GATEKEEPER gave a callback time. Both are
+    // worthless sitting in a list nobody opens, which is what happens when the
+    // page treats every disposition as equally interesting.
+    const needsAttention = await this.db
+      .select({
+        id: campaignCallLogs.id,
+        phone: campaignCallLogs.phone,
+        company: campaignCallLogs.company,
+        disposition: campaignCallLogs.disposition,
+        callbackTime: campaignCallLogs.callbackTime,
+        summary: campaignCallLogs.summary,
+        durationSeconds: campaignCallLogs.durationSeconds,
+        createdAt: campaignCallLogs.createdAt,
+      })
+      .from(campaignCallLogs)
+      .where(
+        and(
+          eq(campaignCallLogs.campaignId, campaignId),
+          inArray(campaignCallLogs.disposition, ['WARM', 'GATEKEEPER']),
+        ),
+      )
+      .orderBy(desc(campaignCallLogs.createdAt))
+      .limit(25);
+
+    // ---- Objections, straight from the agent's own answers. ----------------
+    const objections = await this.db.execute(sql`
+      SELECT
+        COALESCE(NULLIF(analysis -> 'custom_analysis_data' ->> 'objection_raised', ''), '(none)') AS objection,
+        COUNT(*)::int AS n
+      FROM campaign_call_logs
+      WHERE campaign_id = ${campaignId}
+        AND analysis IS NOT NULL
+      GROUP BY 1
+      ORDER BY 2 DESC
+      LIMIT 10
+    `);
+
+    const rows = (r: unknown) => ((r as { rows?: unknown[] })?.rows ?? r) as Record<string, unknown>[];
+
+    return {
+      byVersion: rows(byVersion),
+      funnel: rows(funnel)[0] ?? {},
+      byHour: rows(byHour),
+      objections: rows(objections),
+      needsAttention,
     };
   }
 

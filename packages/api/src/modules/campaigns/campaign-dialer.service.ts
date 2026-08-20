@@ -50,6 +50,9 @@ export interface RunOptions {
 export interface RunResult {
   campaign: string;
   dryRun: boolean;
+  /** True when every call was redirected to the campaign's test number. */
+  testMode: boolean;
+  testOverrideNumber: string | null;
   considered: number;
   placed: number;
   skipped: Record<string, number>;
@@ -81,6 +84,8 @@ export class CampaignDialerService {
     const result: RunResult = {
       campaign: campaign.name,
       dryRun,
+      testMode: campaign.testMode,
+      testOverrideNumber: campaign.testMode ? (campaign.testOverrideNumber ?? null) : null,
       considered: 0,
       placed: 0,
       skipped: {},
@@ -260,8 +265,34 @@ export class CampaignDialerService {
       return { placed: false, reason: 'campaign_not_configured' };
     }
 
+    // TEST MODE — ring a phone we own instead of the prospect.
+    //
+    // Everything else still happens: the lead is claimed, the attempt counted,
+    // the row written, the webhook processed. Only the dialled number changes,
+    // so the whole pipeline is exercised for real.
+    //
+    // REFUSES rather than falls through when the override is missing. A test
+    // mode that silently dials the actual business is worse than no test mode,
+    // because you would trust it and stop listening.
+    let toNumber = lead.phone;
+    if (campaign.testMode) {
+      const override = campaign.testOverrideNumber?.trim();
+      if (!override) {
+        await this.failCall(
+          log.id,
+          lead.id,
+          'test_mode is on but test_override_number is not set — refusing to dial the real number',
+        );
+        return { placed: false, reason: 'test_mode_without_override' };
+      }
+      this.logger.warn(
+        `[campaigns] TEST MODE: ${lead.phone} (${lead.company ?? 'unknown'}) -> ${override}`,
+      );
+      toNumber = override;
+    }
+
     const placed = await this.retell.placeCall({
-      toNumber: lead.phone,
+      toNumber,
       fromNumber: campaign.fromNumber,
       agentId: campaign.outboundAgentId,
       agentVersion: campaign.outboundAgentVersion,
@@ -493,6 +524,14 @@ export class CampaignDialerService {
   // -------------------------------------------------------------------------
 
   private isDialable(campaign: CampaignRow, result: RunResult): boolean {
+    // Caught here as well as per-call so the whole batch stops with one clear
+    // message instead of every lead failing individually and burning attempts.
+    if (campaign.testMode && !campaign.testOverrideNumber?.trim()) {
+      result.errors.push(
+        'test_mode is ON but no test_override_number is set — refusing to dial real numbers',
+      );
+      return false;
+    }
     if (!campaign.fromNumber) {
       result.errors.push('campaign has no from_number — buy and attach a Retell number first');
       return false;

@@ -41,13 +41,19 @@ interface Campaign {
   concurrency: number;
   dailyCap: number;
   maxAttempts: number;
+  testMode?: boolean;
+  testOverrideNumber?: string | null;
   callWindowStartHour: number;
   callWindowEndHour: number;
   callDays: number[];
 }
 
 interface CampaignStatus {
-  campaign: Campaign & { window: { startHour: number; endHour: number; days: number[] } };
+  campaign: Campaign & {
+    window: { startHour: number; endHour: number; days: number[] };
+    testMode?: boolean;
+    testOverrideNumber?: string | null;
+  };
   leads: Record<string, number>;
   queueDepth: number;
   retryDepth: number;
@@ -83,9 +89,26 @@ interface IngestReport {
   invalid: Array<{ input: string; reason: string }>;
 }
 
+interface Analytics {
+  byVersion: Array<{
+    version: string; calls: number; avg_seconds: number; median_seconds: number;
+    pitched: number; warm: number; voicemail: number; opted_out: number;
+    gatekeeper: number; connected: number;
+  }>;
+  funnel: { dialed?: number; answered?: number; machine?: number; human?: number; heard_offer?: number; warm?: number };
+  byHour: Array<{ hour: number; calls: number; reached_human: number }>;
+  objections: Array<{ objection: string; n: number }>;
+  needsAttention: Array<{
+    id: string; phone: string; company: string | null; disposition: string;
+    callbackTime: string | null; summary: string | null; durationSeconds: number | null; createdAt: string;
+  }>;
+}
+
 interface RunResult {
   campaign: string;
   dryRun: boolean;
+  testMode: boolean;
+  testOverrideNumber: string | null;
   considered: number;
   placed: number;
   skipped: Record<string, number>;
@@ -128,6 +151,9 @@ export default function CampaignsPage() {
   const [runLimit, setRunLimit] = useState('5');
 
   const [removePhone, setRemovePhone] = useState('');
+  const [tab, setTab] = useState<'calls' | 'performance'>('calls');
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [testNumber, setTestNumber] = useState('');
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -162,9 +188,23 @@ export default function CampaignsPage() {
     }
   }, []);
 
+  const loadAnalytics = useCallback(async (id: string) => {
+    try {
+      const res = await api<{ data: Analytics }>(`/v1/admin/campaigns/${id}/analytics`);
+      setAnalytics(res.data);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, []);
+
   useEffect(() => {
     void loadCampaigns();
   }, [loadCampaigns]);
+
+  // Only fetch the expensive aggregate when the tab is actually open.
+  useEffect(() => {
+    if (tab === 'performance' && selectedId) void loadAnalytics(selectedId);
+  }, [tab, selectedId, loadAnalytics]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -185,6 +225,23 @@ export default function CampaignsPage() {
   }, [selectedId, status?.campaign.status, filter, loadStatus, loadCalls]);
 
   const campaign = status?.campaign;
+
+  useEffect(() => {
+    if (campaign?.testOverrideNumber) setTestNumber(campaign.testOverrideNumber);
+  }, [campaign?.testOverrideNumber]);
+
+  const setTestMode = async (on: boolean) => {
+    if (!selectedId) return;
+    try {
+      await api(`/v1/admin/campaigns/${selectedId}`, {
+        method: 'PATCH',
+        json: { testMode: on, testOverrideNumber: testNumber || undefined },
+      });
+      await loadStatus(selectedId);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
 
   const setCampaignStatus = async (next: 'OFF' | 'ACTIVE' | 'PAUSED') => {
     if (!selectedId) return;
@@ -313,6 +370,22 @@ export default function CampaignsPage() {
               <li key={issue}>{issue}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* ---- Test mode ------------------------------------------------------
+          Loud on purpose. A campaign silently redirecting every call is the
+          kind of state you must never discover from a phone bill. */}
+      {campaign?.testMode && (
+        <div className="rounded border border-sky-600 bg-sky-950/40 p-3 text-sm text-sky-100">
+          <span className="font-semibold">TEST MODE.</span> Every call is going to{' '}
+          <span className="font-mono">{campaign.testOverrideNumber ?? '(not set)'}</span> instead of the
+          prospect. Leads are still claimed and attempts still counted.
+          {!campaign.testOverrideNumber && (
+            <span className="ml-1 font-semibold text-rose-200">
+              No number set — the dialler will refuse to run.
+            </span>
+          )}
         </div>
       )}
 
@@ -481,6 +554,36 @@ export default function CampaignsPage() {
             )}
 
             <div className="border-t border-slate-800 pt-3">
+              <h3 className="text-xs font-medium text-slate-300">Test mode</h3>
+              <p className="mt-1 text-xs text-slate-400">
+                Send every call to your own phone instead of the prospect. The whole pipeline still
+                runs — lead claimed, attempt counted, transcript and recording saved.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <Input
+                  value={testNumber}
+                  onChange={(e) => setTestNumber(e.target.value)}
+                  placeholder="740-880-7758"
+                  className="w-44"
+                />
+                {campaign?.testMode ? (
+                  <Button size="sm" variant="outline" onClick={() => void setTestMode(false)}>
+                    Turn off
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void setTestMode(true)}
+                    disabled={!testNumber.trim()}
+                  >
+                    Turn on
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-800 pt-3">
               <h3 className="text-xs font-medium text-slate-300">Remove a number</h3>
               <div className="mt-2 flex items-center gap-2">
                 <Input
@@ -504,6 +607,26 @@ export default function CampaignsPage() {
       {/* ---- The call list — the point of this page ------------------------ */}
       <Card>
         <CardContent className="p-4">
+          <div className="mb-4 flex gap-1 border-b border-slate-800">
+            {(['calls', 'performance'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm capitalize ${
+                  tab === t
+                    ? 'border-slate-300 text-slate-100'
+                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'performance' && <PerformanceTab analytics={analytics} />}
+
+          {tab === 'calls' && (
+          <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-medium text-slate-200">Calls</h2>
             <div className="ml-auto flex flex-wrap gap-1">
@@ -623,8 +746,219 @@ export default function CampaignsPage() {
               </TableBody>
             </Table>
           )}
+          </>
+          )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Is it getting better?
+ *
+ * On 2026-08-20 the first live batch ran four agent versions in ninety minutes,
+ * and answering that question meant a person reading eighteen transcripts by
+ * hand. The answer was worth having — median call length went 9s to 32s — and
+ * nothing in the product could surface it.
+ *
+ * Everything here groups by AGENT VERSION, because that is the unit of change.
+ * A number that pools every version together answers a question nobody asked.
+ */
+function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
+  if (!analytics) {
+    return (
+      <div className="flex h-32 items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  const f = analytics.funnel ?? {};
+  const dialed = f.dialed ?? 0;
+  const pct = (n: number | undefined) => (dialed ? Math.round(((n ?? 0) / dialed) * 100) : 0);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="mb-2 text-sm font-medium text-slate-200">Funnel</h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <FunnelStep label="Dialed" value={dialed} pct={100} />
+          <FunnelStep label="Answered" value={f.answered ?? 0} pct={pct(f.answered)} />
+          <FunnelStep label="Reached a human" value={f.human ?? 0} pct={pct(f.human)} />
+          <FunnelStep label="Heard the offer" value={f.heard_offer ?? 0} pct={pct(f.heard_offer)} tone="good" />
+          <FunnelStep label="Warm" value={f.warm ?? 0} pct={pct(f.warm)} tone="warm" />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {f.machine ?? 0} reached an answering machine. Reached a human excludes voicemail and calls
+          that died before the pitch — a batch can look busy while reaching nobody.
+        </p>
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-medium text-slate-200">By agent version</h3>
+        <p className="mb-2 text-xs text-slate-500">
+          The unit of change. Median call length is the earliest signal that a script edit worked —
+          it moves days before win rate does.
+        </p>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Version</TableHead>
+                <TableHead className="text-right">Calls</TableHead>
+                <TableHead className="text-right">Median</TableHead>
+                <TableHead className="text-right">Avg</TableHead>
+                <TableHead className="text-right">Reached</TableHead>
+                <TableHead className="text-right">Pitched</TableHead>
+                <TableHead className="text-right">Warm</TableHead>
+                <TableHead className="text-right">VM</TableHead>
+                <TableHead className="text-right">Opt-out</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {analytics.byVersion.map((v) => (
+                <TableRow key={v.version}>
+                  <TableCell className="font-mono text-xs">v{v.version}</TableCell>
+                  <TableCell className="text-right text-xs">{v.calls}</TableCell>
+                  <TableCell className="text-right text-xs font-semibold text-slate-100">
+                    {v.median_seconds}s
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-slate-400">{v.avg_seconds}s</TableCell>
+                  <TableCell className="text-right text-xs">{v.connected}</TableCell>
+                  <TableCell className="text-right text-xs text-emerald-300">{v.pitched}</TableCell>
+                  <TableCell className="text-right text-xs text-amber-300">{v.warm}</TableCell>
+                  <TableCell className="text-right text-xs text-sky-300">{v.voicemail}</TableCell>
+                  <TableCell className="text-right text-xs text-rose-300">{v.opted_out}</TableCell>
+                </TableRow>
+              ))}
+              {analytics.byVersion.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={9} className="py-6 text-center text-sm text-slate-500">
+                    No calls yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        {analytics.byVersion.length === 1 && (
+          <p className="mt-2 text-xs text-amber-300/80">
+            Only one version has run. Resist changing the agent again until this one has enough calls
+            to read — a version that never gets a sample can never be compared.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-medium text-slate-200">
+          Needs you ({analytics.needsAttention.length})
+        </h3>
+        <p className="mb-2 text-xs text-slate-500">
+          Warm leads and gatekeeper callbacks. These are the only rows on this page worth acting on
+          today.
+        </p>
+        {analytics.needsAttention.length === 0 ? (
+          <div className="rounded border border-slate-800 bg-slate-900/40 py-6 text-center text-sm text-slate-500">
+            Nothing waiting.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {analytics.needsAttention.map((r) => (
+              <div key={r.id} className="rounded border border-slate-800 bg-slate-900/40 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    className={
+                      r.disposition === 'WARM'
+                        ? 'border-amber-600 bg-amber-900/40 text-amber-200'
+                        : 'border-indigo-700 bg-indigo-900/40 text-indigo-200'
+                    }
+                  >
+                    {r.disposition}
+                  </Badge>
+                  <span className="text-sm text-slate-200">{r.company ?? 'Unknown'}</span>
+                  <span className="font-mono text-xs text-slate-400">{r.phone}</span>
+                  {r.callbackTime && (
+                    <span className="text-xs text-slate-300">call back: {r.callbackTime}</span>
+                  )}
+                  <span className="ml-auto text-xs text-slate-500">{r.durationSeconds ?? 0}s</span>
+                </div>
+                {r.summary && <p className="mt-1 text-xs text-slate-400">{r.summary}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-medium text-slate-200">Best hours to call</h3>
+        <p className="mb-2 text-xs text-slate-500">
+          The 9-5 window is an assumption. This is the only thing that can correct it.
+        </p>
+        <div className="space-y-1">
+          {analytics.byHour.map((h) => {
+            const rate = h.calls ? Math.round((h.reached_human / h.calls) * 100) : 0;
+            return (
+              <div key={h.hour} className="flex items-center gap-2 text-xs">
+                <span className="w-14 shrink-0 text-slate-400">
+                  {h.hour % 12 === 0 ? 12 : h.hour % 12}
+                  {h.hour < 12 ? 'am' : 'pm'}
+                </span>
+                <div className="h-3 flex-1 overflow-hidden rounded bg-slate-800">
+                  <div className="h-full bg-emerald-700" style={{ width: `${rate}%` }} />
+                </div>
+                <span className="w-24 shrink-0 text-right text-slate-500">
+                  {h.reached_human}/{h.calls} ({rate}%)
+                </span>
+              </div>
+            );
+          })}
+          {analytics.byHour.length === 0 && <div className="text-sm text-slate-500">No calls yet.</div>}
+        </div>
+      </div>
+
+      {analytics.objections.filter((o) => o.objection !== '(none)').length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-medium text-slate-200">What they push back on</h3>
+          <div className="flex flex-wrap gap-2">
+            {analytics.objections
+              .filter((o) => o.objection !== '(none)')
+              .map((o) => (
+                <span
+                  key={o.objection}
+                  className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300"
+                >
+                  {o.objection} <span className="text-slate-500">{o.n}</span>
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FunnelStep({
+  label,
+  value,
+  pct,
+  tone,
+}: {
+  label: string;
+  value: number;
+  pct: number;
+  tone?: 'good' | 'warm';
+}) {
+  const colour =
+    tone === 'good' ? 'text-emerald-300' : tone === 'warm' ? 'text-amber-300' : 'text-slate-200';
+  return (
+    <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`text-lg font-semibold ${colour}`}>{value}</div>
+      <div className="mt-1 h-1 overflow-hidden rounded bg-slate-800">
+        <div className="h-full bg-slate-600" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-1 text-[10px] text-slate-600">{pct}%</div>
     </div>
   );
 }

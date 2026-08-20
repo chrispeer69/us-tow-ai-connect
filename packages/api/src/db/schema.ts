@@ -1406,6 +1406,15 @@ export const campaigns = pgTable(
     /** ISO weekday numbers, 1 = Monday. */
     callDays: jsonb('call_days').notNull().default([1, 2, 3, 4, 5]),
 
+    /**
+     * Redirect every call to `testOverrideNumber` so the agent can be heard
+     * without spending a prospect. The dialler REFUSES to dial when this is on
+     * and the number is unset — a test mode that quietly rings the real
+     * business is worse than none, because you would trust it.
+     */
+    testMode: boolean('test_mode').notNull().default(false),
+    testOverrideNumber: text('test_override_number'),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

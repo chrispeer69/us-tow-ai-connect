@@ -47,6 +47,18 @@ export class CampaignsController {
     return { data: await this.campaigns.status(req.tenantId, id) };
   }
 
+  /**
+   * Performance, broken down by agent version.
+   *
+   * Separate from /status because status answers "what is it doing right now"
+   * and this answers "is it getting better" — different questions, different
+   * refresh rates, and the second is much more expensive to compute.
+   */
+  @Get(':id/analytics')
+  async analytics(@Req() req: AdminRequest, @Param('id') id: string) {
+    return { data: await this.campaigns.analytics(req.tenantId, id) };
+  }
+
   @Patch(':id')
   async update(
     @Req() req: AdminRequest,
@@ -60,6 +72,8 @@ export class CampaignsController {
       callWindowStartHour?: number;
       callWindowEndHour?: number;
       callDays?: number[];
+      testMode?: boolean;
+      testOverrideNumber?: string;
       outboundAgentId?: string;
       outboundAgentVersion?: string;
       inboundAgentId?: string;
