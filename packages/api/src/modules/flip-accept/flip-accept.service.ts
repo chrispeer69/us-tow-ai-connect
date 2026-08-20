@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   flipAcceptRequests,
+  outboundCallLogs,
   tenants,
   type FlipAcceptRequestRow,
 } from '../../db/schema';
@@ -167,6 +168,48 @@ export class FlipAcceptService {
    * route via Twilio metadata; this covers the common case of a manager
    * replying directly to their phone's SMS thread.
    */
+  /**
+   * Attribute an inbound customer SMS to the call that produced it.
+   *
+   * Matched on the LAST TEN DIGITS, not the raw string: customer_phone is
+   * written from whatever the motor club supplied and arrives as +1614…,
+   * 1614…, (614) …, and 614… across the same week, while Twilio always hands
+   * us E.164. Comparing raw would miss most of them.
+   *
+   * Bounded to 30 days because a reply is only meaningful against the call it
+   * answers, and because an unbounded scan of this table gets slow. Newest
+   * first — a repeat customer's most recent tow is the one they are texting
+   * about.
+   */
+  async findRecentCallByPhone(fromPhone: string): Promise<{
+    tenantId: string;
+    customerName: string;
+    vehicle: string | null;
+    destination: string | null;
+  } | null> {
+    const digits = fromPhone.replace(/\D/g, '').slice(-10);
+    if (digits.length < 10) return null;
+
+    const rows = await this.db
+      .select({
+        tenantId: outboundCallLogs.tenantId,
+        customerName: outboundCallLogs.customerName,
+        vehicle: outboundCallLogs.vehicle,
+        destination: outboundCallLogs.originalDestination,
+      })
+      .from(outboundCallLogs)
+      .where(
+        and(
+          sql`right(regexp_replace(${outboundCallLogs.customerPhone}, '[^0-9]', '', 'g'), 10) = ${digits}`,
+          sql`${outboundCallLogs.callTime} > now() - interval '30 days'`,
+        ),
+      )
+      .orderBy(desc(outboundCallLogs.callTime))
+      .limit(1);
+
+    return rows[0] ?? null;
+  }
+
   async applyInboundReply(args: {
     fromPhone: string;
     rawBody: string;

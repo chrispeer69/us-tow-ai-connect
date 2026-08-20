@@ -16,6 +16,7 @@ import { TenantApiKeyGuard, type TenantAuthenticatedRequest } from '../../common
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { TwilioSignatureGuard } from '../../common/guards/twilio-signature.guard';
 import { TwilioSmsService } from '../outbound-sms/twilio-sms.service';
+import { FlipNotifierService } from '../flip-engine/flip-notifier.service';
 import { FlipAcceptService } from './flip-accept.service';
 
 interface CreateRequestBody {
@@ -42,6 +43,14 @@ interface TwilioInboundBody {
 
 const HELP_REPLY =
   'Reply YES to accept, NO REASON to decline, or YES NOTE followed by your notes in CAPS.';
+
+/**
+ * What a collision customer sees the moment they reply ESTIMATE. Says only what
+ * happens next — no shop names, no comparison, nothing about their insurer.
+ * The safe lane applies to what we write as much as to what Emily says.
+ */
+const ESTIMATE_REPLY =
+  'Got it — thanks. Someone from our team will call you shortly to set up your free estimate review. No charge and no obligation.';
 
 @Controller('v1/flip-accept')
 export class FlipAcceptController {
@@ -137,6 +146,7 @@ export class FlipAcceptInboundController {
   constructor(
     private readonly service: FlipAcceptService,
     private readonly sms: TwilioSmsService,
+    private readonly notifier: FlipNotifierService,
   ) {}
 
   @Post('sms-inbound')
@@ -156,6 +166,55 @@ export class FlipAcceptInboundController {
     if (['STOP', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'STOPALL'].includes(stopCheck)) {
       this.logger.log(`STOP received from ${fromPhone}`);
       return this.twimlReply('You have been opted out of automated messages.');
+    }
+
+    // 3.6 — ESTIMATE is the collision programme's only conversion point.
+    //
+    // Script 3.6 removed the ask at tow time deliberately (pitching a car the
+    // insurer has already placed is steering), so the plan is: one statement,
+    // one text, and the customer comes back days later when the estimate lands
+    // and the numbers surprise them. Before this, that reply hit
+    // applyInboundReply, matched no flip request, and was answered with the
+    // generic YES/NO help text — the customer with their hand up got told to
+    // reply YES to accept something they had never been offered.
+    //
+    // Checked BEFORE applyInboundReply so the flip-accept keyword flow cannot
+    // swallow it.
+    const estimateCheck = rawBody.toUpperCase();
+    if (estimateCheck === 'ESTIMATE' || estimateCheck.startsWith('ESTIMATE ')) {
+      const matched = await this.service.findRecentCallByPhone(fromPhone).catch((err) => {
+        this.logger.warn(`ESTIMATE lookup failed for ${fromPhone}: ${(err as Error).message}`);
+        return null;
+      });
+
+      if (!matched) {
+        // No recent call to attribute it to. Still acknowledge — a customer who
+        // is texting us about their estimate is not someone to leave on read
+        // because our join missed.
+        this.logger.warn(`ESTIMATE reply from ${fromPhone} matched no recent call`);
+        return this.twimlReply(ESTIMATE_REPLY);
+      }
+
+      await this.sms
+        .recordInbound({
+          tenantId: matched.tenantId,
+          fromPhone,
+          toPhone,
+          body: rawBody,
+          twilioSid: body?.MessageSid ?? null,
+        })
+        .catch((err) => this.logger.warn(`recordInbound failed: ${(err as Error).message}`));
+
+      await this.notifier
+        .notifyEstimateReviewRequest(matched.tenantId, {
+          customerName: matched.customerName,
+          customerPhone: fromPhone,
+          vehicle: matched.vehicle,
+          destination: matched.destination,
+        })
+        .catch((err: unknown) => this.logger.error(`ESTIMATE alert failed: ${(err as Error).message}`));
+
+      return this.twimlReply(ESTIMATE_REPLY);
     }
 
     let result: Awaited<ReturnType<FlipAcceptService['applyInboundReply']>>;

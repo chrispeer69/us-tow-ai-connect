@@ -89,6 +89,61 @@ export class FlipNotifierService {
     return { sent };
   }
 
+  // ---------- stream 1.6: inbound ESTIMATE reply ----------
+
+  /**
+   * A collision customer has replied ESTIMATE to the body-info text.
+   *
+   * This is the ONLY conversion event the collision programme has left. Script
+   * 3.6 removed the ask at tow time on purpose — pitching a car the insurer has
+   * placed is steering — so the whole strategy is: say one thing, send one
+   * text, and wait for them to come back days later when the estimate lands.
+   * They just came back.
+   *
+   * Deliberately NOT gated on sms_flip_failure or the batch-summary switches.
+   * Those suppress noise about calls that went nowhere; this is a customer with
+   * their hand up, and it must never be one of the things a tenant has muted.
+   * The only switch that applies is the tenant having manager phones at all.
+   *
+   * Speed is the point. A reply that sits until the morning digest is a reply
+   * we lost — the customer is mid-decision with a body shop holding their car.
+   */
+  async notifyEstimateReviewRequest(
+    tenantId: string,
+    reply: { customerName: string; customerPhone: string; vehicle?: string | null; destination?: string | null },
+  ): Promise<{ sent: number }> {
+    const tenant = await this.fetchTenant(tenantId);
+    if (!tenant) return { sent: 0 };
+
+    const recipients = readManagerPhones(tenant);
+    if (recipients.length === 0) {
+      this.logger.warn(
+        `[flip-notifier] ESTIMATE reply from ${reply.customerPhone} but tenant ${tenantId} has no manager phones — nobody was told`,
+      );
+      return { sent: 0 };
+    }
+
+    const vehicle = reply.vehicle ? ` ${reply.vehicle}` : '';
+    const shop = reply.destination ? ` Car went to ${reply.destination}.` : '';
+    const body =
+      `📋 ESTIMATE REVIEW REQUEST (${tenant.companyName}): ${reply.customerName}${vehicle} ` +
+      `just replied ESTIMATE to the body-shop text. Phone ${reply.customerPhone}.${shop} ` +
+      `Call them back — they are mid-decision and this is the collision programme's only conversion point.`;
+
+    let sent = 0;
+    for (const phone of recipients) {
+      try {
+        await this.sms.sendSms({ to: phone, body, tenantId });
+        sent += 1;
+      } catch (err) {
+        this.logger.warn(
+          `[flip-notifier] ESTIMATE alert to ${phone} threw: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { sent };
+  }
+
   // ---------- stream 2: every-N batch summary ----------
 
   async maybeSendBatchSummary(tenantId: string): Promise<{ sent: number; thresholdHit: boolean }> {
