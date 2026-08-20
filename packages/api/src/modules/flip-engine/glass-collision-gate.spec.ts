@@ -93,12 +93,19 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
 
   it('mentions our body shops in the present tense on a live collision job', () => {
     const body = renderCallBodyB({ ...base });
-    expect(body).toContain('that sounds like auto body work');
-    expect(body).toContain('the insurance company may have already lined that shop up');
-    expect(body).toContain('Would you like me to send it to one of ours instead');
-    expect(body).toContain('Alpha Collision');
-    expect(body).toContain('Westerville Body');
-    expect(body).toContain("we own our own body shops");
+    expect(body).toContain("I'm glad you're okay");
+    // 3.6 — the safe lane. The insurer is never named, and the customer is
+    // never told what is or is not their call.
+    expect(body).not.toContain('insurance company may have already lined');
+    expect(body).not.toContain('entirely your call');
+    // Passive availability: a statement, not an ask.
+    expect(body).toContain('free estimate reviews');
+    expect(body).toContain("I'm texting you the info");
+    expect(body).not.toContain('Would you like me to send it to one of ours instead');
+    // Option 3 deliberately does NOT name our shops on a live collision — the
+    // whole point is zero interference at tow time. The names ride the text
+    // and the Option 4 (undecided) branch instead.
+    expect(body).not.toContain('Alpha Collision');
   });
 
   it('says glass work for a glass job', () => {
@@ -114,7 +121,9 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
   it('asks once, and never carries mechanical offer terms onto a body job', () => {
     const body = renderCallBodyB({ ...base });
     // The ask exists now...
-    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // 3.6 — statement, not an ask.
+    expect(body).toContain("I'm texting you the info");
+    expect(body).not.toContain('Would you like me to send it to one of ours instead');
     // ...but none of the mechanical ladder comes with it. These are the terms of
     // a DIFFERENT offer and quoting them on body work invents a commitment.
     expect(body).not.toContain('one quick option and then');
@@ -124,12 +133,15 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
     expect(body).not.toContain('179');
     // And there is no ladder: offer 2's reframe question must not appear.
     expect(body).not.toContain("can I ask what's taking you to");
-    expect(body).toContain('There is no second offer on a body job');
+    expect(body).toContain('accept on the FIRST no');
+    expect(body).toContain('THE LADDER IS DISABLED');
   });
 
   it('refuses to advise on insurance, and gates the accept', () => {
     const body = renderCallBodyB({ ...base });
-    expect(body).toContain('NEVER tell the customer what their insurance policy does or does not allow');
+    expect(body).toContain('THE SAFE LANE');
+    expect(body).toContain('Never say what their policy allows');
+    expect(body).toContain('THE LADDER IS DISABLED ON THIS SCENARIO');
     expect(body).toContain('GATE');
     // A hedge is a no. A body job changed on a shrug has to be unwound.
     expect(body).toContain('is a NO');
@@ -159,7 +171,9 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
       issue: 'a mechanical issue',
       issueSubcategory: 'mechanical',
     });
-    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // 3.6 — statement, not an ask.
+    expect(body).toContain("I'm texting you the info");
+    expect(body).not.toContain('Would you like me to send it to one of ours instead');
     // No live-collision framing on a job that is not one, and no insurance
     // line when there is no insurer in the picture.
     expect(body).not.toContain('that sounds like auto body work');

@@ -129,7 +129,11 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.5';
+export const SCRIPT_VERSION = '3.6';
+// 3.6 (2026-08-20) — the safe lane. Removed the insurance-acknowledgement line
+//   from the body script: it named the insurer's instruction and the customer's
+//   rights in one sentence. Chris's rule — describe our own business, never the
+//   customer's rights or the insurer's shop. See scenarioB for the full note.
 // 3.5 (2026-08-20) — stop supplying the refusal inside the ask.
 //
 //   Every close in the script ended by naming the way out, in the same sentence
@@ -1347,34 +1351,70 @@ function scenarioB(ctx: ScriptContext): string {
   // The new line acknowledges the insurer without asserting anything about what
   // the customer is or is not entitled to do. We do not tell people what their
   // policy allows — that is the same rule as never quoting coverage or cost.
-  const insuranceLine = hasSeparateDestination(ctx)
-    ? ` We know the insurance company may have already lined that shop up, so it is entirely your call.`
-    : ``;
+  // 3.6 (2026-08-20) — REMOVED. Chris's rule, stated this morning:
+  //
+  //   Safe:   describing your own business.
+  //   Unsafe: describing the customer's rights, or the insurer's shop.
+  //   Never mention the insurer, their instructions, or the DRP shop by
+  //   comparison.
+  //
+  // This line broke both halves in one sentence. "We know the insurance company
+  // may have already lined that shop up" names the insurer and their
+  // instruction; "so it is entirely your call" describes the customer's rights.
+  // It read as deference, which is why it survived three rewrites, but under the
+  // rule it is the same class of speech as the Ohio shop-choice line — just
+  // quieter. It has been live on every collision call with a named destination.
+  //
+  // Nothing replaces it. Silence about the insurer IS the safe lane: we describe
+  // our own shops and stop. Kept as an empty string rather than deleted at the
+  // call site so the standby body wording below stays a one-line change.
+  const insuranceLine = ``;
 
   // 2026-08-18 — Chris: "open up the body shop soft sales pitch". This was a
   // statement the customer could not act on; it is now a question, so it can be
   // accepted, recorded as offer 1, and measured. Still ONE ask, still no price.
-  // ON STANDBY — Chris, 2026-08-20: "I do not yet know the right words to
-  // choose." The body/collision wording is UNCHANGED from 3.4 until he picks
-  // it. Nothing below ships on a guess.
+  // 3.6 — THE SECOND-OPINION PLANT. Chris picked Options 3 and 4, 2026-08-20.
   //
-  // The diagnosis still stands and is waiting for words: this ask ends by
-  // naming the easy way out in the same breath as the offer, and body went 0
-  // for 50 in the seven days to 08-19. Two drafts, both keeping the LIGHT
-  // REFERRAL shape Chris asked for (one ask, nothing to argue with — this is a
-  // customer whose car was just wrecked, which is why it is not the assumptive
-  // close the repair ladder uses):
+  // This stops being an offer at all. There is no ask, no close, no question:
   //
-  //   a) "...we own our own body shops here in the area. I can take it straight
-  //       to ours if that helps — want me to do that?"
-  //   b) "...we own our own body shops here in the area. Want me to take it to
-  //       ours instead?"
+  //   "Zero interference at tow time. They come to you. A customer who sends
+  //    you an estimate has self-initiated."
   //
-  // Whichever he picks, the half to delete is "or would you rather keep the
-  // shop you have?".
-  const bodyShopMention = isActiveDamageJob
-    ? `AI: "Understood, that sounds like ${damageKind}. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`
-    : `AI: "Understood. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`;
+  // The strategy change behind it: collision flips AT TOW TIME are the wrong
+  // target under the safe-lane rule, because anything asking a customer to move
+  // a car the insurer has already placed is steering however it is phrased. So
+  // the call converts nothing and plants everything, and the revenue moves to
+  // the estimate — day 3 to 14, where supplements, betterment, aftermarket
+  // parts and cycle time create the friction, and where the customer initiates
+  // and the conversation is unrestricted.
+  //
+  // Every clause describes OUR OWN operation. Nothing describes the customer's
+  // rights, their insurer, or the shop the insurer chose.
+  //
+  // DEVIATION FROM CHRIS'S TEXT, deliberate: Option 3 opens "Glad you're okay.
+  // Your car's headed to [shop] — I'll get it there", and Option 1 (not taken)
+  // opened "You're all set". That second phrase is a CLOSE_MARKER — see the
+  // constant at the top of this file — and the retry logic reads it as "this
+  // call reached its close". Option 3 avoids it already; noted so it does not
+  // get reintroduced.
+  // "Glad you're okay" is Chris's opener and it is right for a collision — but
+  // not for a chipped windshield, where it reads as alarm about nothing. Glass
+  // keeps the plain acknowledgement.
+  const damageOpener = glass
+    ? `Understood, that sounds like ${damageKind}{{customer_salutation}}.`
+    : isActiveDamageJob
+      ? `I'm glad you're okay{{customer_salutation}}.`
+      // An ordinary delivery to a body shop is not a fresh collision. No
+      // damage framing, no "glad you're okay" — nothing happened today.
+      : `Understood{{customer_salutation}}.`;
+
+  const bodyShopMention = hasSeparateDestination(ctx)
+    // Option 3 — a real body shop is on the ticket. Plant the estimate review;
+    // never mention switching.
+    ? `AI: "${damageOpener} ${closingLine}. Separate from that: we do free estimate reviews. Whenever they write yours up, if you want a second read on it before anything is finalised, send it over — no charge, no obligation. I'm texting you the info now."`
+    // Option 4 — storage / undecided. No shop has been chosen, so there is
+    // nothing to displace and availability is the whole message.
+    : `AI: "${damageOpener} ${closingLine}. While things get sorted — we own our own body shops${shopList}, and we're not DRP, so if you end up needing somewhere to put it or someone to look at it, we're here. I'm texting you the info."`;
 
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
@@ -1384,11 +1424,11 @@ function scenarioB(ctx: ScriptContext): string {
   ];
 
   return [
-    `# SCENARIO B — AUTO BODY / GLASS (ONE SOFT OFFER, NO LADDER)`,
-    `[AGENT: This is body, collision or glass work, and we own body shops. Make the offer ONCE, softly, and ask the question. If they say no, accept it immediately and move on — there is no second or third offer on a body job. Never quote a price, a discount, a timescale or an insurance outcome: body work runs through an insurer and an invented number becomes a promise we have to honour.]`,
-    `[AGENT: If they accept, say you will get the drop-off updated and that the office will confirm with them. Do not promise the shop can start, or when.]`,
-    `[AGENT: Read the room. If the customer is shaken, was just in a collision, or is dealing with injuries, make the offer gently or not at all — a hard sell on somebody's wrecked car is the wrong instrument and costs more than the job is worth.]`,
-    `[AGENT: NEVER tell the customer what their insurance policy does or does not allow, whether they can change shops, or who pays. If they raise it, say the office will confirm with them and move on. Acknowledging that an insurer lined a shop up is fine; advising them about it is not.]`,
+    `# SCENARIO B — AUTO BODY / GLASS (ONE STATEMENT, NO ASK, NO LADDER)`,
+    `[AGENT: This is body, collision or glass work. There is NO OFFER on this call and NO QUESTION to ask. You make one statement about our own shops, tell them you are texting the info, and move on. Do not ask whether they want to switch, do not invite them to decide, and do not wait for an answer — a question here is pressure on somebody whose car was just wrecked, and it is steering when an insurer has placed the job. Never quote a price, a discount, a timescale or an insurance outcome.]`,
+    `[AGENT: THE LADDER IS DISABLED ON THIS SCENARIO. There is no tier 1, 2 or 3. If the customer volunteers that they would like to use ours, that is theirs to raise: say you will get the drop-off updated and that the office will confirm the details. Do not promise the shop can start, or when. If they decline, say nothing further about shops — accept it on the first no, every time.]`,
+    `[AGENT: Read the room. If the customer is shaken, was just in a collision, or is dealing with injuries, keep the statement short or drop it entirely and just confirm the tow. Nothing here is worth more than the call going well for them.]`,
+    `[AGENT: THE SAFE LANE. You may describe OUR OWN business — our shops, what we do, what we can arrange. You may NOT describe the customer's rights, or the insurer's shop. Never mention their insurer, their insurer's instructions, or compare our shop to the one the insurer chose. Never say what their policy allows, whether they can change shops, or who pays. If they raise any of it, say the office will confirm with them and move on. This is not a wording preference — a sentence that stays inside our own business is safe, and one that steps outside it is not, however gently it is put.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
     openingBlock(ctx, vars),
@@ -1397,12 +1437,12 @@ function scenarioB(ctx: ScriptContext): string {
     ``,
     issueGuidanceBlock(ctx),
     ``,
-    `=== PHASE 2: BODY SHOP SOFT OFFER ===`,
-    `[STEP 7 — ONE SOFT OFFER]`,
+    `=== PHASE 2: PASSIVE AVAILABILITY (STATEMENT ONLY — NO ASK) ===`,
+    `[STEP 7 — ONE STATEMENT, THEN MOVE ON]`,
     bodyShopMention,
-    `[AGENT: GATE. Only treat this as accepted on an unambiguous yes naming ours or agreeing to switch. Anything hedged — "maybe", "let me think", "I'd have to check with my insurance" — is a NO: thank them, leave it, and move on. A body job changed on a shrug is a job we have to unwind.]`,
-    `[AGENT: If YES — "Perfect, I'll get the drop-off updated and our office will confirm the details with you." Then close. Do not promise when they can start or what it will cost.]`,
-    `[AGENT: If NO — accept it in one line, reaffirm the plan they already have, and move on. There is no second offer on a body job.]`,
+    `[AGENT: Do NOT wait for an answer and do NOT ask a follow-up. This is a footnote, not an offer — deliver it and go straight to the next block. If the customer says nothing, that is the expected outcome.]`,
+    `[AGENT: GATE. The customer can still volunteer. Only treat it as a switch on an unambiguous yes that names ours or asks to change. Anything hedged — "maybe", "let me think", "I'd have to check with my insurance" — is a NO: thank them, leave it, move on. A body job changed on a shrug is a job we have to unwind. If they DO volunteer: "Perfect, I'll get the drop-off updated and our office will confirm the details with you." Never promise when work can start or what it will cost.]`,
+    `[AGENT: If they decline, or say they are staying where they are, accept on the FIRST no. Say nothing further about shops for the rest of the call.]`,
     // Chris's 2026-08-12 reaffirmation. It used to sit inside the mention
     // itself, which was right when there was nothing to decline. With a real
     // question in front of it, saying the plan BEFORE the ask pre-empts the
