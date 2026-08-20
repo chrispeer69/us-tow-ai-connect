@@ -1354,20 +1354,27 @@ function scenarioB(ctx: ScriptContext): string {
   // 2026-08-18 — Chris: "open up the body shop soft sales pitch". This was a
   // statement the customer could not act on; it is now a question, so it can be
   // accepted, recorded as offer 1, and measured. Still ONE ask, still no price.
-  // 3.5 (2026-08-20) — the ask no longer supplies its own refusal.
+  // ON STANDBY — Chris, 2026-08-20: "I do not yet know the right words to
+  // choose." The body/collision wording is UNCHANGED from 3.4 until he picks
+  // it. Nothing below ships on a guess.
   //
-  // "...or would you rather keep the shop you have?" ended every body pitch by
-  // naming the easy way out, in the same breath as the offer. 50 body calls in
-  // the seven days to 08-19, 0 wins. Chris, 2026-08-20: keep it a LIGHT
-  // REFERRAL — one ask, nothing to argue with — and put the open door on the
-  // DECLINE instead of inside the offer, where it was cancelling the ask.
+  // The diagnosis still stands and is waiting for words: this ask ends by
+  // naming the easy way out in the same breath as the offer, and body went 0
+  // for 50 in the seven days to 08-19. Two drafts, both keeping the LIGHT
+  // REFERRAL shape Chris asked for (one ask, nothing to argue with — this is a
+  // customer whose car was just wrecked, which is why it is not the assumptive
+  // close the repair ladder uses):
   //
-  // Deliberately still soft. This is a customer whose car was just wrecked; the
-  // 2026-08-12 design intent — nothing to push back against — is the reason it
-  // stays a referral and not the assumptive close the repair ladder uses.
+  //   a) "...we own our own body shops here in the area. I can take it straight
+  //       to ours if that helps — want me to do that?"
+  //   b) "...we own our own body shops here in the area. Want me to take it to
+  //       ours instead?"
+  //
+  // Whichever he picks, the half to delete is "or would you rather keep the
+  // shop you have?".
   const bodyShopMention = isActiveDamageJob
-    ? `AI: "Understood, that sounds like ${damageKind}. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} I can take it straight to ours if that helps — want me to do that?"`
-    : `AI: "Understood. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. I can take it straight to ours if that helps — want me to do that?"`;
+    ? `AI: "Understood, that sounds like ${damageKind}. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`
+    : `AI: "Understood. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`;
 
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
