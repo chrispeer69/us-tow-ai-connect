@@ -120,14 +120,14 @@ interface RunResult {
  *  here are neither a win nor a failure, and colouring them as failures is how
  *  a working campaign gets read as a broken one. */
 const DISPOSITION_STYLE: Record<string, string> = {
-  PITCHED: 'bg-emerald-900/40 text-emerald-200 border-emerald-700',
-  WARM: 'bg-amber-900/40 text-amber-200 border-amber-600',
-  VM: 'bg-sky-900/40 text-sky-200 border-sky-700',
-  RETRY: 'bg-slate-800 text-slate-300 border-slate-600',
-  GATEKEEPER: 'bg-indigo-900/40 text-indigo-200 border-indigo-700',
-  NOT_INTERESTED: 'bg-slate-800 text-slate-400 border-slate-600',
-  DNC: 'bg-rose-950/50 text-rose-200 border-rose-700',
-  ERROR: 'bg-rose-950/50 text-rose-300 border-rose-800',
+  PITCHED: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+  WARM: 'bg-amber-50 text-amber-800 border-amber-300',
+  VM: 'bg-sky-50 text-sky-800 border-sky-300',
+  RETRY: 'bg-[var(--surface-low)] text-[var(--text-secondary)] border-[var(--border-color)]',
+  GATEKEEPER: 'bg-indigo-50 text-indigo-800 border-indigo-300',
+  NOT_INTERESTED: 'bg-[var(--surface-low)] text-[var(--text-muted)] border-[var(--border-color)]',
+  DNC: 'bg-rose-50 text-rose-800 border-rose-300',
+  ERROR: 'bg-rose-50 text-rose-700 border-rose-300',
 };
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -326,7 +326,7 @@ export default function CampaignsPage() {
 
   if (campaigns.length === 0) {
     return (
-      <div className="rounded border border-slate-700 bg-slate-900/40 p-6 text-sm text-slate-300">
+      <div className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] p-6 text-sm text-[var(--text-secondary)]">
         No campaigns for this account.
       </div>
     );
@@ -336,14 +336,14 @@ export default function CampaignsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-100">Outreach Campaigns</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-xl font-semibold text-[var(--text-main)]">Outreach Campaigns</h1>
+          <p className="text-sm text-[var(--text-secondary)]">
             Outbound calling that is not a tow job. Transcripts and recordings below.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <select
-            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+            className="rounded border border-[var(--border-color)] bg-[var(--surface-card)] px-3 py-2 text-sm text-[var(--text-main)]"
             value={selectedId ?? ''}
             onChange={(e) => setSelectedId(e.target.value)}
           >
@@ -357,13 +357,13 @@ export default function CampaignsPage() {
       </div>
 
       {error && (
-        <div className="rounded border border-rose-800 bg-rose-950/30 p-3 text-sm text-rose-100">
+        <div className="rounded border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">
           {error}
         </div>
       )}
 
       {readiness.length > 0 && (
-        <div className="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           <div className="font-medium">Not ready to dial</div>
           <ul className="mt-1 list-disc pl-5">
             {readiness.map((issue) => (
@@ -377,12 +377,12 @@ export default function CampaignsPage() {
           Loud on purpose. A campaign silently redirecting every call is the
           kind of state you must never discover from a phone bill. */}
       {campaign?.testMode && (
-        <div className="rounded border border-sky-600 bg-sky-950/40 p-3 text-sm text-sky-100">
+        <div className="rounded border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
           <span className="font-semibold">TEST MODE.</span> Every call is going to{' '}
           <span className="font-mono">{campaign.testOverrideNumber ?? '(not set)'}</span> instead of the
           prospect. Leads are still claimed and attempts still counted.
           {!campaign.testOverrideNumber && (
-            <span className="ml-1 font-semibold text-rose-200">
+            <span className="ml-1 font-semibold text-rose-800">
               No number set — the dialler will refuse to run.
             </span>
           )}
@@ -397,19 +397,19 @@ export default function CampaignsPage() {
               <Badge
                 className={
                   campaign.status === 'ACTIVE'
-                    ? 'border-emerald-700 bg-emerald-900/40 text-emerald-200'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                     : campaign.status === 'PAUSED'
-                      ? 'border-amber-600 bg-amber-900/40 text-amber-200'
-                      : 'border-slate-600 bg-slate-800 text-slate-300'
+                      ? 'border-amber-300 bg-amber-50 text-amber-800'
+                      : 'border-[var(--border-color)] bg-[var(--surface-low)] text-[var(--text-secondary)]'
                 }
               >
                 {campaign.status}
               </Badge>
-              <span className="text-sm text-slate-300">
+              <span className="text-sm text-[var(--text-secondary)]">
                 {campaign.fromNumber ?? 'no number'} · {campaign.concurrency} at a time · cap{' '}
                 {campaign.dailyCap}/day · {campaign.maxAttempts} attempts
               </span>
-              <span className="text-sm text-slate-400">
+              <span className="text-sm text-[var(--text-secondary)]">
                 {campaign.window.startHour}:00–{campaign.window.endHour}:00 local to each number,{' '}
                 {campaign.window.days.map((d) => DAY_LABELS[d - 1]).join(' ')}
               </span>
@@ -453,8 +453,8 @@ export default function CampaignsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardContent className="space-y-3 p-4">
-            <h2 className="text-sm font-medium text-slate-200">Add numbers</h2>
-            <p className="text-xs text-slate-400">
+            <h2 className="text-sm font-medium text-[var(--text-main)]">Add numbers</h2>
+            <p className="text-xs text-[var(--text-secondary)]">
               Paste anything — one per line, or CSV. Extensions, parens, dashes and a leading 1 are
               all fine. Duplicates and suppressed numbers are dropped automatically.
             </p>
@@ -470,13 +470,13 @@ export default function CampaignsPage() {
             </Button>
 
             {ingestReport && (
-              <div className="rounded border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">
+              <div className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] p-3 text-xs text-[var(--text-secondary)]">
                 <div className="flex flex-wrap gap-3">
                   <span>received {ingestReport.received}</span>
-                  <span className="text-emerald-300">added {ingestReport.added}</span>
+                  <span className="text-emerald-700">added {ingestReport.added}</span>
                   <span>duplicates {ingestReport.duplicates}</span>
-                  <span className="text-rose-300">suppressed {ingestReport.suppressed}</span>
-                  <span className="text-amber-300">invalid {ingestReport.invalid.length}</span>
+                  <span className="text-rose-700">suppressed {ingestReport.suppressed}</span>
+                  <span className="text-amber-700">invalid {ingestReport.invalid.length}</span>
                 </div>
                 {ingestReport.invalid.length > 0 && (
                   <ul className="mt-2 max-h-32 overflow-y-auto font-mono">
@@ -494,8 +494,8 @@ export default function CampaignsPage() {
 
         <Card>
           <CardContent className="space-y-3 p-4">
-            <h2 className="text-sm font-medium text-slate-200">Run a batch</h2>
-            <p className="text-xs text-slate-400">
+            <h2 className="text-sm font-medium text-[var(--text-main)]">Run a batch</h2>
+            <p className="text-xs text-[var(--text-secondary)]">
               A dry run resolves every guard — window, caps, suppression — and reports what would be
               dialled without placing a call. Always dry-run a fresh list first.
             </p>
@@ -521,16 +521,16 @@ export default function CampaignsPage() {
             </div>
 
             {runResult && (
-              <div className="rounded border border-slate-700 bg-slate-900/60 p-3 text-xs text-slate-300">
+              <div className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] p-3 text-xs text-[var(--text-secondary)]">
                 <div className="flex flex-wrap gap-3">
                   <span>{runResult.dryRun ? 'DRY RUN' : 'LIVE'}</span>
                   <span>considered {runResult.considered}</span>
-                  <span className="text-emerald-300">
+                  <span className="text-emerald-700">
                     {runResult.dryRun ? `would dial ${runResult.wouldDial.length}` : `placed ${runResult.placed}`}
                   </span>
                 </div>
                 {runResult.errors.length > 0 && (
-                  <div className="mt-2 text-rose-300">{runResult.errors.join(' · ')}</div>
+                  <div className="mt-2 text-rose-700">{runResult.errors.join(' · ')}</div>
                 )}
                 {Object.keys(runResult.skipped).length > 0 && (
                   <div className="mt-2">
@@ -545,7 +545,7 @@ export default function CampaignsPage() {
                     {runResult.wouldDial.map((d) => (
                       <li key={d.phone}>
                         {d.phone} {d.company ? `· ${d.company}` : ''}{' '}
-                        <span className="text-slate-500">{d.timezone}</span>
+                        <span className="text-[var(--text-muted)]">{d.timezone}</span>
                       </li>
                     ))}
                   </ul>
@@ -553,9 +553,9 @@ export default function CampaignsPage() {
               </div>
             )}
 
-            <div className="border-t border-slate-800 pt-3">
-              <h3 className="text-xs font-medium text-slate-300">Test mode</h3>
-              <p className="mt-1 text-xs text-slate-400">
+            <div className="border-t border-[var(--border-color)] pt-3">
+              <h3 className="text-xs font-medium text-[var(--text-secondary)]">Test mode</h3>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 Send every call to your own phone instead of the prospect. The whole pipeline still
                 runs — lead claimed, attempt counted, transcript and recording saved.
               </p>
@@ -583,8 +583,8 @@ export default function CampaignsPage() {
               </div>
             </div>
 
-            <div className="border-t border-slate-800 pt-3">
-              <h3 className="text-xs font-medium text-slate-300">Remove a number</h3>
+            <div className="border-t border-[var(--border-color)] pt-3">
+              <h3 className="text-xs font-medium text-[var(--text-secondary)]">Remove a number</h3>
               <div className="mt-2 flex items-center gap-2">
                 <Input
                   value={removePhone}
@@ -607,15 +607,15 @@ export default function CampaignsPage() {
       {/* ---- The call list — the point of this page ------------------------ */}
       <Card>
         <CardContent className="p-4">
-          <div className="mb-4 flex gap-1 border-b border-slate-800">
+          <div className="mb-4 flex gap-1 border-b border-[var(--border-color)]">
             {(['calls', 'performance'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={`-mb-px border-b-2 px-3 py-2 text-sm capitalize ${
                   tab === t
-                    ? 'border-slate-300 text-slate-100'
-                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                    ? 'border-[var(--border-strong)] text-[var(--text-main)]'
+                    : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
               >
                 {t}
@@ -628,7 +628,7 @@ export default function CampaignsPage() {
           {tab === 'calls' && (
           <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-medium text-slate-200">Calls</h2>
+            <h2 className="text-sm font-medium text-[var(--text-main)]">Calls</h2>
             <div className="ml-auto flex flex-wrap gap-1">
               {['', 'PITCHED', 'WARM', 'VM', 'GATEKEEPER', 'DNC', 'RETRY', 'ERROR'].map((d) => (
                 <button
@@ -636,8 +636,8 @@ export default function CampaignsPage() {
                   onClick={() => setFilter(d)}
                   className={`rounded border px-2 py-1 text-xs ${
                     filter === d
-                      ? 'border-slate-400 bg-slate-700 text-slate-100'
-                      : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200'
+                      ? 'border-[var(--border-strong)] bg-[var(--surface-low)] text-[var(--text-main)]'
+                      : 'border-[var(--border-color)] bg-[var(--surface-card)] text-[var(--text-secondary)] hover:text-[var(--text-main)]'
                   }`}
                 >
                   {d || 'All'}
@@ -647,7 +647,7 @@ export default function CampaignsPage() {
           </div>
 
           {calls.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-500">
+            <div className="py-8 text-center text-sm text-[var(--text-muted)]">
               No calls yet.
             </div>
           ) : (
@@ -667,7 +667,7 @@ export default function CampaignsPage() {
                 {calls.map((call) => (
                   <>
                     <TableRow key={call.id} className="cursor-pointer" onClick={() => setExpanded(expanded === call.id ? null : call.id)}>
-                      <TableCell className="whitespace-nowrap text-xs text-slate-400">
+                      <TableCell className="whitespace-nowrap text-xs text-[var(--text-secondary)]">
                         {new Date(call.createdAt).toLocaleString('en-US', {
                           month: 'short',
                           day: 'numeric',
@@ -676,35 +676,35 @@ export default function CampaignsPage() {
                         })}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{call.phone}</TableCell>
-                      <TableCell className="text-xs text-slate-300">{call.company ?? '—'}</TableCell>
-                      <TableCell className="text-xs text-slate-400">
+                      <TableCell className="text-xs text-[var(--text-secondary)]">{call.company ?? '—'}</TableCell>
+                      <TableCell className="text-xs text-[var(--text-secondary)]">
                         {call.direction === 'INBOUND' ? '← in' : '→ out'}
                       </TableCell>
                       <TableCell>
                         <Badge
                           className={
                             DISPOSITION_STYLE[call.disposition ?? ''] ??
-                            'border-slate-600 bg-slate-800 text-slate-300'
+                            'border-[var(--border-color)] bg-[var(--surface-low)] text-[var(--text-secondary)]'
                           }
                         >
                           {call.disposition ?? call.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-slate-400">
+                      <TableCell className="text-xs text-[var(--text-secondary)]">
                         {call.durationSeconds != null ? `${call.durationSeconds}s` : '—'}
                       </TableCell>
-                      <TableCell className="text-right text-xs text-slate-500">
+                      <TableCell className="text-right text-xs text-[var(--text-muted)]">
                         {expanded === call.id ? '▲' : '▼'}
                       </TableCell>
                     </TableRow>
 
                     {expanded === call.id && (
                       <TableRow key={`${call.id}-detail`}>
-                        <TableCell colSpan={7} className="bg-slate-950/60">
+                        <TableCell colSpan={7} className="bg-[var(--surface-low)]">
                           <div className="space-y-3 p-2">
                             {call.recordingUrl && (
                               <div>
-                                <div className="mb-1 text-xs font-medium text-slate-300">Recording</div>
+                                <div className="mb-1 text-xs font-medium text-[var(--text-secondary)]">Recording</div>
                                 {/* Native audio element: the URL is a signed
                                     Retell link and needs no player of ours. */}
                                 <audio controls preload="none" src={call.recordingUrl} className="w-full max-w-lg">
@@ -715,27 +715,27 @@ export default function CampaignsPage() {
 
                             {call.summary && (
                               <div>
-                                <div className="text-xs font-medium text-slate-300">Summary</div>
-                                <p className="text-xs text-slate-400">{call.summary}</p>
+                                <div className="text-xs font-medium text-[var(--text-secondary)]">Summary</div>
+                                <p className="text-xs text-[var(--text-secondary)]">{call.summary}</p>
                               </div>
                             )}
 
-                            <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+                            <div className="flex flex-wrap gap-4 text-xs text-[var(--text-muted)]">
                               {call.sentiment && <span>sentiment: {call.sentiment}</span>}
                               {call.callbackTime && <span>callback: {call.callbackTime}</span>}
                               {call.disconnectionReason && <span>ended: {call.disconnectionReason}</span>}
-                              {call.error && <span className="text-rose-300">error: {call.error}</span>}
+                              {call.error && <span className="text-rose-700">error: {call.error}</span>}
                             </div>
 
                             {call.transcript ? (
                               <div>
-                                <div className="mb-1 text-xs font-medium text-slate-300">Transcript</div>
-                                <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded border border-slate-800 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-300">
+                                <div className="mb-1 text-xs font-medium text-[var(--text-secondary)]">Transcript</div>
+                                <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded border border-[var(--border-color)] bg-[var(--surface-card)] p-3 font-mono text-xs leading-relaxed text-[var(--text-secondary)]">
                                   {call.transcript}
                                 </pre>
                               </div>
                             ) : (
-                              <div className="text-xs text-slate-600">No transcript.</div>
+                              <div className="text-xs text-[var(--text-muted)]">No transcript.</div>
                             )}
                           </div>
                         </TableCell>
@@ -781,7 +781,7 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-2 text-sm font-medium text-slate-200">Funnel</h3>
+        <h3 className="mb-2 text-sm font-medium text-[var(--text-main)]">Funnel</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <FunnelStep label="Dialed" value={dialed} pct={100} />
           <FunnelStep label="Answered" value={f.answered ?? 0} pct={pct(f.answered)} />
@@ -789,15 +789,15 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
           <FunnelStep label="Heard the offer" value={f.heard_offer ?? 0} pct={pct(f.heard_offer)} tone="good" />
           <FunnelStep label="Warm" value={f.warm ?? 0} pct={pct(f.warm)} tone="warm" />
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-[var(--text-muted)]">
           {f.machine ?? 0} reached an answering machine. Reached a human excludes voicemail and calls
           that died before the pitch — a batch can look busy while reaching nobody.
         </p>
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-slate-200">By agent version</h3>
-        <p className="mb-2 text-xs text-slate-500">
+        <h3 className="mb-2 text-sm font-medium text-[var(--text-main)]">By agent version</h3>
+        <p className="mb-2 text-xs text-[var(--text-muted)]">
           The unit of change. Median call length is the earliest signal that a script edit worked —
           it moves days before win rate does.
         </p>
@@ -821,20 +821,20 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
                 <TableRow key={v.version}>
                   <TableCell className="font-mono text-xs">v{v.version}</TableCell>
                   <TableCell className="text-right text-xs">{v.calls}</TableCell>
-                  <TableCell className="text-right text-xs font-semibold text-slate-100">
+                  <TableCell className="text-right text-xs font-semibold text-[var(--text-main)]">
                     {v.median_seconds}s
                   </TableCell>
-                  <TableCell className="text-right text-xs text-slate-400">{v.avg_seconds}s</TableCell>
+                  <TableCell className="text-right text-xs text-[var(--text-secondary)]">{v.avg_seconds}s</TableCell>
                   <TableCell className="text-right text-xs">{v.connected}</TableCell>
-                  <TableCell className="text-right text-xs text-emerald-300">{v.pitched}</TableCell>
-                  <TableCell className="text-right text-xs text-amber-300">{v.warm}</TableCell>
-                  <TableCell className="text-right text-xs text-sky-300">{v.voicemail}</TableCell>
-                  <TableCell className="text-right text-xs text-rose-300">{v.opted_out}</TableCell>
+                  <TableCell className="text-right text-xs text-emerald-700">{v.pitched}</TableCell>
+                  <TableCell className="text-right text-xs text-amber-700">{v.warm}</TableCell>
+                  <TableCell className="text-right text-xs text-sky-700">{v.voicemail}</TableCell>
+                  <TableCell className="text-right text-xs text-rose-700">{v.opted_out}</TableCell>
                 </TableRow>
               ))}
               {analytics.byVersion.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={9} className="py-6 text-center text-sm text-[var(--text-muted)]">
                     No calls yet.
                   </TableCell>
                 </TableRow>
@@ -843,7 +843,7 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
           </Table>
         </div>
         {analytics.byVersion.length === 1 && (
-          <p className="mt-2 text-xs text-amber-300/80">
+          <p className="mt-2 text-xs text-amber-700">
             Only one version has run. Resist changing the agent again until this one has enough calls
             to read — a version that never gets a sample can never be compared.
           </p>
@@ -851,39 +851,39 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-slate-200">
+        <h3 className="mb-2 text-sm font-medium text-[var(--text-main)]">
           Needs you ({analytics.needsAttention.length})
         </h3>
-        <p className="mb-2 text-xs text-slate-500">
+        <p className="mb-2 text-xs text-[var(--text-muted)]">
           Warm leads and gatekeeper callbacks. These are the only rows on this page worth acting on
           today.
         </p>
         {analytics.needsAttention.length === 0 ? (
-          <div className="rounded border border-slate-800 bg-slate-900/40 py-6 text-center text-sm text-slate-500">
+          <div className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] py-6 text-center text-sm text-[var(--text-muted)]">
             Nothing waiting.
           </div>
         ) : (
           <div className="space-y-2">
             {analytics.needsAttention.map((r) => (
-              <div key={r.id} className="rounded border border-slate-800 bg-slate-900/40 p-3">
+              <div key={r.id} className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     className={
                       r.disposition === 'WARM'
-                        ? 'border-amber-600 bg-amber-900/40 text-amber-200'
-                        : 'border-indigo-700 bg-indigo-900/40 text-indigo-200'
+                        ? 'border-amber-300 bg-amber-50 text-amber-800'
+                        : 'border-indigo-300 bg-indigo-50 text-indigo-800'
                     }
                   >
                     {r.disposition}
                   </Badge>
-                  <span className="text-sm text-slate-200">{r.company ?? 'Unknown'}</span>
-                  <span className="font-mono text-xs text-slate-400">{r.phone}</span>
+                  <span className="text-sm text-[var(--text-main)]">{r.company ?? 'Unknown'}</span>
+                  <span className="font-mono text-xs text-[var(--text-secondary)]">{r.phone}</span>
                   {r.callbackTime && (
-                    <span className="text-xs text-slate-300">call back: {r.callbackTime}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">call back: {r.callbackTime}</span>
                   )}
-                  <span className="ml-auto text-xs text-slate-500">{r.durationSeconds ?? 0}s</span>
+                  <span className="ml-auto text-xs text-[var(--text-muted)]">{r.durationSeconds ?? 0}s</span>
                 </div>
-                {r.summary && <p className="mt-1 text-xs text-slate-400">{r.summary}</p>}
+                {r.summary && <p className="mt-1 text-xs text-[var(--text-secondary)]">{r.summary}</p>}
               </div>
             ))}
           </div>
@@ -891,8 +891,8 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-medium text-slate-200">Best hours to call</h3>
-        <p className="mb-2 text-xs text-slate-500">
+        <h3 className="mb-2 text-sm font-medium text-[var(--text-main)]">Best hours to call</h3>
+        <p className="mb-2 text-xs text-[var(--text-muted)]">
           The 9-5 window is an assumption. This is the only thing that can correct it.
         </p>
         <div className="space-y-1">
@@ -900,35 +900,35 @@ function PerformanceTab({ analytics }: { analytics: Analytics | null }) {
             const rate = h.calls ? Math.round((h.reached_human / h.calls) * 100) : 0;
             return (
               <div key={h.hour} className="flex items-center gap-2 text-xs">
-                <span className="w-14 shrink-0 text-slate-400">
+                <span className="w-14 shrink-0 text-[var(--text-secondary)]">
                   {h.hour % 12 === 0 ? 12 : h.hour % 12}
                   {h.hour < 12 ? 'am' : 'pm'}
                 </span>
-                <div className="h-3 flex-1 overflow-hidden rounded bg-slate-800">
-                  <div className="h-full bg-emerald-700" style={{ width: `${rate}%` }} />
+                <div className="h-3 flex-1 overflow-hidden rounded bg-[var(--surface-low)]">
+                  <div className="h-full bg-emerald-600" style={{ width: `${rate}%` }} />
                 </div>
-                <span className="w-24 shrink-0 text-right text-slate-500">
+                <span className="w-24 shrink-0 text-right text-[var(--text-muted)]">
                   {h.reached_human}/{h.calls} ({rate}%)
                 </span>
               </div>
             );
           })}
-          {analytics.byHour.length === 0 && <div className="text-sm text-slate-500">No calls yet.</div>}
+          {analytics.byHour.length === 0 && <div className="text-sm text-[var(--text-muted)]">No calls yet.</div>}
         </div>
       </div>
 
       {analytics.objections.filter((o) => o.objection !== '(none)').length > 0 && (
         <div>
-          <h3 className="mb-2 text-sm font-medium text-slate-200">What they push back on</h3>
+          <h3 className="mb-2 text-sm font-medium text-[var(--text-main)]">What they push back on</h3>
           <div className="flex flex-wrap gap-2">
             {analytics.objections
               .filter((o) => o.objection !== '(none)')
               .map((o) => (
                 <span
                   key={o.objection}
-                  className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300"
+                  className="rounded border border-[var(--border-color)] bg-[var(--surface-card)] px-2 py-1 text-xs text-[var(--text-secondary)]"
                 >
-                  {o.objection} <span className="text-slate-500">{o.n}</span>
+                  {o.objection} <span className="text-[var(--text-muted)]">{o.n}</span>
                 </span>
               ))}
           </div>
@@ -950,15 +950,15 @@ function FunnelStep({
   tone?: 'good' | 'warm';
 }) {
   const colour =
-    tone === 'good' ? 'text-emerald-300' : tone === 'warm' ? 'text-amber-300' : 'text-slate-200';
+    tone === 'good' ? 'text-emerald-700' : tone === 'warm' ? 'text-amber-700' : 'text-[var(--text-main)]';
   return (
-    <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
-      <div className="text-xs text-slate-500">{label}</div>
+    <div className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] p-3">
+      <div className="text-xs text-[var(--text-muted)]">{label}</div>
       <div className={`text-lg font-semibold ${colour}`}>{value}</div>
-      <div className="mt-1 h-1 overflow-hidden rounded bg-slate-800">
-        <div className="h-full bg-slate-600" style={{ width: `${pct}%` }} />
+      <div className="mt-1 h-1 overflow-hidden rounded bg-[var(--surface-low)]">
+        <div className="h-full bg-[var(--text-muted)]" style={{ width: `${pct}%` }} />
       </div>
-      <div className="mt-1 text-[10px] text-slate-600">{pct}%</div>
+      <div className="mt-1 text-[10px] text-[var(--text-muted)]">{pct}%</div>
     </div>
   );
 }
@@ -974,15 +974,15 @@ function Stat({
 }) {
   const colour =
     tone === 'good'
-      ? 'text-emerald-300'
+      ? 'text-emerald-700'
       : tone === 'warm'
-        ? 'text-amber-300'
+        ? 'text-amber-700'
         : tone === 'bad'
-          ? 'text-rose-300'
-          : 'text-slate-200';
+          ? 'text-rose-700'
+          : 'text-[var(--text-main)]';
   return (
-    <div className="rounded border border-slate-800 bg-slate-900/60 p-3">
-      <div className="text-xs text-slate-500">{label}</div>
+    <div className="rounded border border-[var(--border-color)] bg-[var(--surface-low)] p-3">
+      <div className="text-xs text-[var(--text-muted)]">{label}</div>
       <div className={`text-lg font-semibold ${colour}`}>{value}</div>
     </div>
   );
