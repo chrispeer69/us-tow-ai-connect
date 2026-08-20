@@ -24,6 +24,7 @@ import { OutboundModule } from './modules/outbound/outbound.module';
 import { OutboundSmsModule } from './modules/outbound-sms/outbound-sms.module';
 import { OutboundVoiceModule } from './modules/outbound-voice/outbound-voice.module';
 import { CallReviewModule } from './modules/call-review/call-review.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { FlipEngineModule } from './modules/flip-engine/flip-engine.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { FlipAcceptModule } from './modules/flip-accept/flip-accept.module';
@@ -73,6 +74,7 @@ import { DomainStatusController } from './modules/health/domain-status.controlle
     OutboundSmsModule,
     OutboundVoiceModule,
     CallReviewModule,
+    CampaignsModule,
 
     FlipEngineModule,
     TrackingModule,

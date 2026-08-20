@@ -1365,3 +1365,180 @@ export const passwordResetOtps = pgTable(
 
 export type PasswordResetOtpRow = typeof passwordResetOtps.$inferSelect;
 export type PasswordResetOtpInsert = typeof passwordResetOtps.$inferInsert;
+
+// ============ OUTREACH CAMPAIGNS ============
+// Session 78 — outbound calling programmes that are NOT tow jobs.
+//
+// Deliberately separate from `outboundCallLogs`: that table models a tow (motor
+// club, vehicle, flip offers) and is the population the flip win-rate is
+// measured over. A 30-second "claim your free profile" call shares none of its
+// fields and must not dilute its numbers. See migration 0048.
+
+export const campaigns = pgTable(
+  'campaigns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    /** OFF | ACTIVE | PAUSED. OFF by default — existing is not dialling. */
+    status: text('status').notNull().default('OFF'),
+
+    // Outbound and inbound are different Retell agents on the same number:
+    // max_call_duration_ms is agent-level and the two directions have
+    // different caps (60s / 90s).
+    outboundAgentId: text('outbound_agent_id'),
+    outboundAgentVersion: text('outbound_agent_version'),
+    inboundAgentId: text('inbound_agent_id'),
+    inboundAgentVersion: text('inbound_agent_version'),
+    fromNumber: text('from_number'),
+
+    concurrency: integer('concurrency').notNull().default(10),
+    dailyCap: integer('daily_cap').notNull().default(500),
+    maxAttempts: integer('max_attempts').notNull().default(2),
+    maxCallDurationMs: integer('max_call_duration_ms').notNull().default(60000),
+
+    /** Window is local to the CALLED number's area code, not the server. */
+    callWindowStartHour: integer('call_window_start_hour').notNull().default(9),
+    callWindowEndHour: integer('call_window_end_hour').notNull().default(17),
+    /** ISO weekday numbers, 1 = Monday. */
+    callDays: jsonb('call_days').notNull().default([1, 2, 3, 4, 5]),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantSlugIdx: uniqueIndex('campaigns_tenant_slug_idx').on(t.tenantId, t.slug),
+  }),
+);
+
+/**
+ * Permanent do-not-call. Kept OUT of the lead row on purpose: if suppression
+ * were a lead status, deleting or re-importing a lead would resurrect a number
+ * someone asked us to stop calling. The suppression outlives the lead.
+ */
+export const campaignSuppressions = pgTable(
+  'campaign_suppressions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    phone: text('phone').notNull(),
+    reason: text('reason'),
+    sourceCallId: uuid('source_call_id'),
+    /** What they actually said, so a suppression is auditable. */
+    quote: text('quote'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantPhoneIdx: uniqueIndex('campaign_suppressions_tenant_phone_idx').on(t.tenantId, t.phone),
+  }),
+);
+
+export const campaignLeads = pgTable(
+  'campaign_leads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+
+    phone: text('phone').notNull(),
+    company: text('company'),
+    contactName: text('contact_name'),
+    state: text('state'),
+    city: text('city'),
+    areaCode: text('area_code'),
+    /** Resolved from the area code at ingest so the window check stays cheap. */
+    timezone: text('timezone'),
+    /** landline | mobile | voip | unknown */
+    lineType: text('line_type'),
+
+    /** QUEUED|CALLING|PITCHED|VM|RETRY|WARM|ACCEPTED|DNC|EXHAUSTED|INVALID */
+    status: text('status').notNull().default('QUEUED'),
+    attempts: integer('attempts').notNull().default(0),
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+    nextEligibleAt: timestamp('next_eligible_at', { withTimezone: true }),
+
+    source: text('source'),
+    externalRef: text('external_ref'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    campaignPhoneIdx: uniqueIndex('campaign_leads_campaign_phone_idx').on(t.campaignId, t.phone),
+    dialableIdx: index('campaign_leads_dialable_idx').on(t.campaignId, t.status, t.nextEligibleAt),
+    tenantStatusIdx: index('campaign_leads_tenant_status_idx').on(t.tenantId, t.status),
+  }),
+);
+
+/** One row per ATTEMPT. This is the table Chris reads and listens to. */
+export const campaignCallLogs = pgTable(
+  'campaign_call_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    leadId: uuid('lead_id').references(() => campaignLeads.id, { onDelete: 'set null' }),
+
+    direction: text('direction').notNull().default('OUTBOUND'),
+    phone: text('phone').notNull(),
+    company: text('company'),
+
+    /** Nullable: the row is written BEFORE the dial, so a crash cannot lose it. */
+    providerCallId: text('provider_call_id'),
+    agentId: text('agent_id'),
+    agentVersion: text('agent_version'),
+
+    status: text('status').notNull().default('PENDING'),
+    /** PITCHED|VM|RETRY|DNC|WARM|GATEKEEPER|NOT_INTERESTED|ERROR */
+    disposition: text('disposition'),
+    disconnectionReason: text('disconnection_reason'),
+
+    durationSeconds: integer('duration_seconds'),
+    transcript: text('transcript'),
+    recordingUrl: text('recording_url'),
+    summary: text('summary'),
+    sentiment: text('sentiment'),
+    /** Raw post-call answers, so a later rule change can re-derive history. */
+    analysis: jsonb('analysis'),
+    callbackTime: text('callback_time'),
+
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerCallIdx: uniqueIndex('campaign_call_logs_provider_call_idx').on(t.providerCallId),
+    tenantTimeIdx: index('campaign_call_logs_tenant_time_idx').on(t.tenantId, t.createdAt),
+    campaignTimeIdx: index('campaign_call_logs_campaign_time_idx').on(t.campaignId, t.createdAt),
+    leadIdx: index('campaign_call_logs_lead_idx').on(t.leadId),
+    dispositionIdx: index('campaign_call_logs_disposition_idx').on(
+      t.campaignId,
+      t.disposition,
+      t.createdAt,
+    ),
+  }),
+);
+
+export type CampaignRow = typeof campaigns.$inferSelect;
+export type CampaignInsert = typeof campaigns.$inferInsert;
+export type CampaignLeadRow = typeof campaignLeads.$inferSelect;
+export type CampaignLeadInsert = typeof campaignLeads.$inferInsert;
+export type CampaignCallLogRow = typeof campaignCallLogs.$inferSelect;
+export type CampaignCallLogInsert = typeof campaignCallLogs.$inferInsert;
+export type CampaignSuppressionRow = typeof campaignSuppressions.$inferSelect;

@@ -9,10 +9,15 @@ import {
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
-import * as crypto from 'crypto';
 import type { Request } from 'express';
 import { OutboundVoiceService } from './outbound-voice.service';
 import { extractRetellAnalysis, mapRetellStatus } from './retell-call-mapping';
+import {
+  buildSignaturePayloads,
+  retellSecretsFromEnv,
+  verifyRetellSignature,
+  type RetellVerificationSecret,
+} from '../../common/utils/retell-signature';
 
 /**
  * Session 68 — Retell outbound webhook receiver.
@@ -48,13 +53,7 @@ export class RetellWebhookController {
   private readonly verificationSecrets: RetellVerificationSecret[];
 
   constructor(private readonly outboundVoice: OutboundVoiceService) {
-    const webhookSecret = process.env.RETELL_WEBHOOK_SECRET?.trim() ?? '';
-    const apiKey = process.env.RETELL_API_KEY?.trim() ?? '';
-
-    this.verificationSecrets = [
-      webhookSecret ? { label: 'RETELL_WEBHOOK_SECRET', value: webhookSecret } : null,
-      apiKey && apiKey !== webhookSecret ? { label: 'RETELL_API_KEY', value: apiKey } : null,
-    ].filter((secret): secret is RetellVerificationSecret => Boolean(secret));
+    this.verificationSecrets = retellSecretsFromEnv();
 
     if (this.verificationSecrets.length === 0) {
       this.logger.warn(
@@ -138,143 +137,9 @@ export class RetellWebhookController {
   }
 }
 
-/**
- * Constant-time string comparison to prevent timing attacks.
- * Returns true only when a === b (same length + same bytes).
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
-
-function verifyRetellSignature(
-  signature: string | undefined,
-  secrets: RetellVerificationSecret[],
-  payloads: RetellSignaturePayload[],
-): boolean {
-  const structuredSignature = parseRetellStructuredSignature(signature);
-  const candidates = normalizeSignatureHeader(signature);
-  if (!structuredSignature && candidates.length === 0) return false;
-
-  for (const secret of secrets) {
-    for (const payload of payloads) {
-      if (structuredSignature && verifyStructuredRetellSignature(structuredSignature, secret, payload)) {
-        return true;
-      }
-
-      const expectedHex = crypto
-        .createHmac('sha256', secret.value)
-        .update(payload.bytes)
-        .digest('hex');
-      const expectedB64 = crypto
-        .createHmac('sha256', secret.value)
-        .update(payload.bytes)
-        .digest('base64');
-
-      if (
-        candidates.some(
-          (candidate) => timingSafeEqual(candidate, expectedHex) || timingSafeEqual(candidate, expectedB64),
-        )
-      ) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function verifyStructuredRetellSignature(
-  signature: RetellStructuredSignature,
-  secret: RetellVerificationSecret,
-  payload: RetellSignaturePayload,
-): boolean {
-  if (Math.abs(Date.now() - signature.timestampMs) > RETELL_SIGNATURE_TOLERANCE_MS) {
-    return false;
-  }
-
-  const expectedHex = crypto
-    .createHmac('sha256', secret.value)
-    .update(payload.bytes)
-    .update(signature.timestamp, 'utf8')
-    .digest('hex');
-
-  return timingSafeEqual(signature.digest, expectedHex);
-}
-
-function buildSignaturePayloads(req: Request, body: RetellWebhookBody): RetellSignaturePayload[] {
-  const rawBody = (req as Request & { rawBody?: unknown }).rawBody;
-  const payloads: RetellSignaturePayload[] = [];
-
-  if (Buffer.isBuffer(rawBody)) {
-    payloads.push({ label: 'rawBody', bytes: rawBody });
-    return payloads;
-  }
-
-  // Backward compatibility for environments/tests that do not expose req.rawBody.
-  payloads.push({ label: 'jsonBody', bytes: Buffer.from(JSON.stringify(body), 'utf8') });
-  return payloads;
-}
-
-function normalizeSignatureHeader(signature: string | undefined): string[] {
-  if (!signature) return [];
-
-  return signature
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .flatMap((part) => {
-      const withoutPrefix = part.replace(/^sha256=/i, '').trim();
-      if (/^[vd]=/i.test(withoutPrefix)) return [];
-      return withoutPrefix === part ? [part] : [withoutPrefix];
-    });
-}
-
-function parseRetellStructuredSignature(signature: string | undefined): RetellStructuredSignature | null {
-  if (!signature) return null;
-
-  const parts = Object.fromEntries(
-    signature
-      .split(',')
-      .map((part) => part.trim().split('='))
-      .filter((entry): entry is [string, string] => entry.length === 2 && Boolean(entry[0]) && Boolean(entry[1]))
-      .map(([key, value]) => [key.toLowerCase(), value]),
-  );
-  const timestamp = parts.v;
-  const digest = parts.d;
-  if (!timestamp || !digest || !/^\d+$/.test(timestamp) || !/^[a-f0-9]{64}$/i.test(digest)) {
-    return null;
-  }
-
-  const timestampMs = Number(timestamp);
-  if (!Number.isSafeInteger(timestampMs)) return null;
-
-  return {
-    timestamp,
-    timestampMs,
-    digest: digest.toLowerCase(),
-  };
-}
-
-const RETELL_SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
-
-interface RetellVerificationSecret {
-  label: 'RETELL_WEBHOOK_SECRET' | 'RETELL_API_KEY';
-  value: string;
-}
-
-interface RetellSignaturePayload {
-  label: 'rawBody' | 'jsonBody';
-  bytes: Buffer;
-}
-
-interface RetellStructuredSignature {
-  timestamp: string;
-  timestampMs: number;
-  digest: string;
-}
+// Signature verification now lives in common/utils/retell-signature.ts — the
+// campaign webhook (Session 78) needs the identical check, and two copies of it
+// is how one of them quietly stops matching the provider format.
 
 interface RetellWebhookBody {
   event: 'call_started' | 'call_ended' | 'call_analyzed';
