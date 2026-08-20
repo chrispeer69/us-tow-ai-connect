@@ -129,7 +129,31 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.4';
+export const SCRIPT_VERSION = '3.5';
+// 3.5 (2026-08-20) — stop supplying the refusal inside the ask.
+//
+//   Every close in the script ended by naming the way out, in the same sentence
+//   as the offer:
+//     "Would one of those work instead of X, or would you like me to just send
+//      the driver to the closest one?"
+//     "Want me to send the driver there instead, or keep X?"
+//     "...or would you rather keep the shop you have?"
+//
+//   The first of those is also genuinely ambiguous — "the closest one" can mean
+//   the closest PARTNER shop or the customer's own destination. On 08-19 John
+//   Miley answered "just send the driver to the location", which is a customer
+//   choosing his original shop in words that read like acceptance. The question
+//   was doing the declining for him.
+//
+//   All three are now assumptive: "sound good?" / "Which of those works best
+//   for you?" / "want me to do that?". Nothing is added — this is strictly
+//   fewer words, which also buys back time on a call that hit the provider cap
+//   47 times in the three days to 08-19.
+//
+//   NOT changed here, deliberately: the number of shops offered. The 2.9 note
+//   below is Chris's 08-14 decision that a single name is a yes/no question and
+//   "no" is the easy answer, and offer 1 carries 48 of the programme's 62
+//   all-time wins. The measured defect was the ambiguous close, not the count.
 // 3.4 (2026-08-19) — the third offer is gone.
 //
 //   Chris decided this around 2026-08-09: "the third offer never WINS and makes
@@ -945,9 +969,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     (distanceShort ? `, ${distanceShort}` : ``) +
     `: as a new VIP customer you'd get a free visual mechanical diagnostic — a visual inspection of up to an hour, ` +
     `normally a \${{diagnostic_value}} value — plus up to 10 percent off parts and labor.` + rideClause + ` ` +
-    (hasSeparateDestination(ctx)
-      ? `Want me to send the driver there instead, or keep {{destination}}?`
-      : `Want me to send the driver there instead?`);
+    `I'll route the driver there — sound good?`;
 
   // 2.9 — offer a CHOICE, not a single shop. Chris's call, 2026-08-14, after a
   // test call offered one shop and then had nothing to say when he asked for
@@ -978,9 +1000,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     `mechanical diagnostic — a visual inspection of up to an hour, normally a \${{diagnostic_value}} value — plus ` +
     `up to 10 percent off parts and labor.` + rideClause + ` ` +
     `The closest to you are ${choiceList}. ` +
-    (hasSeparateDestination(ctx)
-      ? `Would one of those work instead of {{destination}}, or would you like me to just send the driver to the closest one?`
-      : `Would one of those work for you, or would you like me to just send the driver to the closest one?`);
+    `Which of those works best for you?`;
 
   const hasChoice = (ctx.alternateShops ?? []).filter((a) => a?.name).length > 0;
 
@@ -1016,11 +1036,9 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     `they'll do a free visual brake inspection and tire condition assessment, and check and top off your fluids — ` +
     `no charge. You'd also get 10 percent off your next set of tires, brake job, or oil change and rotation.` + rideClause + ` ` +
     (hasChoice ? `The closest to you are ${choiceList}. ` : ``) +
-    (hasSeparateDestination(ctx)
-      ? hasChoice
-        ? `Would one of those work instead of {{destination}}, or would you like me to just send the driver to the closest one?`
-        : `Want me to send the driver there instead, or keep {{destination}}?`
-      : `Want me to send the driver there instead?`);
+    (hasChoice
+      ? `Which of those works best for you?`
+      : `I'll route the driver there — sound good?`);
 
   const hasChoiceOffer = hasChoice ? multiShopOffer1 : singleShopOffer1;
   const defaultOffer1 = isTireJob ? tireOffer1 : hasChoiceOffer;
@@ -1045,7 +1063,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
       `visit still stand. I'd sort the change out with the driver. Want me to switch it?`
     : `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
       `a written estimate before any work starts, and the free VIP diagnostic and up to 10 percent off parts and labor still stand. ` +
-      `I'd sort the change out with the driver. Want me to switch it?`;
+      `I'd sort the change out with the driver — I'll get that switched over, sound good?`;
 
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
 
@@ -1336,9 +1354,20 @@ function scenarioB(ctx: ScriptContext): string {
   // 2026-08-18 — Chris: "open up the body shop soft sales pitch". This was a
   // statement the customer could not act on; it is now a question, so it can be
   // accepted, recorded as offer 1, and measured. Still ONE ask, still no price.
+  // 3.5 (2026-08-20) — the ask no longer supplies its own refusal.
+  //
+  // "...or would you rather keep the shop you have?" ended every body pitch by
+  // naming the easy way out, in the same breath as the offer. 50 body calls in
+  // the seven days to 08-19, 0 wins. Chris, 2026-08-20: keep it a LIGHT
+  // REFERRAL — one ask, nothing to argue with — and put the open door on the
+  // DECLINE instead of inside the offer, where it was cancelling the ask.
+  //
+  // Deliberately still soft. This is a customer whose car was just wrecked; the
+  // 2026-08-12 design intent — nothing to push back against — is the reason it
+  // stays a referral and not the assumptive close the repair ladder uses.
   const bodyShopMention = isActiveDamageJob
-    ? `AI: "Understood, that sounds like ${damageKind}. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`
-    : `AI: "Understood. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. Would you like me to send it to one of ours instead, or would you rather keep the shop you have?"`;
+    ? `AI: "Understood, that sounds like ${damageKind}. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}.${insuranceLine} I can take it straight to ours if that helps — want me to do that?"`
+    : `AI: "Understood. Just so you know{{customer_salutation}}, we own our own body shops here in the area${shopList}. I can take it straight to ours if that helps — want me to do that?"`;
 
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
@@ -1372,6 +1401,27 @@ function scenarioB(ctx: ScriptContext): string {
     // question in front of it, saying the plan BEFORE the ask pre-empts the
     // answer — so it moves to the decline path, where its job is to leave the
     // customer certain the truck still comes to them first.
+    // 3.5 — the open door. Chris, 2026-08-20: "we are always available if they
+    // need us — if something changes where you are taking your car today, give
+    // us a call and we can help."
+    //
+    // This is what replaced the insurance-rights rebuttal. A collision customer
+    // who declines is not gone; they are pre-quote, pre-teardown, and days away
+    // from the first thing that changes their mind. Pressing them now costs
+    // goodwill on a wrecked car. Leaving the door open costs one sentence, ends
+    // the exchange on agreement, and makes a later call from them expected.
+    //
+    // STAGED, NOT YET LIVE. The line Chris approved is:
+    //
+    //   "And if anything changes — today or next week — give us a call. We own
+    //    body shops here in town and we'd be glad to help."
+    //
+    // It is held back because it points customers at +1 844-701-1345, and that
+    // number currently routes INBOUND to the outbound flip agent with an empty
+    // {{script_body}} — no job context, no lookup tool, no transfer. ~22 people
+    // a day already call it back and 93 of the last 100 were people we had
+    // called. Inviting collision customers into that door makes a known break
+    // worse. Ship this sentence in the same change as the inbound agent.
     `AI: "No problem at all. ${closingLine}."`,
     ``,
     ...conviniBlock,

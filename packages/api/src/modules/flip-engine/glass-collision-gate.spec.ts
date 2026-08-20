@@ -95,7 +95,9 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
     const body = renderCallBodyB({ ...base });
     expect(body).toContain('that sounds like auto body work');
     expect(body).toContain('the insurance company may have already lined that shop up');
-    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // 3.5 — one light ask, and it no longer supplies the refusal.
+    expect(body).toContain('want me to do that?');
+    expect(body).not.toContain('would you rather keep the shop you have');
     expect(body).toContain('Alpha Collision');
     expect(body).toContain('Westerville Body');
     expect(body).toContain("we own our own body shops");
@@ -114,7 +116,9 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
   it('asks once, and never carries mechanical offer terms onto a body job', () => {
     const body = renderCallBodyB({ ...base });
     // The ask exists now...
-    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // 3.5 — one light ask, and it no longer supplies the refusal.
+    expect(body).toContain('want me to do that?');
+    expect(body).not.toContain('would you rather keep the shop you have');
     // ...but none of the mechanical ladder comes with it. These are the terms of
     // a DIFFERENT offer and quoting them on body work invents a commitment.
     expect(body).not.toContain('one quick option and then');
@@ -159,7 +163,9 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
       issue: 'a mechanical issue',
       issueSubcategory: 'mechanical',
     });
-    expect(body).toContain('Would you like me to send it to one of ours instead');
+    // 3.5 — one light ask, and it no longer supplies the refusal.
+    expect(body).toContain('want me to do that?');
+    expect(body).not.toContain('would you rather keep the shop you have');
     // No live-collision framing on a job that is not one, and no insurance
     // line when there is no insurer in the picture.
     expect(body).not.toContain('that sounds like auto body work');

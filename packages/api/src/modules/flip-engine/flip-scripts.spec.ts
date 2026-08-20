@@ -92,7 +92,9 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     const termsIdx = body.indexOf('up to 10 percent off parts and labor');
     expect(offerIdx).toBeGreaterThan(-1);
     expect(offerIdx).toBeLessThan(termsIdx);
-    expect(body).toContain('Want me to send the driver there instead, or keep Firestone on Main?');
+    // 3.5 — assumptive close; the ask no longer names the way out.
+    expect(body).toContain("I'll route the driver there — sound good?");
+    expect(body).not.toContain('or keep Firestone on Main?');
   });
 
   // Session 75 — dispatch intake. These questions produce the AI Notes block a
@@ -165,7 +167,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     // wins at 4.0%, and it is the half Chris asked to strengthen.
     expect(body).toContain("can I ask what's taking you to");
     expect(body).toContain('still stand');
-    expect(body).toContain('Want me to switch it?');
+    expect(body).toContain("I'll get that switched over, sound good?");
   });
 
   it('asks color and drivetrain open rather than confirming them', () => {
@@ -232,7 +234,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
   it('still flips a tire job to the nearest network shop', () => {
     const body = renderCallBody('competitor_repair', tire);
     expect(body).toContain("Wayne's Westerville");
-    expect(body).toContain('Want me to send the driver there instead');
+    expect(body).toContain("I'll route the driver there — sound good?");
   });
 
   it('applies the tire offer to a full set as well as a single flat', () => {
@@ -457,7 +459,11 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain("Wayne's Powell, about 4 miles away");
     expect(body).toContain("Wayne's Columbus, about 6 miles away");
     expect(body).toContain('Wrench Recovery, about 10 miles away');
-    expect(body).toContain('send the driver to the closest one');
+    // 3.5 — "the closest one" was ambiguous between the nearest PARTNER shop
+    // and the customer's own destination, and customers resolved it as a
+    // decline. The choice of shops stays; the ambiguous exit does not.
+    expect(body).toContain('Which of those works best for you?');
+    expect(body).not.toContain('send the driver to the closest one');
     // The benefit is stated once for all three shops, not repeated per shop.
     // Scoped to offer 1 — offer 2's reassurance legitimately restates it later.
     const offer1 = body.slice(
@@ -519,7 +525,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('PREFERENCE');
     expect(body).toContain("it's my regular shop");
     expect(body).toContain('written estimate before any work starts');
-    expect(body).toContain('Want me to switch it?');
+    expect(body).toContain("I'll get that switched over, sound good?");
   });
 
   it('puts the offer-2 reassurance after the question, not inside it', () => {
