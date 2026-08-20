@@ -80,6 +80,26 @@ export const CLOSE_MARKERS: readonly string[] = [
 ];
 
 /**
+ * Phrases that mean the collision statement (Options 3/4) actually reached the
+ * customer, so the text she promised must now be sent.
+ *
+ * Same mechanism and same reasoning as CLOSE_MARKERS above: the script says
+ * "I'm texting you the info", and until 3.6 nothing sent it. The ONLY
+ * customer-facing SMS after a call was the Convini app link, gated on a
+ * separate post-call flag — so every collision customer was told to expect
+ * information about estimate reviews and received an app link about towing.
+ *
+ * Matched against the AGENT's turns, lowercase and punctuation-free, and kept
+ * beside the text that produces them. Reword one without the other and the
+ * promise silently stops being kept again.
+ */
+export const BODY_INFO_MARKERS: readonly string[] = [
+  'free estimate reviews',
+  'somewhere to put it',
+];
+
+
+/**
  * The app close, shared by every scenario. Was five identical copies of the
  * same string, which is how a wording change gets applied to four of them.
  *

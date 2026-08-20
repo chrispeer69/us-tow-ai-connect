@@ -129,3 +129,20 @@ export function renderDailyReportSms(i: DailyReportInput): string {
   ];
   return lines.join('\n');
 }
+
+/**
+ * The text Options 3/4 promise on a collision call. Deliberately mirrors what
+ * she said: an estimate review, not a pitch to switch shops. Nothing in here
+ * describes the customer's rights, their insurer, or the insurer's shop — the
+ * safe lane applies to what we write as much as to what she says.
+ */
+export function renderBodyInfoSms(i: { companyName: string; customerName?: string | null }): string {
+  const who = (i.customerName ?? '').trim().split(/\s+/)[0];
+  const greeting = who ? `Hi ${who}` : 'Hi';
+  return (
+    `${greeting}, ${i.companyName} here — the info I mentioned. ` +
+    `We run our own body shops and we do free estimate reviews: ` +
+    `whenever your estimate is written up, send it over and we'll give it a second read ` +
+    `before anything is finalised. No charge, no obligation. Reply ESTIMATE and we'll take it from there.`
+  );
+}

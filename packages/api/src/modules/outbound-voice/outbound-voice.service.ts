@@ -14,8 +14,8 @@ import {
 } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
 import { TwilioSmsService } from '../outbound-sms/twilio-sms.service';
-import { renderFlipWinSms } from '../flip-engine/flip-sms-templates';
-import { CLOSE_MARKERS } from '../flip-engine/flip-scripts';
+import { renderBodyInfoSms, renderFlipWinSms } from '../flip-engine/flip-sms-templates';
+import { BODY_INFO_MARKERS, CLOSE_MARKERS } from '../flip-engine/flip-scripts';
 import {
   DEFAULT_INTAKE_COMPLETE_SECONDS,
   judgePitchCompletion,
@@ -1225,6 +1225,42 @@ export class OutboundVoiceService {
             this.logger.warn(`[outbound-voice] Convini SMS to customer failed phone=${log.customerPhone}: ${(err as Error).message}`),
           );
         }
+      }
+    }
+
+    // 3.6 — keep the promise Options 3/4 make. The collision statement ends
+    // "I'm texting you the info", and until now nothing sent it: the only
+    // customer-facing SMS after a call was the Convini app link above, gated on
+    // its own separate flag. Every collision customer was told to expect
+    // information about estimate reviews and received an app link about towing.
+    //
+    // Triggered off the transcript rather than a post-call analysis field so it
+    // needs no Retell configuration change, and so it can only fire when she
+    // ACTUALLY said it — a collision call that died at four seconds never
+    // promised anything and must not be texted.
+    const bodyTranscript = (update.transcript ?? log.transcript ?? '').toLowerCase();
+    const promisedBodyInfo = BODY_INFO_MARKERS.some((m) => bodyTranscript.includes(m));
+    if (promisedBodyInfo && log.customerPhone) {
+      const tenantRows = await this.db.select().from(tenants).where(eq(tenants.id, log.tenantId)).limit(1);
+      const tenant = tenantRows[0];
+      const cfg = (tenant?.flipEngineConfig as Record<string, unknown> | null) ?? {};
+      // Same opt-out switch as the Convini send: a tenant that has SMS off has
+      // it off for everything.
+      if (tenant && cfg.sms_convini !== false) {
+        await this.sms
+          .sendSms({
+            to: log.customerPhone,
+            body: renderBodyInfoSms({
+              companyName: tenant.companyName,
+              customerName: log.customerName,
+            }),
+            tenantId: log.tenantId,
+          })
+          .catch((err) =>
+            this.logger.warn(
+              `[outbound-voice] body-info SMS to customer failed phone=${log.customerPhone}: ${(err as Error).message}`,
+            ),
+          );
       }
     }
 
