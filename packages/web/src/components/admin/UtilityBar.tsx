@@ -124,6 +124,7 @@ function TenantSwitcher() {
   const { branding } = useBranding();
   const [open, setOpen] = useState(false);
   const [tenants, setTenants] = useState<SwitchableTenant[] | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -153,8 +154,11 @@ function TenantSwitcher() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api<{ tenants: SwitchableTenant[] }>('/v1/auth/my-tenants');
+      const res = await api<{ tenants: SwitchableTenant[]; isSuperAdmin?: boolean }>(
+        '/v1/auth/my-tenants',
+      );
       setTenants(res.tenants ?? []);
+      setIsSuperAdmin(Boolean(res.isSuperAdmin));
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -219,6 +223,33 @@ function TenantSwitcher() {
 
           {tenants === null && (
             <div className="px-3 py-3 text-sm text-[var(--text-muted)]">Loading…</div>
+          )}
+
+          {/*
+            "US Tow AI Connect" is the PLATFORM, not a tenant — it has no row in
+            `tenants` and never did. Before the switcher, the bar printed it as a
+            fallback label whenever the current tenant had no branding name set,
+            which made it read like a fourth account. It belongs here, but as
+            what it actually is: the cross-tenant view, for super admins only.
+          */}
+          {isSuperAdmin && (
+            <>
+              <Link
+                href="/super-admin"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-low)] hover:text-[var(--text-main)]"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[var(--alliance-amber,#f59e0b)] font-display text-[10px] font-bold text-white">
+                  U
+                </span>
+                <span className="min-w-0 flex-1 truncate">US Tow AI Connect</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                  platform
+                </span>
+              </Link>
+              <div className="border-b border-[var(--border-color)]" />
+            </>
           )}
 
           {tenants !== null && tenants.length === 0 && !error && (

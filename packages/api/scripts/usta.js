@@ -115,10 +115,22 @@ const COMMANDS = {
 
   async add(source) {
     const text = readInput(source);
-    const { data } = await call(`/v1/admin/campaigns/${await campaignId()}/leads`, 'POST', {
-      text,
-      source: source && source !== '-' ? 'csv' : 'paste',
-    });
+
+    // A headered CSV carries better data than column-guessing can recover.
+    // The exported lists have company/phone/city/state as named columns; the
+    // free-text path has to infer which cell is which and gets `state` wrong
+    // when the file spells it "Ohio" instead of "OH". Use the header when
+    // there is one, and fall back to the paste parser when there is not.
+    const structured = parseHeaderedCsv(text);
+    const body = structured
+      ? { rows: structured, source: source && source !== '-' ? 'csv' : 'paste' }
+      : { text, source: source && source !== '-' ? 'csv' : 'paste' };
+
+    if (structured) {
+      console.log(`  (read ${structured.length} rows using the CSV header)`);
+    }
+
+    const { data } = await call(`/v1/admin/campaigns/${await campaignId()}/leads`, 'POST', body);
 
     console.log(`\n  received    ${data.received}`);
     console.log(`  added       ${data.added}`);
@@ -219,6 +231,73 @@ const COMMANDS = {
     console.log('');
   },
 };
+
+/** Split one CSV line, honouring double quotes (addresses contain commas). */
+function splitCsvLine(line) {
+  const cells = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else inQuotes = !inQuotes;
+    } else if ((ch === ',' || ch === '\t') && !inQuotes) {
+      cells.push(current);
+      current = '';
+    } else current += ch;
+  }
+  cells.push(current);
+  return cells.map((c) => c.trim().replace(/^"|"$/g, ''));
+}
+
+/**
+ * Read a CSV that names its columns. Returns null when there is no usable
+ * header, so the caller can fall back to the messy-paste parser.
+ *
+ * Only a phone column is required. Everything else is a bonus that makes the
+ * call list readable later — `company` is what shows on the Campaigns page.
+ */
+function parseHeaderedCsv(text) {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return null;
+
+  const header = splitCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z]/g, ''));
+  const idx = (...names) => {
+    for (const n of names) {
+      const i = header.indexOf(n);
+      if (i !== -1) return i;
+    }
+    return -1;
+  };
+
+  const phoneAt = idx('phone', 'phonenumber', 'telephone', 'tel', 'number');
+  if (phoneAt === -1) return null;
+
+  const companyAt = idx('company', 'companyname', 'business', 'businessname', 'name');
+  const cityAt = idx('city', 'town');
+  const stateAt = idx('state', 'province');
+  const contactAt = idx('contact', 'contactname', 'owner', 'ownername');
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i += 1) {
+    const cells = splitCsvLine(lines[i]);
+    const phone = cells[phoneAt];
+    // Keep blank-phone rows out entirely rather than shipping them to the API
+    // to be rejected — an empty cell is not an interesting ingest error.
+    if (!phone) continue;
+    rows.push({
+      phone,
+      company: companyAt !== -1 ? cells[companyAt] || null : null,
+      city: cityAt !== -1 ? cells[cityAt] || null : null,
+      state: stateAt !== -1 ? cells[stateAt] || null : null,
+      contactName: contactAt !== -1 ? cells[contactAt] || null : null,
+    });
+  }
+  return rows.length > 0 ? rows : null;
+}
 
 function usage(detail) {
   console.log(`usage: usta <command>
