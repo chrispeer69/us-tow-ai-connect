@@ -189,8 +189,25 @@ export function decideDisposition(input: DispositionInput): DispositionResult {
   // Checked before the dial-status branch on purpose: somebody can say "take me
   // off your list" and hang up, which Retell reports as a short user_hangup.
   const optOutQuote = findMatch(turns, OPT_OUT_PATTERNS);
+
+  // The agent's SELF-REPORT is not sufficient on its own.
+  //
+  // 2026-08-20, J&J Auto Towing: the call reached voicemail, the agent read its
+  // own opt-out line to the answering machine ("Understood — I'll take you off
+  // the list right now"), then reported opted_out: true. Nobody had asked for
+  // anything. Trusting that flag permanently suppressed a live prospect on the
+  // strength of the agent talking to itself.
+  //
+  // A person can only opt out if a person was there. So the flag is honoured
+  // ONLY when a human actually spoke and the call did not reach voicemail;
+  // otherwise the customer's own words are the only evidence that counts.
   const agentSaysOptOut = readBool(input.analysis, 'opted_out');
-  if (optOutQuote || agentSaysOptOut === true) {
+  const reason0 = (input.disconnectionReason || '').toLowerCase();
+  const hitVoicemail =
+    reason0.includes('voicemail') || readBool(input.analysis, 'reached_voicemail') === true;
+  const humanWasPresent = turns.length > 0 && !hitVoicemail;
+
+  if (optOutQuote || (agentSaysOptOut === true && humanWasPresent)) {
     return {
       disposition: 'DNC',
       reason: optOutQuote ? 'customer_opt_out_phrase' : 'agent_reported_opt_out',

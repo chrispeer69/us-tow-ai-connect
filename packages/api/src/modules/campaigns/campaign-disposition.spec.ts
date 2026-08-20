@@ -56,6 +56,56 @@ describe('opt-out detection is scoped to the customer', () => {
     expect(result.disposition).toBe('DNC');
   });
 
+  it('does NOT suppress when the agent opts a VOICEMAIL out on its own', () => {
+    // 2026-08-20, J&J Auto Towing. The call hit an answering machine, the agent
+    // read its own opt-out line to it, then self-reported opted_out: true. That
+    // permanently suppressed a live prospect on the strength of the agent
+    // talking to itself. A person can only opt out if a person was there.
+    const transcript = [
+      'User: Your',
+      'Agent: Hi there — this is Ray with the US Tow Alliance...',
+      "User: call has been forwarded to voicemail. The person you're trying to reach is not available.",
+      "Agent: Understood — I'll take you off the list right now. Sorry to bother you.",
+    ].join('\n');
+
+    const result = decideDisposition({
+      status: 'completed',
+      disconnectionReason: 'voicemail_reached',
+      durationSeconds: 60,
+      transcript,
+      analysis: { custom_analysis_data: { opted_out: true, reached_voicemail: true } },
+    });
+
+    expect(result.disposition).toBe('VM');
+    expect(result.optOutQuote).toBeNull();
+  });
+
+  it('still honours the agent flag when a live human was on the call', () => {
+    // The flag is not worthless — it catches opt-out wording the regex misses.
+    // It just needs a human present to be believable.
+    const transcript = ['Agent: Hi there —', "User: yeah, we're not doing any of that, lose the number."].join('\n');
+
+    const result = decideDisposition({
+      status: 'completed',
+      durationSeconds: 20,
+      transcript,
+      analysis: { custom_analysis_data: { opted_out: true } },
+    });
+
+    expect(result.disposition).toBe('DNC');
+  });
+
+  it('does not suppress when the agent flags an opt-out but nobody ever spoke', () => {
+    const result = decideDisposition({
+      status: 'completed',
+      durationSeconds: 24,
+      transcript: 'Agent: Hi there — this is Ray with the US Tow Alliance...',
+      analysis: { custom_analysis_data: { opted_out: true } },
+    });
+
+    expect(result.disposition).not.toBe('DNC');
+  });
+
   it('parses only attributed customer turns', () => {
     const transcript = [
       'Agent: hello',
