@@ -138,6 +138,76 @@ const POST_CALL_FIELDS = [
 ];
 
 // ---------------------------------------------------------------------------
+// The outbound prompt.
+//
+// Chris, 2026-08-20: "you are not engaging a conversation - you are calling -
+// they pick up - you say what we set up to say - you hang up - be friendly."
+//
+// That is a real change from the first draft, which invited Q&A. The rewrite
+// below makes DELIVER-AND-GO the default and treats every question as an
+// interruption to be answered in one line and closed out of. Two rules survive
+// unchanged and are not negotiable: opt-out stops the call instantly, and "are
+// you an AI" gets an honest answer. Everything else got shorter.
+// ---------------------------------------------------------------------------
+const OUTBOUND_PROMPT = `You are Ray, calling on behalf of the US Tow Alliance. You are calling towing companies to tell them a free profile is waiting at USTowAlliance.com.
+
+THIS IS NOT A CONVERSATION. You are not qualifying, discovering, or selling. You call, they pick up, you say your piece warmly, and you get off the phone. Thirty seconds. A short call that lands the website is a total success.
+
+## THE PITCH — say this on a human pickup, close to verbatim
+
+"Hi — this is Ray with the US Tow Alliance. Quick thirty seconds. Your company has a free profile waiting at USTowAlliance.com. No cost, no catch. It gets you listed, and it opens up tools our profile holders use to raise gross sales and cut operating costs. This industry is changing fast — the Alliance is where you find out how to compete and win. Just go to USTowAlliance.com and accept your free profile. That's U-S Tow Alliance dot com. Appreciate your time."
+
+Then END THE CALL. Do not wait for a reply. Do not ask if they have questions. Do not fill silence.
+
+Say the site name slowly and clearly both times: "U-S Tow Alliance dot com."
+
+## BE FRIENDLY
+
+Warm, easy, unhurried in TONE even though the call is short. You are doing them a favour, not asking for one. Never sound like a robocall, never sound rushed, never sound like you are reading. If they laugh, laugh. If they are having a bad day, be kind about it — in one sentence — and then close.
+
+## IF THEY INTERRUPT WITH A QUESTION
+
+Answer in ONE short sentence, point at the site, end the call. Never a second exchange on the same topic. Never re-pitch.
+
+- "What does it cost?" -> "The profile is free. Zero dollars. USTowAlliance.com."
+- "Who are you / what is this?" -> "A national alliance for towing operators — tools, buying power, and visibility. It's free at USTowAlliance.com."
+- "I'm busy" -> "No problem — USTowAlliance.com, claim it when you have a minute. Thanks." END THE CALL.
+- "Send me something" -> "It's all on the site — USTowAlliance.com. Thanks for your time." END THE CALL.
+- Anything else -> one sentence, then "It's all at USTowAlliance.com," then END THE CALL.
+
+## "ARE YOU A REAL PERSON / IS THIS AI?"
+
+Tell the truth immediately and without hedging: "I'm an AI assistant." Then finish in one sentence and close. Never deny it, never dodge it, never change the subject.
+
+## GATEKEEPER / NOT THE DECISION MAKER
+
+Do not pitch a receptionist or dispatcher who does not own the company. Ask one question — "When's the best time to catch the owner?" — thank them warmly, and END THE CALL. Do not leave the pitch with them. Do not ask them to pass a message.
+
+## OPT-OUT — overrides everything else on this call
+
+If they say do not call, remove me, stop calling, take me off your list, or anything meaning the same — even mid-sentence, even rudely — stop talking immediately. Do not finish your sentence. Do not pitch. Do not ask why.
+
+Say exactly: "Understood — I'll take you off the list right now. Sorry to bother you." Then END THE CALL.
+
+Never try to keep them on. Never ask them to reconsider.
+
+## VOICEMAIL
+
+Leave the short version and hang up. Do not leave a callback number, do not leave a name to ask for.
+
+## THINGS YOU MAY NEVER SAY
+
+- Never quote a price for anything.
+- Never promise a revenue number, a percentage, a saving, or a result.
+- Never say or imply you are affiliated with their current network, motor club, or association.
+- Never claim they already signed up, already owe anything, or already have an account beyond the free profile waiting for them.
+- Never say anything you cannot point at on USTowAlliance.com.
+
+## ENDING
+
+Once you have said the site name for the second time, you are DONE. Call end_call. Do not add a thought, do not start a fresh pitch, do not wait to be dismissed.`;
+
+// ---------------------------------------------------------------------------
 // The inbound agent. A SEPARATE agent from the outbound one because
 // max_call_duration_ms is agent-level in Retell and the spec wants 60s out /
 // 90s in. Retell binds inbound_agents and outbound_agents separately on a
@@ -235,6 +305,25 @@ const INBOUND_POST_CALL_FIELDS = [
   },
 ];
 
+/**
+ * The highest PUBLISHED version of an agent.
+ *
+ * `POST /publish-agent` returns an empty 200, and patching an agent creates a
+ * new draft — so the version you held before the patch is already stale by the
+ * time you publish. Reading it back from list-agents is the only way to know
+ * what to pin. Getting this wrong pins the campaign to the version BEFORE the
+ * changes you just made, which fails silently: calls go out on the old prompt.
+ */
+async function latestPublishedVersion(agentId) {
+  const agents = await retell('/list-agents');
+  const versions = agents
+    .filter((a) => a.agent_id === agentId && a.is_published)
+    .map((a) => Number(a.version))
+    .filter((v) => Number.isFinite(v));
+  if (versions.length === 0) throw new Error(`no published version for ${agentId}`);
+  return Math.max(...versions);
+}
+
 async function main() {
   console.log(`\n=== USTA Retell setup (${DRY ? 'DRY RUN' : BUY ? 'BUY NUMBER' : 'APPLY'}) ===\n`);
 
@@ -254,7 +343,15 @@ async function main() {
   ]);
 
   const numbers = await retell('/list-phone-numbers');
-  const existing = numbers.find((n) => n.nickname === 'USTA-Outreach');
+  // Match on the NUMBER first, nickname second. A number bought by hand in the
+  // Retell dashboard has no nickname, and matching on nickname alone made this
+  // script report "not purchased yet" for a number that was sitting right
+  // there — then skip the binding step entirely. Set USTA_FROM_NUMBER when the
+  // number was not bought by this script.
+  const wanted = process.env.USTA_FROM_NUMBER || null;
+  const existing =
+    (wanted && numbers.find((n) => n.phone_number === wanted)) ||
+    numbers.find((n) => n.nickname === 'USTA-Outreach');
   console.log('\nUSTA number:', existing ? existing.phone_number : '(not purchased yet)');
 
   if (DRY) {
@@ -290,6 +387,20 @@ async function main() {
   if (!APPLY) return;
 
   // ---- Step 2: outbound agent --------------------------------------------
+  // The prompt lives on the LLM object, not the agent. Patch it first so the
+  // published version carries the deliver-and-go rewrite.
+  console.log('\nUpdating the outbound prompt...');
+  const llmId = outbound.response_engine?.llm_id;
+  if (llmId) {
+    await retell(`/update-retell-llm/${llmId}`, 'PATCH', {
+      general_prompt: OUTBOUND_PROMPT,
+      begin_message: 'Hi — this is Ray with the US Tow Alliance. Quick thirty seconds.',
+    });
+    console.log(`  ${llmId} updated`);
+  } else {
+    console.log('  WARNING: no llm_id on the agent — prompt not updated');
+  }
+
   console.log('\nPatching the outbound agent...');
   await retell(`/update-agent/${OUTBOUND_AGENT_ID}`, 'PATCH', {
     post_call_analysis_data: POST_CALL_FIELDS,
@@ -298,13 +409,10 @@ async function main() {
     max_call_duration_ms: 60000,
   });
 
-  const publishedOutbound = await retell(`/publish-agent/${OUTBOUND_AGENT_ID}`, 'POST', {}).catch(
-    async (err) => {
-      console.log(`  publish-agent failed (${err.message.slice(0, 120)}), reading current version`);
-      return retell(`/get-agent/${OUTBOUND_AGENT_ID}`);
-    },
+  await retell(`/publish-agent/${OUTBOUND_AGENT_ID}`, 'POST', {}).catch((err) =>
+    console.log(`  publish-agent warning: ${err.message.slice(0, 140)}`),
   );
-  const outboundVersion = publishedOutbound.version ?? outbound.version;
+  const outboundVersion = await latestPublishedVersion(OUTBOUND_AGENT_ID);
   console.log(`  outbound agent published at version ${outboundVersion}`);
 
   // ---- Step 3: inbound agent ---------------------------------------------
@@ -341,10 +449,10 @@ async function main() {
     });
   }
 
-  const publishedInbound = await retell(`/publish-agent/${inbound.agent_id}`, 'POST', {}).catch(() =>
-    retell(`/get-agent/${inbound.agent_id}`),
+  await retell(`/publish-agent/${inbound.agent_id}`, 'POST', {}).catch((err) =>
+    console.log(`  publish-agent warning: ${err.message.slice(0, 140)}`),
   );
-  const inboundVersion = publishedInbound.version ?? inbound.version;
+  const inboundVersion = await latestPublishedVersion(inbound.agent_id);
   console.log(`  inbound agent published at version ${inboundVersion}`);
 
   // ---- Step 4: bind the number -------------------------------------------
@@ -353,12 +461,21 @@ async function main() {
     console.log('Agents are configured; the campaign will refuse to dial until a number is bound.\n');
   } else {
     console.log(`\nBinding agents to ${number.phone_number}...`);
+    // The single-agent fields (inbound_agent_id / outbound_agent_id) were
+    // DEPRECATED by Retell on 2026-03-31 and now hard-error. Numbers take
+    // weighted agent ARRAYS. Versions are pinned explicitly here — leaving them
+    // off makes the number run whichever draft is latest.
     await retell(`/update-phone-number/${encodeURIComponent(number.phone_number)}`, 'PATCH', {
-      inbound_agent_id: inbound.agent_id,
-      outbound_agent_id: OUTBOUND_AGENT_ID,
       nickname: 'USTA-Outreach',
+      inbound_agents: [
+        { agent_id: inbound.agent_id, agent_version: Number(inboundVersion), weight: 1 },
+      ],
+      outbound_agents: [
+        { agent_id: OUTBOUND_AGENT_ID, agent_version: Number(outboundVersion), weight: 1 },
+      ],
     });
-    console.log('  bound');
+    console.log(`  inbound  -> ${inbound.agent_id} v${inboundVersion} (90s)`);
+    console.log(`  outbound -> ${OUTBOUND_AGENT_ID} v${outboundVersion} (60s)`);
   }
 
   // ---- Step 5: write back onto the campaign row --------------------------
