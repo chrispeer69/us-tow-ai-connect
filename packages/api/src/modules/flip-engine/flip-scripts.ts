@@ -149,7 +149,11 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.6';
+export const SCRIPT_VERSION = '3.7';
+// 3.7 (2026-08-20) — ship the collision open-door decline line. Held back
+//   through 3.5 and 3.6 because it tells customers to call a number that was
+//   answering with the outbound flip agent and an empty script body. The
+//   inbound agent is live, so the door opens now.
 // 3.6 (2026-08-20) — the safe lane. Removed the insurance-acknowledgement line
 //   from the body script: it named the insurer's instruction and the customer's
 //   rights in one sentence. Chris's rule — describe our own business, never the
@@ -1478,18 +1482,22 @@ function scenarioB(ctx: ScriptContext): string {
     // goodwill on a wrecked car. Leaving the door open costs one sentence, ends
     // the exchange on agreement, and makes a later call from them expected.
     //
-    // STAGED, NOT YET LIVE. The line Chris approved is:
+    // 3.7 — the open door. LIVE as of 2026-08-20, once the inbound agent
+    // shipped. Chris: "we are always available if they need us — if something
+    // changes where you are taking your car today, give us a call and we can
+    // help."
     //
-    //   "And if anything changes — today or next week — give us a call. We own
-    //    body shops here in town and we'd be glad to help."
+    // It was held back through 3.5 and 3.6 because it points customers at
+    // +1 844-701-1345, and that number answered INBOUND with the outbound flip
+    // agent and an empty {{script_body}}. It now answers with a dedicated agent
+    // that can look their job up by phone number and transfer to dispatch, so
+    // the door it sends them to actually opens.
     //
-    // It is held back because it points customers at +1 844-701-1345, and that
-    // number currently routes INBOUND to the outbound flip agent with an empty
-    // {{script_body}} — no job context, no lookup tool, no transfer. ~22 people
-    // a day already call it back and 93 of the last 100 were people we had
-    // called. Inviting collision customers into that door makes a known break
-    // worse. Ship this sentence in the same change as the inbound agent.
-    `AI: "No problem at all. ${closingLine}."`,
+    // NOTE the closingLine is NOT repeated here. Options 3/4 already open with
+    // it ("I'll have your driver come to you at X first..."), and saying the
+    // whole plan twice inside thirty seconds is how a warm close starts
+    // sounding automated.
+    `AI: "No problem at all. And if anything changes — today or next week — give us a call. We own body shops here in town and we'd be glad to help."`,
     ``,
     ...conviniBlock,
     ``,

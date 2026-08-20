@@ -100,6 +100,10 @@ describe('body + glass jobs get ONE soft offer, and never a price or a ladder', 
     expect(body).not.toContain('entirely your call');
     // Passive availability: a statement, not an ask.
     expect(body).toContain('free estimate reviews');
+    // 3.7 — the open door ships now that +1 844-701-1345 answers properly.
+    expect(body).toContain('give us a call');
+    // ...and the whole plan is not recited twice inside thirty seconds.
+    expect(body.split('come to you at').length - 1).toBeLessThanOrEqual(1);
     expect(body).toContain("I'm texting you the info");
     expect(body).not.toContain('Would you like me to send it to one of ours instead');
     // Option 3 deliberately does NOT name our shops on a live collision — the
