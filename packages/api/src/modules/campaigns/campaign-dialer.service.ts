@@ -318,6 +318,12 @@ export class CampaignDialerService {
         company: lead.company ?? '',
         state: lead.state ?? '',
         city: lead.city ?? '',
+        // Which touch this is, 1-based. Ray opens differently on a callback —
+        // a second call that reads the identical script verbatim is the same
+        // defect that killed the first three calls of 2026-08-20, spread
+        // across a week instead of ten seconds.
+        touch_number: String(claimed[0].attempts),
+        is_first_call: claimed[0].attempts <= 1 ? 'yes' : 'no',
       },
     });
 
@@ -456,7 +462,10 @@ export class CampaignDialerService {
       )[0];
       const campaign = (
         await this.db
-          .select({ maxAttempts: campaigns.maxAttempts })
+          .select({
+            maxAttempts: campaigns.maxAttempts,
+            touchSpacingDays: campaigns.touchSpacingDays,
+          })
           .from(campaigns)
           .where(eq(campaigns.id, row.campaignId))
           .limit(1)
@@ -467,9 +476,24 @@ export class CampaignDialerService {
         lead?.attempts ?? 1,
         campaign?.maxAttempts ?? 2,
       );
+
+      // Space the next touch. Repetition is what makes the name stick, but a
+      // lead dialled on six consecutive days is not being reminded of a brand,
+      // it is being pestered by one. Only leads that stay in the pool get a
+      // next-eligible date; a retired lead does not need one.
+      const spacing = campaign?.touchSpacingDays ?? 3;
+      const stillDialable = next === 'RETRY' || next === 'VM';
+      const nextEligibleAt = stillDialable
+        ? new Date(Date.now() + spacing * 24 * 60 * 60 * 1000)
+        : null;
+
       await this.db
         .update(campaignLeads)
-        .set({ status: next, updatedAt: new Date() })
+        .set({
+          status: next,
+          ...(stillDialable ? { nextEligibleAt } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(campaignLeads.id, row.leadId));
     }
 

@@ -1415,6 +1415,15 @@ export const campaigns = pgTable(
     testMode: boolean('test_mode').notNull().default(false),
     testOverrideNumber: text('test_override_number'),
 
+    /**
+     * Minimum days between touches on the same lead.
+     *
+     * Repetition is how the name sticks, but only when it is spaced. Nothing
+     * spaced attempts before this — the sole guard was one per day, so a lead
+     * could be dialled six days running, which is not frequency.
+     */
+    touchSpacingDays: integer('touch_spacing_days').notNull().default(3),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
