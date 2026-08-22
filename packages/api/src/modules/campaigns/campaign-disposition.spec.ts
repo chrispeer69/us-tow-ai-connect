@@ -203,10 +203,12 @@ describe('call outcomes', () => {
   });
 
   it('does not call an IVR a pitch', () => {
-    // Connected, ran long, nobody ever spoke.
+    // Connected, ran long, nobody ever spoke. Ray said only "hello?" — no
+    // script content — so the agent-never-spoke guard catches it first, which
+    // is the more accurate reason of the two.
     const result = decideDisposition({ status: 'completed', durationSeconds: 40, transcript: 'Agent: hello?' });
     expect(result.disposition).toBe('RETRY');
-    expect(result.reason).toBe('no_human_speech');
+    expect(result.reason).toBe('agent_never_spoke');
   });
 });
 
@@ -219,5 +221,38 @@ describe('attempt exhaustion', () => {
   it('never resurrects a suppressed lead regardless of attempts', () => {
     expect(nextLeadStatus('DNC', 1, 2)).toBe('DNC');
     expect(nextLeadStatus('DNC', 9, 2)).toBe('DNC');
+  });
+});
+
+describe('PITCHED requires that Ray actually spoke', () => {
+  it('does NOT score a phone-tree loop as a pitch', () => {
+    // 2026-08-22, Mid-Iowa Towing: 90 seconds of the company's own IVR looping
+    // its menu twice, no agent speech at all, logged as PITCHED.
+    const transcript = [
+      'User: Thank you for calling Mid-Iowa Towing. Press 1 if you are law enforcement.',
+      'User: Press 2 for heavy-duty towing and recovery. Press 3 for light-duty towing.',
+    ].join('\n');
+    const r = decideDisposition({ status: 'completed', durationSeconds: 90, transcript });
+    expect(r.disposition).not.toBe('PITCHED');
+    expect(r.reason).toBe('agent_never_spoke');
+  });
+
+  it('does NOT score a bare "hello" as a pitch', () => {
+    const r = decideDisposition({
+      status: 'completed',
+      durationSeconds: 15,
+      transcript: "User: John's Towing.\nUser: Hello?",
+    });
+    expect(r.disposition).toBe('RETRY');
+  });
+
+  it('DOES score a real delivered pitch', () => {
+    const transcript = [
+      'User: Hello?',
+      'Agent: Hey — Ray here, with the Yoo-Ess Toe Alliance. We built your company a free profile.',
+      'User: Okay.',
+    ].join('\n');
+    const r = decideDisposition({ status: 'completed', durationSeconds: 30, transcript });
+    expect(r.disposition).toBe('PITCHED');
   });
 });

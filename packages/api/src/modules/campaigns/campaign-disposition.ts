@@ -137,6 +137,21 @@ export function customerTurns(transcript: string | null | undefined): string[] {
   return turns;
 }
 
+const NEWLINE = new RegExp("\r?\n");
+const AGENT_LINE = new RegExp("^\s*(agent|assistant|ray)\s*:\s*(.*)$", "i");
+
+/** Turns spoken by the AGENT. Mirrors customerTurns. */
+export function agentTurns(transcript: string | null | undefined): string[] {
+  if (!transcript) return [];
+  const turns: string[] = [];
+  const lines = transcript.split(NEWLINE);
+  for (const line of lines) {
+    const m = line.match(AGENT_LINE);
+    if (m && m[2].trim()) turns.push(m[2].trim());
+  }
+  return turns;
+}
+
 /** First customer turn matching any pattern, or null. */
 function findMatch(turns: string[], patterns: RegExp[]): string | null {
   for (const turn of turns) {
@@ -282,6 +297,25 @@ export function decideDisposition(input: DispositionInput): DispositionResult {
   }
 
   // ---- 8. A human heard it. -----------------------------------------------
+  //
+  // RAY MUST ACTUALLY HAVE SPOKEN. On 2026-08-22 this rule was "15 seconds and
+  // any user turn", which scored a phone tree looping its own menu for ninety
+  // seconds as a successful pitch. 33 of 91 reported PITCHED calls had NO agent
+  // speech in them at all, and the day's pitch rate was reported as 42% when
+  // the true figure was 15%. A disposition that can be earned by silence is
+  // not measuring anything.
+  const agentSpoke = agentTurns(input.transcript).some((t) =>
+    /alliance|profile|towing owner|dot com/i.test(t),
+  );
+  if (!agentSpoke) {
+    return {
+      disposition: 'RETRY',
+      reason: 'agent_never_spoke',
+      optOutQuote: null,
+      callbackTime,
+    };
+  }
+
   const pitchDelivered = readBool(input.analysis, 'pitch_delivered');
   if (pitchDelivered === true || (turns.length > 0 && duration >= MIN_PITCH_SECONDS)) {
     return { disposition: 'PITCHED', reason: 'pitch_delivered', optOutQuote: null, callbackTime };
