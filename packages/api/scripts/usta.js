@@ -127,7 +127,11 @@ const COMMANDS = {
       : { text, source: source && source !== '-' ? 'csv' : 'paste' };
 
     if (structured) {
+      const got = Object.entries(structured[0])
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .map(([k]) => k);
       console.log(`  (read ${structured.length} rows using the CSV header)`);
+      console.log(`  columns matched: ${got.join(', ')}`);
     }
 
     const { data } = await call(`/v1/admin/campaigns/${await campaignId()}/leads`, 'POST', body);
@@ -276,10 +280,34 @@ function parseHeaderedCsv(text) {
   const phoneAt = idx('phone', 'phonenumber', 'telephone', 'tel', 'number');
   if (phoneAt === -1) return null;
 
-  const companyAt = idx('company', 'companyname', 'business', 'businessname', 'name');
-  const cityAt = idx('city', 'town');
-  const stateAt = idx('state', 'province');
-  const contactAt = idx('contact', 'contactname', 'owner', 'ownername');
+  // Chris's standard export shape (2026-08-22):
+  //   company, phone, email, rating, reviews, grade, site_score, ai_score,
+  //   website, address, city, state, zip
+  // Matched by NAME rather than position, so a reordered or partial file still
+  // imports — only `phone` is actually required.
+  const at = {
+    company: idx('company', 'companyname', 'business', 'businessname', 'name'),
+    email: idx('email', 'emailaddress'),
+    rating: idx('rating', 'stars'),
+    reviews: idx('reviews', 'reviewscount', 'reviewcount', 'numreviews'),
+    grade: idx('grade', 'towgrade'),
+    siteScore: idx('sitescore', 'pagespeed', 'pagespeedscore', 'speedscore'),
+    aiScore: idx('aiscore', 'airating'),
+    website: idx('website', 'url', 'site', 'web'),
+    address: idx('address', 'streetaddress', 'street'),
+    city: idx('city', 'town'),
+    state: idx('state', 'province'),
+    zip: idx('zip', 'zipcode', 'postcode', 'postalcode'),
+    contact: idx('contact', 'contactname', 'owner', 'ownername'),
+  };
+
+  const cell = (cells, i) => (i !== -1 && cells[i] ? cells[i].trim() : null);
+  const num = (cells, i) => {
+    const v = cell(cells, i);
+    if (v === null) return null;
+    const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
 
   const rows = [];
   for (let i = 1; i < lines.length; i += 1) {
@@ -290,10 +318,19 @@ function parseHeaderedCsv(text) {
     if (!phone) continue;
     rows.push({
       phone,
-      company: companyAt !== -1 ? cells[companyAt] || null : null,
-      city: cityAt !== -1 ? cells[cityAt] || null : null,
-      state: stateAt !== -1 ? cells[stateAt] || null : null,
-      contactName: contactAt !== -1 ? cells[contactAt] || null : null,
+      company: cell(cells, at.company),
+      contactName: cell(cells, at.contact),
+      email: cell(cells, at.email),
+      website: cell(cells, at.website),
+      address: cell(cells, at.address),
+      city: cell(cells, at.city),
+      state: cell(cells, at.state),
+      zip: cell(cells, at.zip),
+      rating: num(cells, at.rating),
+      reviewsCount: num(cells, at.reviews) === null ? null : Math.round(num(cells, at.reviews)),
+      grade: cell(cells, at.grade),
+      siteScore: num(cells, at.siteScore) === null ? null : Math.round(num(cells, at.siteScore)),
+      aiScore: num(cells, at.aiScore) === null ? null : Math.round(num(cells, at.aiScore)),
     });
   }
   return rows.length > 0 ? rows : null;

@@ -40,6 +40,16 @@ export interface IngestRow {
   state?: string | null;
   city?: string | null;
   externalRef?: string | null;
+  /** Chris's standard export shape, 2026-08-22. */
+  email?: string | null;
+  website?: string | null;
+  address?: string | null;
+  zip?: string | null;
+  rating?: string | number | null;
+  reviewsCount?: number | null;
+  grade?: string | null;
+  siteScore?: number | null;
+  aiScore?: number | null;
 }
 
 @Injectable()
@@ -274,6 +284,15 @@ export class CampaignsService {
           status: 'QUEUED',
           source,
           externalRef: r.externalRef ?? null,
+          email: r.email ?? null,
+          website: r.website ?? null,
+          address: r.address ?? null,
+          zip: r.zip ?? null,
+          rating: r.rating != null && r.rating !== '' ? String(r.rating) : null,
+          reviewsCount: r.reviewsCount ?? null,
+          grade: r.grade ?? null,
+          siteScore: r.siteScore ?? null,
+          aiScore: r.aiScore ?? null,
         })),
       )
       .onConflictDoNothing({ target: [campaignLeads.campaignId, campaignLeads.phone] })

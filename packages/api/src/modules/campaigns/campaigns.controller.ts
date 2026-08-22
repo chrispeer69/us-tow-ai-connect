@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AdminAuthGuard, type AdminRequest } from '../../common/guards/admin-auth.guard';
-import { CampaignsService } from './campaigns.service';
+import { CampaignsService, type IngestRow } from './campaigns.service';
 import { CampaignDialerService } from './campaign-dialer.service';
 
 /**
@@ -95,7 +95,7 @@ export class CampaignsController {
   async addLeads(
     @Req() req: AdminRequest,
     @Param('id') id: string,
-    @Body() body: { text?: string; rows?: Array<{ phone: string; company?: string; state?: string }>; source?: string },
+    @Body() body: { text?: string; rows?: IngestRow[]; source?: string },
   ) {
     const rows = body.rows?.length
       ? body.rows

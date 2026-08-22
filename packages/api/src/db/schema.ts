@@ -1488,6 +1488,25 @@ export const campaignLeads = pgTable(
     externalRef: text('external_ref'),
     notes: text('notes'),
 
+    /**
+     * Chris's standard export shape (2026-08-22). The importer previously kept
+     * only company/phone/city/state and dropped the rest — including `website`,
+     * which is what the PageSpeed scores join on.
+     *
+     * grade / siteScore / aiScore have no values yet; the Alliance-side scoring
+     * is still being built. Nullable so there is somewhere to land them without
+     * a migration mid-campaign.
+     */
+    email: text('email'),
+    website: text('website'),
+    address: text('address'),
+    zip: text('zip'),
+    rating: numeric('rating', { precision: 2, scale: 1 }),
+    reviewsCount: integer('reviews_count'),
+    grade: text('grade'),
+    siteScore: integer('site_score'),
+    aiScore: integer('ai_score'),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

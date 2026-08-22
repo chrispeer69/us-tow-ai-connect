@@ -237,12 +237,23 @@ export class CampaignDialerService {
       return { placed: false, reason: 'suppressed_at_dial_time' };
     }
 
+    // TEST MODE MUST NOT SPEND A REAL LEAD.
+    //
+    // 2026-08-22: nineteen test calls, each pointed at Chris's phone or the
+    // RoadsideMC inbound line, each claimed a real Iowa or Cleveland company,
+    // burned one of its attempts, and — because an AI answered — was scored
+    // PITCHED. Nineteen operators were marked as successfully reached having
+    // never been dialled. The list looked worked when it was not.
+    //
+    // The attempt counter only advances on a call that actually rang the
+    // prospect.
+    const isTest = campaign.testMode === true;
     const claimed = await this.db
       .update(campaignLeads)
       .set({
         status: 'CALLING',
-        attempts: sql`${campaignLeads.attempts} + 1`,
-        lastAttemptAt: new Date(),
+        ...(isTest ? {} : { attempts: sql`${campaignLeads.attempts} + 1` }),
+        ...(isTest ? {} : { lastAttemptAt: new Date() }),
         updatedAt: new Date(),
       })
       .where(
@@ -340,6 +351,15 @@ export class CampaignDialerService {
         updatedAt: new Date(),
       })
       .where(eq(campaignCallLogs.id, log.id));
+
+    // A test borrowed the lead to have something to dial with. Give it straight
+    // back — its status must not depend on what the test number happened to do.
+    if (isTest) {
+      await this.db
+        .update(campaignLeads)
+        .set({ status: 'QUEUED', updatedAt: new Date() })
+        .where(eq(campaignLeads.id, lead.id));
+    }
 
     return { placed: true, reason: 'placed' };
   }
@@ -452,7 +472,16 @@ export class CampaignDialerService {
       return { matched: true };
     }
 
-    if (row.leadId) {
+    // A test call's outcome says nothing about the company on the row.
+    const testCampaign = (
+      await this.db
+        .select({ testMode: campaigns.testMode })
+        .from(campaigns)
+        .where(eq(campaigns.id, row.campaignId))
+        .limit(1)
+    )[0];
+
+    if (row.leadId && !testCampaign?.testMode) {
       const lead = (
         await this.db
           .select({ attempts: campaignLeads.attempts })
