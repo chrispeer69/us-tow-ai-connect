@@ -23,7 +23,7 @@ export interface PushPayload {
    * every other buzz on the phone, and an unanswered call should not
    * impersonate a win. See public/flip-sw.js.
    */
-  kind?: 'win' | 'attention' | 'callback';
+  kind?: 'win' | 'attention' | 'callback' | 'hot';
 }
 
 export interface SendResult {
@@ -354,6 +354,32 @@ export class PushService {
       });
     } catch (err) {
       this.logger.warn(`Callback push failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Somebody asked to speak to Chris. This is the loudest thing the campaign
+   * can produce and it is deliberately worded differently from an ordinary
+   * callback: a callback means somebody rang us, this means somebody is
+   * sitting there waiting for Chris to ring them.
+   */
+  async sendCallbackRequest(
+    tenantId: string,
+    req: { id: string; company: string | null; name: string | null; phone: string; urgency: string; note: string | null },
+  ): Promise<void> {
+    const now = req.urgency === 'now';
+    try {
+      await this.sendToTenantAdmins(tenantId, {
+        title: now
+          ? `CALL NOW — ${req.company?.trim() || req.name?.trim() || req.phone}`
+          : `Wants to talk — ${req.company?.trim() || req.name?.trim() || req.phone}`,
+        body: [req.phone, req.name?.trim(), req.note?.trim()].filter(Boolean).join(' · ').slice(0, 160),
+        url: '/m/usta',
+        kind: 'hot',
+        tag: `usta-request-${req.id}`,
+      });
+    } catch (err) {
+      this.logger.warn(`Callback-request push failed: ${(err as Error).message}`);
     }
   }
 

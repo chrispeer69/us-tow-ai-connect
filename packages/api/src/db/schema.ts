@@ -1579,3 +1579,41 @@ export type CampaignLeadInsert = typeof campaignLeads.$inferInsert;
 export type CampaignCallLogRow = typeof campaignCallLogs.$inferSelect;
 export type CampaignCallLogInsert = typeof campaignCallLogs.$inferInsert;
 export type CampaignSuppressionRow = typeof campaignSuppressions.$inferSelect;
+
+/**
+ * A towing owner who asked to speak to Chris.
+ *
+ * Distinct from a disposition: a disposition describes a call that ended, this
+ * is a person waiting for a phone to ring. Its own table so it can be alerted
+ * on and worked, rather than being a flag buried in a call log.
+ */
+export const campaignCallbackRequests = pgTable(
+  'campaign_callback_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+    callId: uuid('call_id').references(() => campaignCallLogs.id, { onDelete: 'set null' }),
+    leadId: uuid('lead_id').references(() => campaignLeads.id, { onDelete: 'set null' }),
+    company: text('company'),
+    contactName: text('contact_name'),
+    phone: text('phone').notNull(),
+    /** now | today | this_week | no_preference. "now" means somebody is waiting. */
+    urgency: text('urgency').notNull().default('no_preference'),
+    preferredTime: text('preferred_time'),
+    note: text('note'),
+    transcript: text('transcript'),
+    recordingUrl: text('recording_url'),
+    /** OPEN until Chris marks it. Nothing auto-closes. */
+    status: text('status').notNull().default('OPEN'),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    handledNote: text('handled_note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    openIdx: index('callback_requests_open_idx').on(t.tenantId, t.status, t.createdAt),
+    callIdx: uniqueIndex('callback_requests_call_idx').on(t.callId),
+  }),
+);
+
+export type CampaignCallbackRequestRow = typeof campaignCallbackRequests.$inferSelect;

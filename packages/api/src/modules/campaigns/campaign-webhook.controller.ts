@@ -12,7 +12,12 @@ import {
 import type { Request } from 'express';
 import { eq } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { campaignCallLogs, campaignLeads, campaigns } from '../../db/schema';
+import {
+  campaignCallLogs,
+  campaignCallbackRequests,
+  campaignLeads,
+  campaigns,
+} from '../../db/schema';
 import {
   buildSignaturePayloads,
   retellSecretsFromEnv,
@@ -230,6 +235,51 @@ export class CampaignWebhookController {
         company: lead?.company ?? null,
         seconds: durationSeconds,
       });
+    }
+
+    // DID THEY ASK FOR CHRIS?
+    //
+    // Only on a terminal event — the analysis fields do not exist until the
+    // call is over, and a request raised mid-call would carry no name, number
+    // or urgency. The unique index on call_id means a webhook retry updates
+    // rather than paging Chris a second time.
+    const cad = (call.call_analysis?.custom_analysis_data ?? {}) as Record<string, unknown>;
+    const wants = cad.wants_owner_callback === true;
+    if (wants && call.call_status !== 'ongoing' && callId) {
+      const digits = String(cad.callback_number ?? '').replace(/\D/g, '');
+      const [reqRow] = await this.db
+        .insert(campaignCallbackRequests)
+        .values({
+          tenantId: campaign.tenantId,
+          campaignId: campaign.id,
+          callId,
+          leadId: lead?.id ?? null,
+          company: (cad.company_name_heard as string) || lead?.company || null,
+          contactName: (cad.callback_name as string) || null,
+          // Prefer the number they gave; fall back to the line they rang from.
+          phone: digits.length >= 10 ? `+1${digits.slice(-10)}` : phone,
+          urgency: (cad.callback_urgency as string) || 'no_preference',
+          preferredTime: (cad.callback_time as string) || null,
+          note: (cad.sentiment_note as string) || null,
+          transcript: call.transcript ?? null,
+          recordingUrl: call.recording_url ?? null,
+        })
+        .onConflictDoNothing({ target: campaignCallbackRequests.callId })
+        .returning({ id: campaignCallbackRequests.id });
+
+      if (reqRow) {
+        this.logger.warn(
+          `[campaigns] CALLBACK REQUEST — ${(cad.company_name_heard as string) || phone} (${cad.callback_urgency})`,
+        );
+        void this.push.sendCallbackRequest(campaign.tenantId, {
+          id: reqRow.id,
+          company: (cad.company_name_heard as string) || lead?.company || null,
+          name: (cad.callback_name as string) || null,
+          phone: digits.length >= 10 ? `+1${digits.slice(-10)}` : phone,
+          urgency: (cad.callback_urgency as string) || 'no_preference',
+          note: (cad.sentiment_note as string) || null,
+        });
+      }
     }
 
     // An opt-out on an inbound call suppresses exactly as it does outbound.

@@ -147,6 +147,24 @@ export class CampaignsController {
     };
   }
 
+  /**
+   * The mobile board. Deliberately NOT nested under a campaign id — it is
+   * opened on a phone from a notification, where there is no campaign in hand.
+   */
+  @Get('board/summary')
+  async board(@Req() req: AdminRequest) {
+    return { data: await this.campaigns.board(req.tenantId) };
+  }
+
+  @Post('board/requests/:id/handled')
+  async handled(
+    @Req() req: AdminRequest,
+    @Param('id') id: string,
+    @Body() body: { note?: string },
+  ) {
+    return { data: await this.campaigns.closeRequest(req.tenantId, id, body?.note) };
+  }
+
   /** The call list — what Chris reads and listens to. */
   @Get(':id/calls')
   async calls(

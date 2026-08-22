@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   campaignCallLogs,
+  campaignCallbackRequests,
   campaignLeads,
   campaignSuppressions,
   campaigns,
@@ -578,6 +579,90 @@ export class CampaignsService {
       objections: rows(objections),
       needsAttention,
     };
+  }
+
+  /**
+   * The mobile board: what needs Chris, and how the day is going.
+   *
+   * One request rather than five, because this is loaded on a phone, often on
+   * bad signal, and the point is that it is glanceable.
+   */
+  async board(tenantId: string) {
+    const open = await this.db
+      .select()
+      .from(campaignCallbackRequests)
+      .where(
+        and(
+          eq(campaignCallbackRequests.tenantId, tenantId),
+          eq(campaignCallbackRequests.status, 'OPEN'),
+        ),
+      )
+      .orderBy(desc(campaignCallbackRequests.createdAt))
+      .limit(50);
+
+    // Callbacks — somebody rang us. Worth surfacing even without a request.
+    const callbacks = await this.db
+      .select({
+        id: campaignCallLogs.id,
+        phone: campaignCallLogs.phone,
+        company: campaignCallLogs.company,
+        durationSeconds: campaignCallLogs.durationSeconds,
+        summary: campaignCallLogs.summary,
+        recordingUrl: campaignCallLogs.recordingUrl,
+        createdAt: campaignCallLogs.createdAt,
+      })
+      .from(campaignCallLogs)
+      .where(
+        and(eq(campaignCallLogs.tenantId, tenantId), eq(campaignCallLogs.direction, 'INBOUND')),
+      )
+      .orderBy(desc(campaignCallLogs.createdAt))
+      .limit(20);
+
+    const today = await this.db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE direction = 'OUTBOUND')::int AS dialed,
+        COUNT(*) FILTER (WHERE disposition = 'PITCHED')::int AS pitched,
+        COUNT(*) FILTER (WHERE disposition = 'VM')::int      AS voicemails,
+        COUNT(*) FILTER (WHERE disposition = 'WARM')::int    AS warm,
+        COUNT(*) FILTER (WHERE direction = 'INBOUND')::int   AS callbacks,
+        COUNT(*) FILTER (WHERE disposition = 'DNC')::int     AS optouts
+      FROM campaign_call_logs
+      WHERE tenant_id = ${tenantId}
+        AND created_at >= date_trunc('day', now() AT TIME ZONE 'America/New_York')
+                           AT TIME ZONE 'America/New_York'
+    `);
+
+    // Problems worth a red banner rather than a number.
+    const problems = await this.db.execute(sql`
+      SELECT 'stalled' AS kind, COUNT(*)::int AS n FROM campaign_call_logs
+       WHERE tenant_id = ${tenantId} AND status IN ('PENDING','IN_PROGRESS')
+         AND created_at < now() - interval '15 minutes'
+      UNION ALL
+      SELECT 'errors', COUNT(*)::int FROM campaign_call_logs
+       WHERE tenant_id = ${tenantId} AND disposition = 'ERROR'
+         AND created_at > now() - interval '24 hours'
+    `);
+
+    const rows = (r: unknown) => ((r as { rows?: unknown[] })?.rows ?? r) as Record<string, unknown>[];
+    return {
+      requests: open,
+      callbacks,
+      today: rows(today)[0] ?? {},
+      problems: rows(problems).filter((p) => Number(p.n) > 0),
+    };
+  }
+
+  /** Chris has dealt with a callback request. */
+  async closeRequest(tenantId: string, id: string, note?: string) {
+    const [row] = await this.db
+      .update(campaignCallbackRequests)
+      .set({ status: 'HANDLED', handledAt: new Date(), handledNote: note ?? null })
+      .where(
+        and(eq(campaignCallbackRequests.id, id), eq(campaignCallbackRequests.tenantId, tenantId)),
+      )
+      .returning();
+    if (!row) throw new NotFoundException('request not found');
+    return row;
   }
 
   /** Recent calls, newest first — the list Chris reads and listens to. */
