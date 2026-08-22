@@ -23,7 +23,7 @@ export interface PushPayload {
    * every other buzz on the phone, and an unanswered call should not
    * impersonate a win. See public/flip-sw.js.
    */
-  kind?: 'win' | 'attention';
+  kind?: 'win' | 'attention' | 'callback';
 }
 
 export interface SendResult {
@@ -324,6 +324,37 @@ export class PushService {
       .where(and(eq(pushSubscriptions.tenantId, tenantId), sql`failure_count >= 8`));
 
     return { sent, removed, skipped: false };
+  }
+
+  /**
+   * A towing company rang the campaign number back.
+   *
+   * Chris, 2026-08-22: he wants these the moment they land so he can look the
+   * company up and decide whether to call back himself. They are the strongest
+   * signal in the whole campaign — somebody we cold-called cared enough to
+   * dial us — and on 2026-08-22 eleven arrived and all eleven lasted under ten
+   * seconds. A notification that reaches him while the caller is still nearby
+   * is worth more than any disposition report.
+   */
+  async sendCampaignCallback(
+    tenantId: string,
+    call: { id: string; phone: string; company: string | null; seconds: number | null },
+  ): Promise<void> {
+    const who = call.company?.trim();
+    try {
+      await this.sendToTenantAdmins(tenantId, {
+        title: who ? `Callback — ${who}` : 'Callback from a towing company',
+        body: [call.phone, call.seconds != null ? `${call.seconds}s` : null]
+          .filter(Boolean)
+          .join(' · '),
+        url: '/admin/campaigns',
+        kind: 'callback',
+        // One notification per call, so a webhook retry replaces rather than stacks.
+        tag: `usta-callback-${call.id}`,
+      });
+    } catch (err) {
+      this.logger.warn(`Callback push failed: ${(err as Error).message}`);
+    }
   }
 
   /** The flip-win payload, in one place so the wording cannot drift. */

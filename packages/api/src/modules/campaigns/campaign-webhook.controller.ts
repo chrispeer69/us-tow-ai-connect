@@ -20,6 +20,7 @@ import {
   type RetellVerificationSecret,
 } from '../../common/utils/retell-signature';
 import { CampaignDialerService } from './campaign-dialer.service';
+import { PushService } from '../push/push.service';
 import { CampaignsService } from './campaigns.service';
 import { decideDisposition } from './campaign-disposition';
 import { normalizePhone } from './phone-normalize';
@@ -67,6 +68,7 @@ export class CampaignWebhookController {
   constructor(
     private readonly dialer: CampaignDialerService,
     private readonly campaignsService: CampaignsService,
+    private readonly push: PushService,
     @Inject(DB_CLIENT) private readonly db: DbClient,
   ) {
     this.secrets = retellSecretsFromEnv();
@@ -203,10 +205,31 @@ export class CampaignWebhookController {
       updatedAt: new Date(),
     };
 
+    let callId = existing?.id;
     if (existing) {
       await this.db.update(campaignCallLogs).set(values).where(eq(campaignCallLogs.id, existing.id));
     } else {
-      await this.db.insert(campaignCallLogs).values(values);
+      const [row] = await this.db
+        .insert(campaignCallLogs)
+        .values(values)
+        .returning({ id: campaignCallLogs.id });
+      callId = row?.id;
+    }
+
+    // ALERT ON THE FIRST EVENT, NOT THE LAST.
+    //
+    // Chris wants these while the caller is still nearby. Waiting for
+    // call_analyzed can be a minute or more after they have hung up, and on
+    // 2026-08-22 every one of the eleven callbacks lasted under ten seconds —
+    // by the time the analysis lands the moment is gone. Fired on the first
+    // event we see for this call; the tag dedupes the later ones.
+    if (!existing && callId) {
+      void this.push.sendCampaignCallback(campaign.tenantId, {
+        id: callId,
+        phone,
+        company: lead?.company ?? null,
+        seconds: durationSeconds,
+      });
     }
 
     // An opt-out on an inbound call suppresses exactly as it does outbound.

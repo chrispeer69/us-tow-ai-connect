@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PushModule } from '../push/push.module';
 import { CampaignsController } from './campaigns.controller';
 import { CampaignWebhookController } from './campaign-webhook.controller';
 import { CampaignsService } from './campaigns.service';
@@ -14,6 +15,7 @@ import { RetellCampaignClient } from './retell-campaign.client';
  * signature and no session at all.
  */
 @Module({
+  imports: [PushModule],
   controllers: [CampaignsController, CampaignWebhookController],
   providers: [CampaignsService, CampaignDialerService, RetellCampaignClient],
   exports: [CampaignsService, CampaignDialerService],
