@@ -43,14 +43,21 @@ describe('AdminAuthGuard', () => {
     vi.restoreAllMocks();
   });
 
-  it('accepts a UUID-shaped x-tenant-id header and stamps req.tenantId', async () => {
+  // ─── the header and env paths are GONE, on purpose ──────────────────────
+  //
+  // These used to assert that `x-tenant-id` alone authenticated an admin
+  // request, and that DEFAULT_ADMIN_TENANT_ID could stand in for a token. Both
+  // were removed: a header any client can set is not authentication, and an
+  // env fallback silently authenticated every unauthenticated request as one
+  // fixed tenant. The tests are kept, inverted, so nobody puts the hole back.
+
+  it('does NOT accept a UUID-shaped x-tenant-id header on its own', async () => {
     const guard = new AdminAuthGuard();
-    const { ctx, req } = ctxFor({ 'x-tenant-id': VALID_TENANT });
-    await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(req.tenantId).toBe(VALID_TENANT);
+    const { ctx } = ctxFor({ 'x-tenant-id': VALID_TENANT });
+    await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('returns 401 (not 500) when x-tenant-id header is missing entirely', async () => {
+  it('returns 401 (not 500) when there is no credential at all', async () => {
     const guard = new AdminAuthGuard();
     const { ctx } = ctxFor({});
     try {
@@ -61,51 +68,42 @@ describe('AdminAuthGuard', () => {
       const body = (err as UnauthorizedException).getResponse() as Record<string, unknown>;
       expect(body.status).toBe('error');
       expect(body.code).toBe('UNAUTHORIZED');
-      expect(body.message).toBe('Missing tenant context');
     }
   });
 
-  it('returns 401 (not 500) when x-tenant-id is not a UUID — guards Postgres uuid cast', async () => {
+  it('returns 401 (not 500) when x-tenant-id is not a UUID — guards the Postgres uuid cast', async () => {
     const guard = new AdminAuthGuard();
     const { ctx } = ctxFor({ 'x-tenant-id': 'default-tenant' });
-    try {
-      await guard.canActivate(ctx);
-      expect.fail('expected UnauthorizedException');
-    } catch (err) {
-      expect(err).toBeInstanceOf(UnauthorizedException);
-      const body = (err as UnauthorizedException).getResponse() as Record<string, unknown>;
-      expect(body.code).toBe('UNAUTHORIZED');
-      expect(body.message).toBe('Invalid tenant identifier');
-    }
+    await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
   it('returns 401 when x-tenant-id is a UUID-ish string with wrong shape', async () => {
     const guard = new AdminAuthGuard();
-    const { ctx } = ctxFor({ 'x-tenant-id': '00000000-0000-0000-0000-00000000000' }); // 11-char last segment
+    const { ctx } = ctxFor({ 'x-tenant-id': '00000000-0000-0000-0000-00000000000' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('rejects DEFAULT_ADMIN_TENANT_ID env when it is a non-UUID literal (root cause of prior 500s)', async () => {
+  it('rejects DEFAULT_ADMIN_TENANT_ID env when it is a non-UUID literal', async () => {
     process.env.DEFAULT_ADMIN_TENANT_ID = 'default-tenant';
     const guard = new AdminAuthGuard();
     const { ctx } = ctxFor({});
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('honours DEFAULT_ADMIN_TENANT_ID env when it is itself UUID-shaped', async () => {
+  it('rejects DEFAULT_ADMIN_TENANT_ID env even when it IS UUID-shaped', async () => {
+    // The dangerous case. A well-formed env value used to authenticate a
+    // request carrying no credential whatsoever.
     process.env.DEFAULT_ADMIN_TENANT_ID = VALID_TENANT;
     const guard = new AdminAuthGuard();
-    const { ctx, req } = ctxFor({});
-    await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(req.tenantId).toBe(VALID_TENANT);
+    const { ctx } = ctxFor({});
+    await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('header wins over env default', async () => {
+  it('a header does not beat the absence of a token, whatever the env says', async () => {
     process.env.DEFAULT_ADMIN_TENANT_ID = VALID_TENANT;
     const guard = new AdminAuthGuard();
-    const { ctx, req } = ctxFor({ 'x-tenant-id': ANOTHER_VALID });
-    await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(req.tenantId).toBe(ANOTHER_VALID);
+    const { ctx } = ctxFor({ 'x-tenant-id': ANOTHER_VALID });
+    await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
   it('uses tenantId from a Passport-validated JWT payload', async () => {
@@ -134,18 +132,15 @@ describe('AdminAuthGuard', () => {
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('uppercase UUIDs are accepted (Postgres accepts both casings)', async () => {
+  it('accepts an uppercase tenantId from a JWT (Postgres accepts both casings)', async () => {
     const guard = new AdminAuthGuard();
-    const { ctx, req } = ctxFor({ 'x-tenant-id': VALID_TENANT.toUpperCase() });
+    vi.spyOn(Object.getPrototypeOf(AdminAuthGuard.prototype), 'canActivate').mockResolvedValue(true);
+    const { ctx, req } = ctxFor(
+      { authorization: 'Bearer valid.jwt.token' },
+      { tenantId: VALID_TENANT.toUpperCase() },
+    );
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
     expect(req.tenantId).toBe(VALID_TENANT.toUpperCase());
-  });
-
-  it('whitespace around a valid UUID is tolerated', async () => {
-    const guard = new AdminAuthGuard();
-    const { ctx, req } = ctxFor({ 'x-tenant-id': `  ${VALID_TENANT}  ` });
-    await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(req.tenantId).toBe(VALID_TENANT);
   });
 });
 
