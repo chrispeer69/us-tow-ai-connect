@@ -331,38 +331,93 @@ export function decideDisposition(input: DispositionInput): DispositionResult {
 }
 
 /**
+ * Did a human actually hear a script on this call?
+ *
+ * This is the line the three-stage cadence advances on. A voicemail is a
+ * delivery in the sense that the words were spoken, but nobody heard stage one
+ * and decided anything, so it does not consume a stage — the next dial replays
+ * the same stage to a live person.
+ */
+export function wasDelivered(disposition: CampaignDisposition): boolean {
+  return (
+    disposition === 'PITCHED' ||
+    disposition === 'NOT_INTERESTED' ||
+    disposition === 'WARM' ||
+    disposition === 'DNC'
+  );
+}
+
+/**
+ * Which stage of the script to read on the next dial, 1-based.
+ *
+ * Chris, 2026-08-22: "all calls get stage 1 (day 1) stage 2 (day 3) stage 3
+ * (day 5) — then the calls to that number stop". So the stage is the DIAL
+ * number: a fixed, finite, three-swing sequence per number with a known end
+ * date, not a sequence that stretches until three pitches happen to land.
+ *
+ * The cost of that choice is that somebody who misses the first two hears
+ * stage three first. It stays acceptable because stage three names the
+ * Alliance, the free profile and the website on its own — and because the
+ * alternative, a lead that never answers looping stage one for eighteen days,
+ * buys nothing and ends nowhere. Deliveries are still counted, in `touches`,
+ * for the end-of-cycle report.
+ */
+export function stageForNextCall(dialNumber: number, targetTouches: number): number {
+  return Math.min(Math.max(dialNumber, 1), Math.max(targetTouches, 1) + 1);
+}
+
+/**
  * What the lead's status becomes after this call.
  *
- * NOTE the two that do NOT retire a lead:
- *   WARM  — flagged for Chris, deliberately left in the list (spec §6).
- *   VM    — a voicemail is a delivery, but the spec allows 2 attempts, so a
- *           first VM stays retryable and a second exhausts.
+ * `touches` is the count INCLUDING this call, so a lead that has just heard
+ * stage one arrives here with touches = 1.
+ *
+ * NOTE what does NOT retire a lead:
+ *   PITCHED — until every stage has been delivered. Retiring somebody the
+ *             moment they hear stage one guarantees that the only people who
+ *             ever hear the name are the ones who never pick up. Name
+ *             recognition is the whole objective, and it comes from stages
+ *             two and three.
+ *   WARM    — flagged for Chris, deliberately left in the list (spec section 6).
+ *   VM      — the words were spoken but nobody heard them; retryable until the
+ *             attempt cap.
+ *
+ * And what always does:
+ *   DNC            — they asked. Never again, at any stage.
+ *   NOT_INTERESTED — they heard the offer and said no. Two more calls after a
+ *                    no is not repetition, it is pestering, and it is how a
+ *                    number gets blocked by a carrier.
  */
 export function nextLeadStatus(
   disposition: CampaignDisposition,
   attempts: number,
   maxAttempts: number,
+  touches = Number.POSITIVE_INFINITY,
+  targetTouches = 1,
 ): LeadStatusAfterCall {
-  // ---- Reached them. Never dial again, at any attempt count. --------------
-  //
-  // Chris, 2026-08-20: "if an attempt was not a success - repeat the call until
-  // it is a success". Read literally that means dialling somebody forever until
-  // they say yes, which is harassment, is how a number gets blocked by carriers,
-  // and is the behaviour TCPA complaints are made of.
-  //
-  // Read as intended it means: DO NOT GIVE UP ON A NUMBER WE NEVER ACTUALLY
-  // REACHED. The 2026-08-20 batch is the case for it — 33 of 61 calls ended
-  // without a human hearing anything: 9 never answered, 22 hung up inside ten
-  // seconds, 2 were dead numbers. Retiring those after two tries throws away
-  // most of the list for reasons that have nothing to do with the offer.
-  //
-  // So the line is drawn at CONTACT, not at agreement. Once a person has heard
-  // the offer and responded, the answer is the answer — success or not.
+  // ---- Heard us and answered the question. -------------------------------
   if (disposition === 'DNC') return 'DNC';
+  if (disposition === 'NOT_INTERESTED') return 'PITCHED';
   if (disposition === 'WARM') return 'WARM';
-  if (disposition === 'PITCHED' || disposition === 'NOT_INTERESTED') return 'PITCHED';
+
+  if (disposition === 'PITCHED') {
+    // Answering does NOT end the sequence. Retiring a lead the moment it heard
+    // stage one meant the only numbers that ever received stages two and three
+    // were the ones that never picked up — the cadence was firing exclusively
+    // at people who had heard nothing. Every number gets its three swings
+    // unless it asks us to stop.
+    if (attempts < maxAttempts) return 'RETRY';
+    return 'PITCHED';
+  }
 
   // ---- Never reached them. Keep trying, up to the campaign's cap. ---------
+  //
+  // Chris, 2026-08-20: "if an attempt was not a success - repeat the call until
+  // it is a success". Read literally that is dialling somebody forever, which
+  // is harassment and is what TCPA complaints are made of. Read as intended it
+  // means: do not give up on a number we never actually reached. The 2026-08-20
+  // batch is the case for it — 33 of 61 calls ended without a human hearing
+  // anything: 9 never answered, 22 hung up inside ten seconds, 2 were dead.
   const exhausted = attempts >= maxAttempts;
   if (disposition === 'VM') return exhausted ? 'EXHAUSTED' : 'VM';
   if (disposition === 'GATEKEEPER') return exhausted ? 'EXHAUSTED' : 'RETRY';

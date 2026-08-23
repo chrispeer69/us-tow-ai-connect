@@ -3,6 +3,8 @@ import {
   customerTurns,
   decideDisposition,
   nextLeadStatus,
+  stageForNextCall,
+  wasDelivered,
   MIN_PITCH_SECONDS,
 } from './campaign-disposition';
 
@@ -254,5 +256,58 @@ describe('PITCHED requires that Ray actually spoke', () => {
     ].join('\n');
     const r = decideDisposition({ status: 'completed', durationSeconds: 30, transcript });
     expect(r.disposition).toBe('PITCHED');
+  });
+});
+
+
+describe('the three-stage cadence: three dials, days 1 / 3 / 5, then stop', () => {
+  it('reads the stage off the dial number', () => {
+    expect(stageForNextCall(1, 3)).toBe(1);
+    expect(stageForNextCall(2, 3)).toBe(2);
+    expect(stageForNextCall(3, 3)).toBe(3);
+  });
+
+  it('never asks for a stage past the closer', () => {
+    expect(stageForNextCall(4, 3)).toBe(4);
+    expect(stageForNextCall(9, 3)).toBe(4);
+  });
+
+  it('answering does not end the sequence', () => {
+    // The defect this replaced: PITCHED was terminal, so the only numbers that
+    // ever received stages two and three were the ones that never picked up.
+    expect(nextLeadStatus('PITCHED', 1, 3, 1, 3)).toBe('RETRY');
+    expect(nextLeadStatus('PITCHED', 2, 3, 2, 3)).toBe('RETRY');
+  });
+
+  it('stops after the third dial', () => {
+    expect(nextLeadStatus('PITCHED', 3, 3, 3, 3)).toBe('PITCHED');
+    expect(nextLeadStatus('RETRY', 3, 3, 0, 3)).toBe('EXHAUSTED');
+    expect(nextLeadStatus('VM', 3, 3, 0, 3)).toBe('EXHAUSTED');
+  });
+
+  it('a no is a no — it does not get the remaining stages', () => {
+    expect(nextLeadStatus('NOT_INTERESTED', 1, 3, 1, 3)).toBe('PITCHED');
+  });
+
+  it('an opt-out is never re-dialled, at any stage', () => {
+    expect(nextLeadStatus('DNC', 1, 3, 1, 3)).toBe('DNC');
+  });
+
+  it('counts deliveries separately from dials, for the end-of-cycle report', () => {
+    // Not used for scheduling any more — used to answer "did anyone actually
+    // hear us" per number when the cycle closes.
+    expect(wasDelivered('PITCHED')).toBe(true);
+    expect(wasDelivered('NOT_INTERESTED')).toBe(true);
+    expect(wasDelivered('DNC')).toBe(true);
+    expect(wasDelivered('WARM')).toBe(true);
+    expect(wasDelivered('VM')).toBe(false);
+    expect(wasDelivered('RETRY')).toBe(false);
+    expect(wasDelivered('GATEKEEPER')).toBe(false);
+  });
+
+  it('callers with no cadence configured behave exactly as before', () => {
+    expect(nextLeadStatus('PITCHED', 1, 1)).toBe('PITCHED');
+    expect(nextLeadStatus('NOT_INTERESTED', 1, 2)).toBe('PITCHED');
+    expect(nextLeadStatus('VM', 2, 2)).toBe('EXHAUSTED');
   });
 });

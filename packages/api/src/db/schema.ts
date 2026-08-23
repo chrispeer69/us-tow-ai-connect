@@ -1424,6 +1424,14 @@ export const campaigns = pgTable(
      */
     touchSpacingDays: integer('touch_spacing_days').notNull().default(3),
 
+    /**
+     * How many delivered stages a lead hears before it is finished. Three: the
+     * profile, the Columbus loop, then what Elite unlocks. Hearing stage one no
+     * longer retires a lead — that retired precisely the people who had heard
+     * the name, which is the opposite of what repetition is for.
+     */
+    targetTouches: integer('target_touches').notNull().default(3),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1481,6 +1489,14 @@ export const campaignLeads = pgTable(
     /** QUEUED|CALLING|PITCHED|VM|RETRY|WARM|ACCEPTED|DNC|EXHAUSTED|INVALID */
     status: text('status').notNull().default('QUEUED'),
     attempts: integer('attempts').notNull().default(0),
+
+    /**
+     * Delivered pitches, NOT dials. `attempts` counts every time we picked up
+     * the phone; this counts the times a human was on the other end and heard
+     * a script. The three-stage cadence reads THIS, so a lead that missed two
+     * calls still hears stage one when they finally answer.
+     */
+    touches: integer('touches').notNull().default(0),
     lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
     nextEligibleAt: timestamp('next_eligible_at', { withTimezone: true }),
 
@@ -1540,6 +1556,13 @@ export const campaignCallLogs = pgTable(
     agentVersion: text('agent_version'),
 
     status: text('status').notNull().default('PENDING'),
+    /**
+     * Which stage of the script this call used, 1-based. Kept on the call and
+     * not only on the lead: the lead carries a running total, the call carries
+     * what was actually said, and the report needs the second one.
+     */
+    touchNumber: integer('touch_number'),
+
     /** PITCHED|VM|RETRY|DNC|WARM|GATEKEEPER|NOT_INTERESTED|ERROR */
     disposition: text('disposition'),
     disconnectionReason: text('disconnection_reason'),

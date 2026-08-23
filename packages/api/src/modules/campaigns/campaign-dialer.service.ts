@@ -12,7 +12,12 @@ import {
 } from '../../db/schema';
 import { CampaignsService } from './campaigns.service';
 import { RetellCampaignClient } from './retell-campaign.client';
-import { decideDisposition, nextLeadStatus } from './campaign-disposition';
+import {
+  decideDisposition,
+  nextLeadStatus,
+  stageForNextCall,
+  wasDelivered,
+} from './campaign-disposition';
 import { isHoliday, isRoundTheClock, isWithinCallWindow } from './phone-normalize';
 
 /**
@@ -262,9 +267,17 @@ export class CampaignDialerService {
           inArray(campaignLeads.status, ['QUEUED', 'RETRY', 'VM']),
         ),
       )
-      .returning({ id: campaignLeads.id, attempts: campaignLeads.attempts });
+      .returning({
+        id: campaignLeads.id,
+        attempts: campaignLeads.attempts,
+        touches: campaignLeads.touches,
+      });
 
     if (claimed.length === 0) return { placed: false, reason: 'claimed_by_another_run' };
+
+    // Computed once and used twice — on the log row and on the dial. Working
+    // it out separately in each place is how they drift.
+    const stage = stageForNextCall(claimed[0].attempts, campaign.targetTouches ?? 3);
 
     // The log row is written BEFORE the provider call. If the process dies
     // between insert and dial we are left with a PENDING row the reconcile
@@ -282,6 +295,7 @@ export class CampaignDialerService {
         agentId: campaign.outboundAgentId,
         agentVersion: campaign.outboundAgentVersion,
         status: 'PENDING',
+        touchNumber: stage,
         startedAt: new Date(),
       })
       .returning({ id: campaignCallLogs.id });
@@ -329,11 +343,9 @@ export class CampaignDialerService {
         company: lead.company ?? '',
         state: lead.state ?? '',
         city: lead.city ?? '',
-        // Which touch this is, 1-based. Ray opens differently on a callback —
-        // a second call that reads the identical script verbatim is the same
-        // defect that killed the first three calls of 2026-08-20, spread
-        // across a week instead of ten seconds.
-        touch_number: String(claimed[0].attempts),
+        // Stage 1 on day 1, stage 2 on day 3, stage 3 on day 5 — the stage is
+        // the dial number, so the sequence has a fixed length and a known end.
+        touch_number: String(stage),
         is_first_call: claimed[0].attempts <= 1 ? 'yes' : 'no',
       },
     });
@@ -484,7 +496,7 @@ export class CampaignDialerService {
     if (row.leadId && !testCampaign?.testMode) {
       const lead = (
         await this.db
-          .select({ attempts: campaignLeads.attempts })
+          .select({ attempts: campaignLeads.attempts, touches: campaignLeads.touches })
           .from(campaignLeads)
           .where(eq(campaignLeads.id, row.leadId))
           .limit(1)
@@ -494,16 +506,26 @@ export class CampaignDialerService {
           .select({
             maxAttempts: campaigns.maxAttempts,
             touchSpacingDays: campaigns.touchSpacingDays,
+            targetTouches: campaigns.targetTouches,
           })
           .from(campaigns)
           .where(eq(campaigns.id, row.campaignId))
           .limit(1)
       )[0];
 
+      // A delivered pitch consumes a stage; a missed dial does not. Counted
+      // here rather than at dial time because at dial time we do not yet know
+      // whether anybody picked up.
+      const delivered = wasDelivered(verdict.disposition);
+      const targetTouches = campaign?.targetTouches ?? 3;
+      const touches = (lead?.touches ?? 0) + (delivered ? 1 : 0);
+
       const next = nextLeadStatus(
         verdict.disposition,
         lead?.attempts ?? 1,
         campaign?.maxAttempts ?? 2,
+        touches,
+        targetTouches,
       );
 
       // Space the next touch. Repetition is what makes the name stick, but a
@@ -520,6 +542,7 @@ export class CampaignDialerService {
         .update(campaignLeads)
         .set({
           status: next,
+          touches,
           ...(stillDialable ? { nextEligibleAt } : {}),
           updatedAt: new Date(),
         })
