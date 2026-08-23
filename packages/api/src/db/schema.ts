@@ -1692,3 +1692,50 @@ export const etaCheckCalls = pgTable(
     recentIdx: index('eta_check_calls_recent_idx').on(t.tenantId, t.lastCalledAt),
   }),
 );
+
+/**
+ * A call that came IN to the Roadside line.
+ *
+ * Kept separate from outbound_call_logs (which models a flip attempt) and from
+ * campaign_call_logs (which models an outreach dial). This is somebody ringing
+ * us, and the thing worth reading is what they asked for and whether the agent
+ * got it right.
+ */
+export const inboundCallLogs = pgTable(
+  'inbound_call_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+
+    providerCallId: text('provider_call_id').notNull(),
+    agentId: text('agent_id'),
+    agentVersion: text('agent_version'),
+
+    fromNumber: text('from_number'),
+    toNumber: text('to_number'),
+
+    /** update | new_tow | motor_club | unknown — which of the three branches ran. */
+    branch: text('branch').notNull().default('unknown'),
+
+    durationSeconds: integer('duration_seconds'),
+    disconnectionReason: text('disconnection_reason'),
+    transcript: text('transcript'),
+    recordingUrl: text('recording_url'),
+    summary: text('summary'),
+    analysis: jsonb('analysis'),
+
+    /** Set when the call produced a job in US Tow Dispatch. */
+    ustdJobNumber: text('ustd_job_number'),
+
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    providerIdx: uniqueIndex('inbound_call_logs_provider_idx').on(t.providerCallId),
+    recentIdx: index('inbound_call_logs_recent_idx').on(t.tenantId, t.createdAt),
+  }),
+);
