@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { and, desc, eq, ilike, inArray, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
@@ -8,6 +8,7 @@ import {
   outboundCallLogs,
   outboundCalls,
   trucks,
+  etaCheckCalls,
   unifiedJobs,
   type DriverRow,
   type OutboundCallRow,
@@ -732,6 +733,61 @@ export class CommandCenterService {
       };
     });
   }
+
+  // ─── ETA check calls ────────────────────────────────────────────────
+  //
+  // Customers ringing in to ask where their truck is. The office never used to
+  // learn this happened at all: Emily answered, the caller hung up, and the
+  // first anyone knew was the complaint.
+
+  /**
+   * Open ETA-check calls, worst first.
+   *
+   * Ordered by call count before recency deliberately. Somebody on their third
+   * call is a bigger problem than somebody who rang thirty seconds ago, and a
+   * plain reverse-chronological list buries them.
+   */
+  async listEtaChecks(tenantId: string, opts: { includeHandled?: boolean } = {}) {
+    const rows = await this.db
+      .select()
+      .from(etaCheckCalls)
+      .where(
+        opts.includeHandled
+          ? eq(etaCheckCalls.tenantId, tenantId)
+          : and(eq(etaCheckCalls.tenantId, tenantId), isNull(etaCheckCalls.handledAt)),
+      )
+      .orderBy(desc(etaCheckCalls.calls), desc(etaCheckCalls.lastCalledAt))
+      .limit(100);
+
+    return rows.map((r) => ({
+      id: r.id,
+      jobId: r.jobId,
+      customerName: r.customerName,
+      customerPhone: r.customerPhone,
+      vehicle: r.vehicle,
+      driverName: r.driverName,
+      pickup: r.pickup,
+      destination: r.destination,
+      jobStatus: r.jobStatus,
+      // Sent to the office, never to a customer. This is the lateness the
+      // caller was deliberately not told about.
+      etaRaw: r.etaRaw,
+      calls: r.calls,
+      firstCalledAt: r.firstCalledAt,
+      lastCalledAt: r.lastCalledAt,
+      handledAt: r.handledAt,
+    }));
+  }
+
+  async handleEtaCheck(tenantId: string, id: string, handledBy: string | null) {
+    const [row] = await this.db
+      .update(etaCheckCalls)
+      .set({ handledAt: new Date(), handledBy, updatedAt: new Date() })
+      .where(and(eq(etaCheckCalls.tenantId, tenantId), eq(etaCheckCalls.id, id)))
+      .returning({ id: etaCheckCalls.id });
+    if (!row) throw new NotFoundException('eta check not found');
+    return { ok: true };
+  }
 }
 
 function summarizeCall(call: OutboundCallRow | null): CommandCenterCallSummary | null {
@@ -765,6 +821,8 @@ function summarizeFlip(
     managementNotified: log.managementNotified,
     callTime: log.callTime,
   };
+
+
 }
 
 export type { EnrichedJob };

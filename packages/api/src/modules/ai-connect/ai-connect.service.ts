@@ -6,6 +6,7 @@ import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import {
   aiAgentConfigs,
   dispatchRequests,
+  etaCheckCalls,
   interactionLogs,
   routingRules,
   smartActions,
@@ -22,8 +23,12 @@ import { TwilioOutboundService } from '../outbound/twilio-outbound.service';
 import { DriverPingsService, type LatestDriverPing } from '../driver-pings/driver-pings.service';
 import { GoogleDistanceMatrixService } from '../driver-pings/google-distance-matrix.service';
 import { TrackingService } from '../tracking/tracking.service';
+import { PushService } from '../push/push.service';
 
 const DEFAULT_ETA_MINS = 45;
+// Emily may call the lookup more than once in a single conversation. Alerting
+// on each one teaches Chris to ignore the notification.
+const ALERT_QUIET_MINUTES = 15;
 // Pings older than this are ignored when picking "the nearest available
 // driver" — a stale ping from 2 hours ago is worse than no ping at all
 // because it makes the agent quote a confidently-wrong number.
@@ -73,6 +78,7 @@ export class AiConnectService {
     private readonly driverPings: DriverPingsService,
     private readonly distanceMatrix: GoogleDistanceMatrixService,
     private readonly tracking: TrackingService,
+    private readonly push: PushService,
   ) {}
 
   async getActiveTransferRoute(tenantId: string) {
@@ -137,10 +143,92 @@ export class AiConnectService {
         return last10 === phoneLast10;
       });
       if (hit) {
+        // Record it, but never let alerting break the lookup. Emily is mid-call
+        // with somebody stranded; a failed insert must not cost them the answer.
+        void this.recordEtaCheck(tenantId, source, hit).catch((err) =>
+          this.logger.warn(`eta-check record failed: ${(err as Error).message}`),
+        );
         return { found: true, source, job: hit };
       }
     }
     return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * Log that a customer rang about a job, and tell the office.
+   *
+   * Upserts on (tenant, job, caller) so repeat calls raise a counter rather
+   * than a pile of rows. Re-alerts only when the last call was more than
+   * ALERT_QUIET_MINUTES ago: Emily can call the lookup more than once inside a
+   * single conversation, and three pushes for one phone call trains Chris to
+   * ignore the notification, which is worse than not sending it.
+   */
+  private async recordEtaCheck(
+    tenantId: string,
+    source: 'TOWBOOK' | 'AAA_PORTAL',
+    job: ActiveJob,
+  ): Promise<void> {
+    const now = new Date();
+    const quietBefore = new Date(now.getTime() - ALERT_QUIET_MINUTES * 60 * 1000);
+
+    const [row] = await this.db
+      .insert(etaCheckCalls)
+      .values({
+        tenantId,
+        jobId: job.jobId,
+        source,
+        customerName: job.customerName || null,
+        customerPhone: job.customerPhone,
+        vehicle: job.vehicle || null,
+        driverName: job.driverName || null,
+        pickup: job.pickup || null,
+        destination: job.destination || null,
+        jobStatus: job.status || null,
+        etaRaw: job.eta || null,
+      })
+      .onConflictDoUpdate({
+        target: [etaCheckCalls.tenantId, etaCheckCalls.jobId, etaCheckCalls.customerPhone],
+        targetWhere: sql`${etaCheckCalls.handledAt} is null`,
+        set: {
+          calls: sql`${etaCheckCalls.calls} + 1`,
+          lastCalledAt: now,
+          // Refresh the board snapshot — the lateness may have grown since the
+          // first call, and that change is the whole story.
+          etaRaw: job.eta || null,
+          jobStatus: job.status || null,
+          driverName: job.driverName || null,
+          updatedAt: now,
+        },
+      })
+      .returning({
+        id: etaCheckCalls.id,
+        calls: etaCheckCalls.calls,
+        notifiedAt: etaCheckCalls.notifiedAt,
+        lastCalledAt: etaCheckCalls.lastCalledAt,
+      });
+
+    if (!row) return;
+
+    const isRepeat = row.calls > 1;
+    const quiet = row.notifiedAt !== null && row.notifiedAt > quietBefore;
+    if (quiet) return;
+
+    const who = job.customerName || job.customerPhone;
+    await this.push.sendToTenantAdmins(tenantId, {
+      title: isRepeat
+        ? `${who} called again — ${row.calls} times now`
+        : `${who} called for an ETA`,
+      body: [job.vehicle, job.driverName ? `driver ${job.driverName}` : null, job.status]
+        .filter(Boolean)
+        .join(' · '),
+      url: '/m/roadside',
+      tag: `eta-check:${row.id}`,
+    });
+
+    await this.db
+      .update(etaCheckCalls)
+      .set({ notifiedAt: now, updatedAt: now })
+      .where(eq(etaCheckCalls.id, row.id));
   }
 
   // ─── eta ────────────────────────────────────────────────────────────

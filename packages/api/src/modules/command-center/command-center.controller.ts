@@ -213,6 +213,21 @@ export class CommandCenterController {
   stats(@Req() req: AdminRequest) {
     return this.service.stats(req.tenantId);
   }
+
+  // ─── ETA check calls ────────────────────────────────────────────────
+  //
+  // Customers ringing in to ask where their truck is. Emily records every one
+  // through the phone lookup; this is where the office reads them.
+
+  @Get('eta-checks')
+  listEtaChecks(@Req() req: AdminRequest, @Query() q: Record<string, string | undefined>) {
+    return this.service.listEtaChecks(req.tenantId, { includeHandled: q.all === '1' });
+  }
+
+  @Post('eta-checks/:id/handled')
+  handleEtaCheck(@Req() req: AdminRequest, @Param('id') id: string) {
+    return this.service.handleEtaCheck(req.tenantId, id, req.user?.email ?? req.user?.sub ?? null);
+  }
 }
 
 function parseManualScriptType(value: unknown) {

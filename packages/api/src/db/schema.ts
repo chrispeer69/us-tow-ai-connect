@@ -1640,3 +1640,55 @@ export const campaignCallbackRequests = pgTable(
 );
 
 export type CampaignCallbackRequestRow = typeof campaignCallbackRequests.$inferSelect;
+
+/**
+ * A customer ringing in to ask where their truck is.
+ *
+ * One row per (job, caller), not per call. The signal the office needs is
+ * "this person has now called three times", and that sentence does not survive
+ * being spread across three rows.
+ */
+export const etaCheckCalls = pgTable(
+  'eta_check_calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+
+    /** The job as the dispatch board knows it. No FK — the job lives in Towbook. */
+    jobId: text('job_id').notNull(),
+    source: text('source').notNull().default('TOWBOOK'),
+
+    customerName: text('customer_name'),
+    customerPhone: text('customer_phone').notNull(),
+    vehicle: text('vehicle'),
+    driverName: text('driver_name'),
+    pickup: text('pickup'),
+    destination: text('destination'),
+    jobStatus: text('job_status'),
+
+    /**
+     * The raw board string, stored exactly as scraped and never spoken to a
+     * caller. It reads like "12:55 AM (5 hrs 54 mins late)" — here so the
+     * office can see the lateness the customer was deliberately not told.
+     */
+    etaRaw: text('eta_raw'),
+
+    calls: integer('calls').notNull().default(1),
+    firstCalledAt: timestamp('first_called_at', { withTimezone: true }).notNull().defaultNow(),
+    lastCalledAt: timestamp('last_called_at', { withTimezone: true }).notNull().defaultNow(),
+
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
+    towbookNoteAt: timestamp('towbook_note_at', { withTimezone: true }),
+
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    handledBy: text('handled_by'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    recentIdx: index('eta_check_calls_recent_idx').on(t.tenantId, t.lastCalledAt),
+  }),
+);
