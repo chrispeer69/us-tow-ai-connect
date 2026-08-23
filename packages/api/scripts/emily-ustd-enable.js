@@ -125,6 +125,16 @@ const toolDefinition = {
             enum: ['2WD', '4WD', 'RWD', 'AWD', 'EV', 'Hybrid'],
             description: 'Only what they TOLD you. Never inferred from the model.',
           },
+          isElectric: {
+            type: 'boolean',
+            description: 'True if they said it is electric. Usually needs a flatbed.',
+          },
+          isLowClearance: {
+            type: 'boolean',
+            description:
+              'True if the CAR ITSELF sits low to the ground and needs a flatbed — a lowered or ' +
+              'sports car. NOT for a low garage ceiling; that is intake.lowOverheadAtPickup.',
+          },
           specialInstructions: {
             type: 'string',
             description:
@@ -136,6 +146,31 @@ const toolDefinition = {
       serviceType: {
         type: 'string',
         enum: ['tow', 'jump_start', 'lockout', 'tire_change', 'fuel', 'winch', 'recovery', 'impound', 'repo', 'other'],
+      },
+      intake: {
+        type: 'object',
+        description:
+          'The answers you got that are not fields on the job. These become the labelled ' +
+          'block at the top of the notes that dispatch reads first.',
+        properties: {
+          safeLocation: { type: 'boolean', description: 'They confirmed they are safe and out of traffic.' },
+          rollsSteersBrakes: { type: 'boolean' },
+          keysAvailable: { type: 'boolean' },
+          lowOverheadAtPickup: {
+            type: 'boolean',
+            description:
+              'True if the vehicle is in a garage, underground, or anywhere with a low ceiling — ' +
+              'a flatbed may not physically fit in to reach it.',
+          },
+          accessNotes: {
+            type: 'string',
+            description: 'Garage level, space number, stairwell, gate code, which side of the building.',
+          },
+          callbackPreference: {
+            type: 'string',
+            description: 'Anything they asked for about being contacted, e.g. call before arrival.',
+          },
+        },
       },
       pickup: {
         type: 'object',
