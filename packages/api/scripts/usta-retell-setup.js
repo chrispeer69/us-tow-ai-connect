@@ -389,17 +389,19 @@ async function main() {
   // ---- Step 2: outbound agent --------------------------------------------
   // The prompt lives on the LLM object, not the agent. Patch it first so the
   // published version carries the deliver-and-go rewrite.
-  console.log('\nUpdating the outbound prompt...');
-  const llmId = outbound.response_engine?.llm_id;
-  if (llmId) {
-    await retell(`/update-retell-llm/${llmId}`, 'PATCH', {
-      general_prompt: OUTBOUND_PROMPT,
-      begin_message: 'Hi — this is Ray with the US Tow Alliance. Quick thirty seconds.',
-    });
-    console.log(`  ${llmId} updated`);
-  } else {
-    console.log('  WARNING: no llm_id on the agent — prompt not updated');
-  }
+  // The outbound prompt is NOT written from here any more.
+  //
+  // OUTBOUND_PROMPT above is the 2026-08-20 provisioning draft. The live
+  // script has been rewritten many times since against real recordings, and
+  // pushing this constant back over it would silently undo all of that —
+  // including begin_message, which must be null and is a non-empty string
+  // here. A non-null begin_message makes the model take the first turn, and
+  // on 2026-08-20 it took that turn by reading its own system prompt aloud
+  // to a customer.
+  //
+  // Words are changed with scripts/usta-prompt-publish.js, which starts from
+  // whatever is live rather than from a copy that has drifted.
+  console.log('\nOutbound prompt: left alone (usta-prompt-publish.js owns it).');
 
   console.log('\nPatching the outbound agent...');
   await retell(`/update-agent/${OUTBOUND_AGENT_ID}`, 'PATCH', {
