@@ -79,6 +79,16 @@ const MUST_CONTAIN = [
   "I'm an automated assistant",
 ];
 
+/** Remove the USTD toggle markers and normalise line endings. */
+function stripMarkers(raw) {
+  return raw
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((line) => !/^\[USTD:(BEGIN|END)\]$/.test(line.trim()))
+    .join('\n')
+    .trim();
+}
+
 async function main() {
   const llm = await retell(`/get-retell-llm/${LLM}`);
   const live = (llm.general_prompt || '').replace(/\r\n/g, '\n').trim();
@@ -89,7 +99,14 @@ async function main() {
     return;
   }
 
-  const next = fs.readFileSync(FILE, 'utf8').replace(/\r\n/g, '\n').trim();
+  // The [USTD:BEGIN]/[USTD:END] markers are editing scaffolding for
+  // emily-ustd-enable.js. They must never reach the model: everything in the
+  // prompt is a candidate for being read aloud, and every prompt leak on this
+  // project started with a line nobody expected the agent to say.
+  const next = stripMarkers(fs.readFileSync(FILE, 'utf8'));
+  if (next.includes('[USTD:')) {
+    throw new Error('a [USTD:...] marker survived stripping — refusing to publish scaffolding');
+  }
   const missing = MUST_CONTAIN.filter((r) => !next.includes(r));
   if (missing.length) {
     throw new Error(`the new prompt drops rules that must survive:\n  - ${missing.join('\n  - ')}`);
