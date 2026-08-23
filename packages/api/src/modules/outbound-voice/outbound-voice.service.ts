@@ -1560,6 +1560,18 @@ export class OutboundVoiceService {
     if (await this.freeTrialLimitReached(tenant)) {
       throw new BadRequestException('Outbound trial call limit reached. Please contact support to enable more calls.');
     }
+    // A demo tenant is one you put in front of a prospect. Until today the
+    // demo_mode / demo_calls_enabled pair was only honoured on the PUBLIC demo
+    // path, so a demo account could still dial real phone numbers through the
+    // ordinary enqueue.
+    //
+    // Both conditions are required, and that is not fussiness: in production
+    // Roadside Towing carries demo_calls_enabled = false with demo_mode unset,
+    // and keying off demo_calls_enabled alone would refuse every real call on
+    // the account that makes all of them.
+    if (readConfigBool(tenant, 'demo_mode', false) && !readConfigBool(tenant, 'demo_calls_enabled', false)) {
+      throw new BadRequestException('Demo calls are disabled for this demo tenant');
+    }
     const allowed = readConfigArray(tenant, 'enabled_purposes');
     if (allowed && allowed.length > 0 && !allowed.includes(purpose)) {
       throw new Error(`Outbound voice purpose "${purpose}" is not enabled for this tenant`);

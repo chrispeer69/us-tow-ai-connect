@@ -92,6 +92,12 @@ const makeRedis = () => ({
   del: vi.fn(async () => 0),
 });
 
+// The service signs a first-login token at the end of onboarding. Stubbed
+// rather than mocked out, so the test still proves the token is handed back.
+const makeJwt = () => ({
+  sign: vi.fn(() => 'signed.jwt.token'),
+});
+
 describe('TenantOnboardingService.complete (happy path)', () => {
   beforeEach(() => {
     delete process.env.SIGNUP_CAPTCHA_KEY;
@@ -123,6 +129,7 @@ describe('TenantOnboardingService.complete (happy path)', () => {
       makeAdapters() as never,
       makeNotifications() as never,
       captcha,
+      makeJwt() as never,
     );
 
     const out = await svc.complete({ draftId: DRAFT_ID }, '127.0.0.1');

@@ -356,7 +356,11 @@ describe('OutboundVoiceService', () => {
     expect(updated.transcript).toBe('Hello … goodbye.');
   });
 
-  it('sends manager attention SMS when a provider webhook reports no answer', async () => {
+  it('sends manager attention SMS when the LAST attempt reports no answer', async () => {
+    // attempts must equal maxAttempts. Chris, 2026-08-18: "after try #3 I need
+    // an alert sent to my admin staff". While attempts remain the service
+    // re-queues the call instead, and texting a manager after the first
+    // unanswered ring of three would be noise they learn to ignore.
     const seedRow = {
       id: 'voice-no-answer',
       tenantId: TENANT_ID,
@@ -368,7 +372,7 @@ describe('OutboundVoiceService', () => {
       scriptTemplate: 'custom',
       scriptVariables: {},
       status: 'dialing',
-      attempts: 1,
+      attempts: 3,
       maxAttempts: 3,
       outcome: null,
       startedAt: null,
@@ -598,8 +602,14 @@ describe('OutboundVoiceService', () => {
     });
 
     expect(result.matched).toBe(true);
+    // flipEligible is deliberately NOT asserted here, and deliberately not
+    // written by this path. Session 74: the pre-call gate owns eligibility, and
+    // letting the post-call extractor answer it again over the top erased both
+    // the gate's decision and its reason. On 2026-08-13 that made 40 calls with
+    // an offer read as 17, so the funnel showed an eligibility collapse when the
+    // real story was the agent skipping offers it had been handed.
+    expect(logs[0].flipEligible).toBeUndefined();
     expect(logs[0]).toMatchObject({
-      flipEligible: true,
       flipOutcome: 'ACCEPTED',
       offer1Result: 'ACCEPTED',
       conviniLinkSent: true,
@@ -607,13 +617,20 @@ describe('OutboundVoiceService', () => {
       callDurationSeconds: 115,
       transcript: 'customer accepted offer one',
     });
-    expect(sms.sendSms).toHaveBeenCalledTimes(1);
-    expect(sms.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: '+15557654321',
-        tenantId: TENANT_ID,
-      }),
+    // TWO texts go out on an accepted flip, and asserting a bare count of one
+    // was only ever true before the Convini app link existed. Count by
+    // recipient instead, which is the thing that actually matters: the manager
+    // must be told exactly once, and the customer must get the link they were
+    // promised on the call.
+    const toManager = sms.sendSms.mock.calls.filter(
+      ([arg]: [{ to: string }]) => arg.to === '+15557654321',
     );
+    const toCustomer = sms.sendSms.mock.calls.filter(
+      ([arg]: [{ to: string }]) => arg.to === '+15551234567',
+    );
+    expect(toManager).toHaveLength(1);
+    expect(toManager[0][0]).toEqual(expect.objectContaining({ tenantId: TENANT_ID }));
+    expect(toCustomer).toHaveLength(1);
   });
 
   it('treats destination change language as a flip win', async () => {
