@@ -1694,6 +1694,60 @@ export const etaCheckCalls = pgTable(
 );
 
 /**
+ * A message Emily takes for dispatch instead of handing the call over.
+ *
+ * Chris, 2026-08-23: "can you make this a message board where emily can pass on
+ * the message to dispatch".
+ *
+ * Before this she had two moves — answer it, or cold-transfer — and the first
+ * live intake call showed what that costs: a complete tow intake was thrown
+ * away mid-call because the caller mentioned a membership Emily knew nothing
+ * about. One row per message, no counter: two questions are two messages.
+ */
+export const dispatchMessages = pgTable(
+  'dispatch_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+
+    /** The Retell call it was taken on. Unique per tenant so a retry updates. */
+    providerCallId: text('provider_call_id'),
+
+    callerName: text('caller_name'),
+    callerPhone: text('caller_phone').notNull(),
+
+    /** Only when the message is about a job we already know about. No FK. */
+    jobNumber: text('job_number'),
+
+    /** Free text, not an enum — a rejected insert loses a customer's message. */
+    topic: text('topic').notNull().default('other'),
+
+    /** 'urgent' means stranded, unsafe, or already angry. */
+    urgency: text('urgency').notNull().default('normal'),
+
+    /** The message itself, in the caller's terms. Never empty. */
+    message: text('message').notNull(),
+
+    callbackRequested: boolean('callback_requested').notNull().default(true),
+    callbackWindow: text('callback_window'),
+
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    handledBy: text('handled_by'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    openIdx: index('dispatch_messages_open_idx').on(t.tenantId, t.createdAt),
+  }),
+);
+
+export type DispatchMessageRow = typeof dispatchMessages.$inferSelect;
+
+
+/**
  * A call that came IN to the Roadside line.
  *
  * Kept separate from outbound_call_logs (which models a flip attempt) and from

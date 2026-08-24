@@ -10,6 +10,7 @@ import {
   UseGuards,
   UsePipes,
 } from '@nestjs/common';
+import { z } from 'zod';
 import {
   DispatchRequestCreateSchema,
   LogInteractionRequestSchema,
@@ -26,6 +27,23 @@ import {
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AiConnectService } from './ai-connect.service';
+
+/**
+ * What Emily may put on the dispatch board. Only the callback number and the
+ * message itself are required — everything else is a bonus, and rejecting a
+ * message because the topic was odd would lose the customer's words entirely.
+ */
+const DispatchMessageSchema = z.object({
+  caller_phone: z.string().min(7).max(32),
+  message: z.string().min(1).max(2000),
+  caller_name: z.string().max(160).nullish(),
+  job_number: z.string().max(60).nullish(),
+  topic: z.string().max(60).nullish(),
+  urgency: z.enum(['normal', 'urgent']).nullish(),
+  callback_requested: z.boolean().nullish(),
+  callback_window: z.string().max(160).nullish(),
+  call_reference: z.string().max(120).nullish(),
+});
 
 @Controller('v1/ai-connect')
 export class AiConnectController {
@@ -67,6 +85,34 @@ export class AiConnectController {
       return { status: 'not_found', message: result.message };
     }
     return { status: 'success', source: result.source, data: result.job };
+  }
+
+  /**
+   * Emily leaves a message for dispatch rather than transferring the call.
+   *
+   * Deliberately forgiving about everything except the two fields a message is
+   * useless without — who to ring back, and what to tell them. A validation
+   * error here is a customer's message thrown on the floor mid-call.
+   */
+  @Post('dispatch-message')
+  @HttpCode(201)
+  @UseGuards(TenantApiKeyGuard, RateLimitGuard)
+  @UsePipes(new ZodValidationPipe(DispatchMessageSchema))
+  async dispatchMessage(
+    @Req() req: TenantAuthenticatedRequest,
+    @Body() body: z.infer<typeof DispatchMessageSchema>,
+  ) {
+    return this.service.takeDispatchMessage(req.tenantId, {
+      callerPhone: body.caller_phone,
+      message: body.message,
+      callerName: body.caller_name ?? null,
+      jobNumber: body.job_number ?? null,
+      topic: body.topic ?? null,
+      urgency: body.urgency ?? null,
+      callbackRequested: body.callback_requested ?? true,
+      callbackWindow: body.callback_window ?? null,
+      providerCallId: body.call_reference ?? null,
+    });
   }
 
   @Get('eta')

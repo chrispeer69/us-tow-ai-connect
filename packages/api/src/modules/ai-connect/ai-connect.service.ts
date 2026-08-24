@@ -6,6 +6,7 @@ import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import {
   aiAgentConfigs,
   dispatchRequests,
+  dispatchMessages,
   etaCheckCalls,
   interactionLogs,
   routingRules,
@@ -229,6 +230,95 @@ export class AiConnectService {
       .update(etaCheckCalls)
       .set({ notifiedAt: now, updatedAt: now })
       .where(eq(etaCheckCalls.id, row.id));
+  }
+
+  // ─── messages for dispatch ──────────────────────────────────────────
+  /**
+   * Emily takes a message instead of handing the call over.
+   *
+   * The first live intake call is the argument for this method existing. The
+   * caller gave a complete, correct tow intake — safe, callback, location,
+   * fault, destination, vehicle, drivetrain, keys — and then said he had a
+   * Convini membership. Emily had two moves, answer it or transfer, and she
+   * did not know what Convini was, so she transferred. The finished intake
+   * went with her and no job was created. One unanswerable fact at the end of
+   * a call destroyed everything the call had earned.
+   *
+   * So: she files the job, takes the awkward part down as a message, and the
+   * office reads it here. A message is never a substitute for a transfer when
+   * somebody is unsafe or angry — those still go straight through.
+   */
+  async takeDispatchMessage(
+    tenantId: string,
+    input: {
+      callerPhone: string;
+      message: string;
+      callerName?: string | null;
+      jobNumber?: string | null;
+      topic?: string | null;
+      urgency?: string | null;
+      callbackRequested?: boolean | null;
+      callbackWindow?: string | null;
+      providerCallId?: string | null;
+    },
+  ) {
+    const now = new Date();
+    const urgency = input.urgency === 'urgent' ? 'urgent' : 'normal';
+    const topic = (input.topic || 'other').slice(0, 60);
+
+    const values = {
+      tenantId,
+      providerCallId: input.providerCallId || null,
+      callerName: input.callerName || null,
+      callerPhone: input.callerPhone,
+      jobNumber: input.jobNumber || null,
+      topic,
+      urgency,
+      message: input.message,
+      callbackRequested: input.callbackRequested ?? true,
+      callbackWindow: input.callbackWindow || null,
+      updatedAt: now,
+    };
+
+    // A tool retry inside one call must not post the message twice. With no
+    // call id we cannot tell a retry from a second genuine message, and two
+    // copies of a message is a far smaller failure than losing one.
+    const [row] = input.providerCallId
+      ? await this.db
+          .insert(dispatchMessages)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [dispatchMessages.tenantId, dispatchMessages.providerCallId],
+            targetWhere: sql`${dispatchMessages.providerCallId} is not null`,
+            set: {
+              message: values.message,
+              topic: values.topic,
+              urgency: values.urgency,
+              callerName: values.callerName,
+              jobNumber: values.jobNumber,
+              callbackRequested: values.callbackRequested,
+              callbackWindow: values.callbackWindow,
+              updatedAt: now,
+            },
+          })
+          .returning({ id: dispatchMessages.id })
+      : await this.db.insert(dispatchMessages).values(values).returning({ id: dispatchMessages.id });
+
+    const who = input.callerName || input.callerPhone;
+    await this.push.sendToTenantAdmins(tenantId, {
+      title: urgency === 'urgent' ? `URGENT message — ${who}` : `Message from ${who}`,
+      body: input.message.slice(0, 140),
+      url: '/m/roadside',
+      tag: `dispatch-message:${row.id}`,
+    });
+
+    // Emily reads this back to the caller, so it has to be a sentence she can
+    // say without editing it.
+    return {
+      status: 'success',
+      messageId: row.id,
+      confirmation: 'Your message is on the dispatch board now.',
+    };
   }
 
   // ─── eta ────────────────────────────────────────────────────────────

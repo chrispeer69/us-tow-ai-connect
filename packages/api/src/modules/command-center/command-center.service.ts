@@ -8,6 +8,7 @@ import {
   outboundCallLogs,
   outboundCalls,
   trucks,
+  dispatchMessages,
   etaCheckCalls,
   unifiedJobs,
   type DriverRow,
@@ -786,6 +787,50 @@ export class CommandCenterService {
       .where(and(eq(etaCheckCalls.tenantId, tenantId), eq(etaCheckCalls.id, id)))
       .returning({ id: etaCheckCalls.id });
     if (!row) throw new NotFoundException('eta check not found');
+    return { ok: true };
+  }
+
+  // ─── messages for dispatch ──────────────────────────────────────────
+  /**
+   * Messages Emily took rather than transferring the call.
+   *
+   * Urgent first, then newest, because a message board that buries the
+   * stranded caller under six billing questions is worse than no board.
+   */
+  async listDispatchMessages(tenantId: string, opts: { includeHandled?: boolean } = {}) {
+    const rows = await this.db
+      .select()
+      .from(dispatchMessages)
+      .where(
+        opts.includeHandled
+          ? eq(dispatchMessages.tenantId, tenantId)
+          : and(eq(dispatchMessages.tenantId, tenantId), isNull(dispatchMessages.handledAt)),
+      )
+      .orderBy(desc(dispatchMessages.urgency), desc(dispatchMessages.createdAt))
+      .limit(100);
+
+    return rows.map((r) => ({
+      id: r.id,
+      callerName: r.callerName,
+      callerPhone: r.callerPhone,
+      jobNumber: r.jobNumber,
+      topic: r.topic,
+      urgency: r.urgency,
+      message: r.message,
+      callbackRequested: r.callbackRequested,
+      callbackWindow: r.callbackWindow,
+      takenAt: r.createdAt,
+      handledAt: r.handledAt,
+    }));
+  }
+
+  async handleDispatchMessage(tenantId: string, id: string, handledBy: string | null) {
+    const [row] = await this.db
+      .update(dispatchMessages)
+      .set({ handledAt: new Date(), handledBy, updatedAt: new Date() })
+      .where(and(eq(dispatchMessages.tenantId, tenantId), eq(dispatchMessages.id, id)))
+      .returning({ id: dispatchMessages.id });
+    if (!row) throw new NotFoundException('message not found');
     return { ok: true };
   }
 }

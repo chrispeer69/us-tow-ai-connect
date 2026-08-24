@@ -228,6 +228,25 @@ export class CommandCenterController {
   handleEtaCheck(@Req() req: AdminRequest, @Param('id') id: string) {
     return this.service.handleEtaCheck(req.tenantId, id, req.user?.email ?? req.user?.sub ?? null);
   }
+
+  // ─── messages for dispatch ──────────────────────────────────────────
+  //
+  // What Emily wrote down instead of handing the call over. Same two moves as
+  // the ETA list: read them, tick them off.
+
+  @Get('dispatch-messages')
+  listDispatchMessages(@Req() req: AdminRequest, @Query() q: Record<string, string | undefined>) {
+    return this.service.listDispatchMessages(req.tenantId, { includeHandled: q.all === '1' });
+  }
+
+  @Post('dispatch-messages/:id/handled')
+  handleDispatchMessage(@Req() req: AdminRequest, @Param('id') id: string) {
+    return this.service.handleDispatchMessage(
+      req.tenantId,
+      id,
+      req.user?.email ?? req.user?.sub ?? null,
+    );
+  }
 }
 
 function parseManualScriptType(value: unknown) {
