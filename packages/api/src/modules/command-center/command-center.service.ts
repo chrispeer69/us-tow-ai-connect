@@ -1,6 +1,9 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { and, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import type Redis from 'ioredis';
+import { REDIS_CLIENT } from '../../common/redis/redis.module';
+import type { ActiveJob } from '../adapters/adapter.interface';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import {
   drivers,
@@ -94,6 +97,7 @@ export class CommandCenterService {
 
   constructor(
     @Inject(DB_CLIENT) private readonly db: DbClient,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly geocoder: GeocoderService,
     private readonly gateway: CommandCenterGateway,
     private readonly push: PushService,
@@ -810,19 +814,29 @@ export class CommandCenterService {
       .orderBy(desc(dispatchMessages.urgency), desc(dispatchMessages.createdAt))
       .limit(100);
 
-    return rows.map((r) => ({
-      id: r.id,
-      callerName: r.callerName,
-      callerPhone: r.callerPhone,
-      jobNumber: r.jobNumber,
-      topic: r.topic,
-      urgency: r.urgency,
-      message: r.message,
-      callbackRequested: r.callbackRequested,
-      callbackWindow: r.callbackWindow,
-      takenAt: r.createdAt,
-      handledAt: r.handledAt,
-    }));
+    return Promise.all(
+      rows.map(async (r) => {
+        const jobRef = await this.jobRefFromPhone(tenantId, r.callerPhone);
+        return {
+          id: r.id,
+          callerName: r.callerName,
+          callerPhone: r.callerPhone,
+          jobNumber: r.jobNumber,
+          topic: r.topic,
+          urgency: r.urgency,
+          message: r.message,
+          callbackRequested: r.callbackRequested,
+          callbackWindow: r.callbackWindow,
+          takenAt: r.createdAt,
+          handledAt: r.handledAt,
+          // Job-board reference only — never authoritative over what Emily
+          // actually took down. Populated when the caller's number matches an
+          // active Towbook/AAA job at read time.
+          jobCustomerName: jobRef?.customerName ?? null,
+          jobVehicle: jobRef?.vehicle ?? null,
+        };
+      }),
+    );
   }
 
   async handleDispatchMessage(tenantId: string, id: string, handledBy: string | null) {
@@ -877,7 +891,12 @@ export class CommandCenterService {
       .orderBy(desc(inboundCallLogs.createdAt))
       .limit(Math.min(opts.limit ?? 100, 200));
 
-    return rows;
+    return Promise.all(
+      rows.map(async (r) => {
+        const jobRef = r.fromNumber ? await this.jobRefFromPhone(tenantId, r.fromNumber) : null;
+        return { ...r, jobCustomerName: jobRef?.customerName ?? null, jobVehicle: jobRef?.vehicle ?? null };
+      }),
+    );
   }
 
   async getInboundCall(tenantId: string, id: string) {
@@ -888,6 +907,54 @@ export class CommandCenterService {
       .limit(1);
     if (!row) throw new NotFoundException('call not found');
     return row;
+  }
+
+  /**
+   * Read-only reference lookup: does the caller's number match an active
+   * Towbook/AAA job right now? Same cache and matching rule as
+   * AiConnectService.lookupByPhone, duplicated rather than shared because
+   * that method also records an ETA-check alert as a side effect — this one
+   * must not, since it runs once per row on every dispatch-messages/
+   * inbound-calls poll and would spam the office with false "called again"
+   * pushes for calls that were never an ETA check.
+   *
+   * `vehicle` already comes back as one combined "2018 Chevy Trax" string
+   * from the adapter — there is no separate year/make/model to join. Motor
+   * club name is not available here: the Towbook scraper does not currently
+   * capture an account/PO column at all (see towbook.adapter.ts), so there is
+   * nothing to look up yet.
+   */
+  private async jobRefFromPhone(
+    tenantId: string,
+    phoneRaw: string | null,
+  ): Promise<Pick<ActiveJob, 'customerName' | 'vehicle'> | null> {
+    if (!phoneRaw) return null;
+    const digits = phoneRaw.replace(/\D/g, '');
+    if (!digits) return null;
+    const phoneLast10 = digits.length > 10 ? digits.slice(-10) : digits;
+
+    for (const key of [`jobs:towbook:${tenantId}`, `jobs:aaa_portal:${tenantId}`]) {
+      let raw: string | null = null;
+      try {
+        raw = await this.redis.get(key);
+      } catch (err) {
+        this.logger.warn(`Redis read failed for ${key}: ${(err as Error).message}`);
+        continue;
+      }
+      if (!raw) continue;
+      let jobs: ActiveJob[];
+      try {
+        jobs = JSON.parse(raw) as ActiveJob[];
+      } catch {
+        continue;
+      }
+      const hit = jobs.find((j) => {
+        const d = j.customerPhone.replace(/\D/g, '');
+        return (d.length > 10 ? d.slice(-10) : d) === phoneLast10;
+      });
+      if (hit) return { customerName: hit.customerName, vehicle: hit.vehicle };
+    }
+    return null;
   }
 }
 

@@ -52,6 +52,10 @@ interface DispatchMessage {
   callbackWindow: string | null;
   takenAt: string;
   handledAt: string | null;
+  /** Reference only, from a live Towbook/AAA job match on the caller's
+   *  number — not necessarily what Emily was told. Null when no match. */
+  jobCustomerName: string | null;
+  jobVehicle: string | null;
 }
 
 /** One row per call to the 844 line, with transcript + recording — captured
@@ -69,6 +73,10 @@ interface InboundCall {
   ustdJobNumber: string | null;
   startedAt: string | null;
   createdAt: string;
+  /** Reference only, from a live Towbook/AAA job match on the caller's
+   *  number — not necessarily anything Emily captured this call. */
+  jobCustomerName: string | null;
+  jobVehicle: string | null;
 }
 
 interface InboundCallDetail extends InboundCall {
@@ -141,6 +149,9 @@ export default function RoadsideBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
+  // Mark handled server-side, flip the button to a checkmark right away, then
+  // drop the row a moment later — the periodic reload would otherwise yank it
+  // off-screen the instant the POST lands, before anyone saw the confirmation.
   const handled = async (id: string) => {
     setBusy(id);
     try {
@@ -148,7 +159,10 @@ export default function RoadsideBoard() {
         method: 'POST',
         json: {},
       });
-      await load(phoneFilter || undefined);
+      setRows((cur) =>
+        (cur ?? []).map((r) => (r.id === id ? { ...r, handledAt: new Date().toISOString() } : r)),
+      );
+      setTimeout(() => setRows((cur) => (cur ?? []).filter((r) => r.id !== id)), 1400);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -163,7 +177,10 @@ export default function RoadsideBoard() {
         method: 'POST',
         json: {},
       });
-      await load(phoneFilter || undefined);
+      setMessages((cur) =>
+        (cur ?? []).map((m) => (m.id === id ? { ...m, handledAt: new Date().toISOString() } : m)),
+      );
+      setTimeout(() => setMessages((cur) => (cur ?? []).filter((m) => m.id !== id)), 1400);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -310,6 +327,32 @@ export default function RoadsideBoard() {
   );
 }
 
+/** Red ✕ = still needs a callback. Tap it once you've called them back and
+ *  it flips to a green ✓ — see `handled`/`messageHandled` for the timing. */
+function DoneToggle({
+  done,
+  urgent,
+  busy,
+  onClick,
+}: {
+  done: boolean;
+  urgent: boolean;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy || done}
+      aria-label={done ? 'called back' : 'call back needed'}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base font-bold text-white disabled:opacity-90"
+      style={{ background: done ? '#16a34a' : urgent ? '#dc2626' : '#475569' }}
+    >
+      {busy ? '…' : done ? '✓' : '✕'}
+    </button>
+  );
+}
+
 function Card({
   r,
   hot,
@@ -366,7 +409,7 @@ function Card({
         r.etaRaw && <div className="mt-2 text-xs text-slate-500">Board ETA: {r.etaRaw}</div>
       )}
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex items-center gap-2">
         <a
           href={`tel:${r.customerPhone}`}
           className="flex-1 rounded-md bg-emerald-600 py-2.5 text-center text-sm font-bold text-white"
@@ -375,17 +418,16 @@ function Card({
         </a>
         <button
           onClick={() => onCalls(r.customerPhone)}
-          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300"
+          className="rounded-md border border-slate-600 px-3 py-2.5 text-sm text-slate-300"
         >
           Calls
         </button>
-        <button
+        <DoneToggle
+          done={!!r.handledAt}
+          urgent={!!hot}
+          busy={busy}
           onClick={() => onDone(r.id)}
-          disabled={busy}
-          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300 disabled:opacity-50"
-        >
-          {busy ? '…' : 'Done'}
-        </button>
+        />
       </div>
     </div>
   );
@@ -428,13 +470,19 @@ function MessageCard({
 
       <p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">{m.message}</p>
 
+      {(m.jobCustomerName || m.jobVehicle) && (
+        <div className="mt-1 text-xs text-slate-500">
+          Job on file: {[m.jobCustomerName, m.jobVehicle].filter(Boolean).join(' · ')}
+        </div>
+      )}
+
       <div className="mt-1 text-xs text-slate-400">
         {m.jobNumber ? `Job #${m.jobNumber} · ` : ''}
         {m.callbackRequested ? 'wants a callback' : 'no callback requested'}
         {m.callbackWindow ? ` · ${m.callbackWindow}` : ''}
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex items-center gap-2">
         <a
           href={`tel:${m.callerPhone}`}
           className="flex-1 rounded-md bg-emerald-600 py-2.5 text-center text-sm font-bold text-white"
@@ -443,17 +491,16 @@ function MessageCard({
         </a>
         <button
           onClick={() => onCalls(m.callerPhone)}
-          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300"
+          className="rounded-md border border-slate-600 px-3 py-2.5 text-sm text-slate-300"
         >
           Calls
         </button>
-        <button
+        <DoneToggle
+          done={!!m.handledAt}
+          urgent={urgent}
+          busy={busy}
           onClick={() => onDone(m.id)}
-          disabled={busy}
-          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300 disabled:opacity-50"
-        >
-          {busy ? '…' : 'Done'}
-        </button>
+        />
       </div>
     </div>
   );
@@ -481,6 +528,11 @@ function CallCard({
             {BRANCH_LABEL[c.branch] ?? c.branch} · {fmtDuration(c.durationSeconds)}
             {c.ustdJobNumber ? ` · job #${c.ustdJobNumber}` : ''}
           </div>
+          {(c.jobCustomerName || c.jobVehicle) && (
+            <div className="mt-0.5 text-xs text-slate-500">
+              Job on file: {[c.jobCustomerName, c.jobVehicle].filter(Boolean).join(' · ')}
+            </div>
+          )}
         </div>
         <span className="shrink-0 text-xs text-slate-500">{since(c.createdAt)}</span>
       </button>
