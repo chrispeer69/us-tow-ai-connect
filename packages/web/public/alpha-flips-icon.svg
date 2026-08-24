@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Alpha Crash Leads">
+  <!-- Maskable: everything meaningful stays inside the safe zone (centre 80%),
+       because Android crops this to a circle or squircle depending on the
+       launcher. Full-bleed background, no transparent corners. Distinct
+       palette from flip-icon.svg (navy/emerald, towing) so the two PWAs read
+       apart at a glance on a home screen that has both installed. -->
+  <rect width="512" height="512" fill="#1c1917"/>
+  <!-- A car body with a small alert badge — collision-repair lead, not a tow. -->
+  <g transform="translate(256 246)">
+    <path d="M-118 40 L-96 -18 Q-88 -40 -64 -40 L64 -40 Q88 -40 96 -18 L118 40
+             L118 78 Q118 92 104 92 L88 92 Q74 92 74 78 L74 68 L-74 68 L-74 78
+             Q-74 92 -88 92 L-104 92 Q-118 92 -118 78 Z"
+          fill="#f97316"/>
+    <circle cx="-70" cy="68" r="24" fill="#1c1917"/>
+    <circle cx="70" cy="68" r="24" fill="#1c1917"/>
+  </g>
+  <circle cx="366" cy="150" r="46" fill="#ef4444"/>
+  <path d="M366 128 L366 158" stroke="#1c1917" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="366" cy="176" r="5.5" fill="#1c1917"/>
+</svg>

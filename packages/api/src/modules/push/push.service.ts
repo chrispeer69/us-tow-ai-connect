@@ -24,6 +24,10 @@ export interface PushPayload {
    * impersonate a win. See public/flip-sw.js.
    */
   kind?: 'win' | 'attention' | 'callback' | 'hot';
+  /** Overrides the service worker's default (flip) icon/badge — set this for
+   *  any alert that isn't the towing flip board, so two installed PWAs read
+   *  apart on the lock screen. Path must exist under packages/web/public. */
+  icon?: string;
 }
 
 export interface SendResult {
@@ -380,6 +384,55 @@ export class PushService {
       });
     } catch (err) {
       this.logger.warn(`Callback-request push failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * A crash-lead call for Alpha Automotive's outbound caller turned positive
+   * — the customer asked for a quote, more info, or a callback. Separate
+   * system from the towing flip engine ([[alpha-automotive-partnership]]);
+   * shares only the push delivery mechanism, not the data.
+   */
+  async sendAlphaCrashLeadInterest(
+    tenantId: string,
+    lead: {
+      callId: string;
+      customerName: string | null;
+      phone: string | null;
+      callOutcome: string;
+      callSummary: string | null;
+      preferredCallbackTime: string | null;
+    },
+  ): Promise<void> {
+    const who = lead.customerName?.trim() || lead.phone?.trim() || 'A caller';
+    const OUTCOME_LABEL: Record<string, string> = {
+      interested_transfer: 'Wants to talk now',
+      interested_callback: 'Wants a callback',
+      interested_not_scheduled: 'Interested',
+      estimate_requested: 'Wants an estimate',
+      booked: 'Booked an estimate',
+      information_requested: 'Wants more info',
+    };
+    const title = `${OUTCOME_LABEL[lead.callOutcome] ?? 'Interested'} — ${who}`;
+    const body = [
+      lead.phone,
+      lead.preferredCallbackTime ? `callback: ${lead.preferredCallbackTime}` : null,
+      lead.callSummary,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+      .slice(0, 200);
+    try {
+      await this.sendToTenantAdmins(tenantId, {
+        title,
+        body,
+        url: '/alpha/flips',
+        kind: 'hot',
+        icon: '/alpha-flips-icon.svg',
+        tag: `alpha-crash-lead-${lead.callId}`,
+      });
+    } catch (err) {
+      this.logger.warn(`Alpha crash-lead push failed: ${(err as Error).message}`);
     }
   }
 

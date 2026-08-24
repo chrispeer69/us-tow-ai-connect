@@ -1,0 +1,19 @@
+{
+  "name": "Alpha Crash Leads",
+  "short_name": "Crash Leads",
+  "description": "Call transcripts, recordings, and live interest alerts for Alpha Automotive's crash-lead outbound caller",
+  "start_url": "/alpha/flips",
+  "scope": "/alpha",
+  "display": "standalone",
+  "background_color": "#1c1917",
+  "theme_color": "#1c1917",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/alpha-flips-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

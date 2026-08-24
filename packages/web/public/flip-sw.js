@@ -22,7 +22,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  /** @type {{title?: string, body?: string, url?: string, tag?: string, kind?: string}} */
+  /** @type {{title?: string, body?: string, url?: string, tag?: string, kind?: string, icon?: string}} */
   let payload = {};
   try {
     payload = event.data ? event.data.json() : {};
@@ -39,8 +39,10 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: payload.body || '',
-    icon: '/flip-icon.svg',
-    badge: '/flip-icon.svg',
+    // Distinct apps push distinct icons (payload.icon) so a phone with more
+    // than one of these PWAs installed can tell the alerts apart at a glance.
+    icon: payload.icon || '/flip-icon.svg',
+    badge: payload.icon || '/flip-icon.svg',
 
     // A DISTINCTIVE RHYTHM, not a generic buzz.
     //
@@ -93,9 +95,9 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Reuse an already-open board rather than stacking a second window every
-      // time a win is tapped.
+      // time an alert is tapped — generalized to whichever app sent it.
       for (const client of clientList) {
-        if (client.url.includes('/m/flip') && 'focus' in client) return client.focus();
+        if (client.url.includes(target) && 'focus' in client) return client.focus();
       }
       if (self.clients.openWindow) return self.clients.openWindow(target);
       return undefined;
