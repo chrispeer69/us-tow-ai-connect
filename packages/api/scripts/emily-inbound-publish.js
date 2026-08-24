@@ -57,10 +57,12 @@ const TOOLS = [
     description:
       "Look up the caller's active tow using the phone number on the job. Call this as soon as they give you a phone number. Returns customer name, vehicle, status, driver, ETA, pickup and destination.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/lookup/by-phone',
-    method: 'GET',
+    // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
+    // arguments into query_params, only the request body. The old GET config
+    // meant this tool has been returning "not_found" on every single call.
+    method: 'POST',
     timeout_ms: 8000,
     headers: { 'X-Tenant-API-Key': TENANT_API_KEY },
-    query_params: { phone: '{{phone}}' },
     parameters: {
       type: 'object',
       required: ['phone'],

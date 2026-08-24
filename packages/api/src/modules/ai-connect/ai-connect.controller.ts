@@ -74,11 +74,21 @@ export class AiConnectController {
   }
 
   // ---- Session 23: agent lookup/dispatch endpoints (X-Tenant-API-Key) ----
-  @Get('lookup/by-phone')
+  /**
+   * POST, not GET. Retell custom tools never fill LLM-supplied arguments
+   * into query_params or the URL — only the request body — per
+   * https://docs.retellai.com/build/single-multi-prompt/custom-function.
+   * This was a GET with `query_params: { phone: '{{phone}}' }` and that
+   * template was never substituted: every call silently hit `phone is
+   * required` and Emily fell through to "not found" -> transfer, on every
+   * ETA-check and motor-club lookup, regardless of whether the job existed.
+   */
+  @Post('lookup/by-phone')
+  @HttpCode(200)
   @UseGuards(TenantApiKeyGuard, RateLimitGuard)
   async lookupByPhone(
     @Req() req: TenantAuthenticatedRequest,
-    @Query('phone') phone: string,
+    @Body('phone') phone: string,
   ) {
     const result = await this.service.lookupByPhone(req.tenantId, phone ?? '');
     if (!result.found) {
