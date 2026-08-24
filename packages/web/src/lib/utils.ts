@@ -60,20 +60,23 @@ export async function api<T = any>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    // Extract a clean message WITHOUT throwing inside this try — a throw here
+    // was being caught by this same block's catch and silently discarded,
+    // falling through to raise the raw JSON body as the error text instead of
+    // the message inside it.
+    let parsedMessage: string | null = null;
     try {
       const parsed = JSON.parse(text);
       if (parsed.code === 'VALIDATION_ERROR' && Array.isArray(parsed.errors)) {
-        const errorList = parsed.errors.map((e) => `${e.path}: ${e.message}`).join(', ');
-        throw new Error(errorList);
-      }
-      const msg = parsed.message || parsed.error;
-      if (msg) {
-        throw new Error(Array.isArray(msg) ? msg.join(', ') : String(msg));
+        parsedMessage = parsed.errors.map((e: { path: string; message: string }) => `${e.path}: ${e.message}`).join(', ');
+      } else {
+        const msg = parsed.message || parsed.error;
+        if (msg) parsedMessage = Array.isArray(msg) ? msg.join(', ') : String(msg);
       }
     } catch {
-      // If it's not JSON or doesn't have a message, fall through
+      // Not JSON — fall through to the raw text below.
     }
-    throw new Error(text || `HTTP ${res.status} ${res.statusText}`);
+    throw new Error(parsedMessage || text || `HTTP ${res.status} ${res.statusText}`);
   }
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
