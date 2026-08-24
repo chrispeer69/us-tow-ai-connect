@@ -44,7 +44,10 @@ export function useConsoleProfile(): ConsoleProfile {
           tenants: Array<{ id: string; consoleProfile?: ConsoleProfile }>;
         }>('/v1/auth/my-tenants');
         const mine = res.tenants?.find((t) => t.id === tenantId);
-        const next: ConsoleProfile = mine?.consoleProfile === 'campaign' ? 'campaign' : 'full';
+        const next: ConsoleProfile =
+          mine?.consoleProfile === 'campaign' || mine?.consoleProfile === 'crash-leads'
+            ? mine.consoleProfile
+            : 'full';
         if (cancelled) return;
         setProfile(next);
         window.localStorage.setItem(CACHE_KEY, JSON.stringify({ tenantId, profile: next }));

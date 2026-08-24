@@ -510,12 +510,17 @@ export class AuthService {
  * the console it has today — that is the property that makes this safe to ship
  * against a live Command Center.
  */
-export type ConsoleProfile = 'full' | 'campaign';
+export type ConsoleProfile = 'full' | 'campaign' | 'crash-leads';
 
 function consoleProfileFor(config: unknown): ConsoleProfile {
   if (!config || typeof config !== 'object') return 'full';
   const kind = (config as Record<string, unknown>).kind;
-  return kind === 'outreach' ? 'campaign' : 'full';
+  if (kind === 'outreach') return 'campaign';
+  // Alpha Automotive's crash-lead callers — not a towing operation, so the
+  // dispatch/flip-engine console would be an empty, confusing default. See
+  // nav-config.tsx's 'crash-leads' branch.
+  if (kind === 'crash_leads') return 'crash-leads';
+  return 'full';
 }
 
 function isConfiguredSuperAdminEmail(email: string): boolean {

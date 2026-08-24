@@ -87,7 +87,7 @@ export const NAV_GROUPS: NavGroup[] = [
  * a live product is to add a filter beside the array rather than reshape the
  * array everyone already depends on.
  */
-export type ConsoleProfile = 'full' | 'campaign';
+export type ConsoleProfile = 'full' | 'campaign' | 'crash-leads';
 
 /**
  * Routes a campaign tenant has no use for. Everything NOT listed here stays,
@@ -109,7 +109,25 @@ const HIDDEN_FOR_CAMPAIGN = new Set([
 export const HOME_HREF: Record<ConsoleProfile, string> = {
   full: '/admin/command-center',
   campaign: '/admin/campaigns',
+  // Not under /admin — its own standalone PWA page (same shape as /m/flip),
+  // reached the same way a towing admin reaches /m/flip: bookmarked / added
+  // to a phone home screen, or this HOME_HREF on first login.
+  'crash-leads': '/alpha/flips',
 };
+
+/**
+ * Alpha Automotive's crash-lead callers — not a towing operation, so nothing
+ * in NAV_GROUPS applies. A single link out to the standalone board plus the
+ * Account group (so a member can still manage their own login) rather than
+ * a denylist of an ever-growing towing nav.
+ */
+const CRASH_LEADS_NAV_GROUPS: NavGroup[] = [
+  {
+    title: 'Communications',
+    items: [{ href: '/alpha/flips', label: 'Crash Lead Calls', icon: 'outbound-voice' }],
+  },
+  ...NAV_GROUPS.filter((g) => g.title === 'Account'),
+];
 
 /**
  * The nav for a profile.
@@ -118,6 +136,7 @@ export const HOME_HREF: Record<ConsoleProfile, string> = {
  * which is what makes shipping it against a live Command Center safe.
  */
 export function navGroupsForProfile(profile: ConsoleProfile): NavGroup[] {
+  if (profile === 'crash-leads') return CRASH_LEADS_NAV_GROUPS;
   if (profile !== 'campaign') return NAV_GROUPS;
 
   return NAV_GROUPS.map((group) => ({
