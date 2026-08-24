@@ -47,7 +47,7 @@ const TOOLS = [
     name: 'transfer_to_dispatch',
     description:
       'Transfer the caller to a live dispatcher. Use for any status, ETA, price, complaint, or insurance question, if the caller is upset or unsafe, or if you have asked the same question twice without an answer.',
-    transfer_destination: { type: 'predefined', number: '+13803336411' },
+    transfer_destination: { type: 'predefined', number: '+17408129489' },
     transfer_option: { type: 'cold_transfer' },
     speak_after_execution: true,
   },
@@ -282,9 +282,14 @@ async function main() {
     throw new Error(`the new prompt drops rules that must survive:\n  - ${missing.join('\n  - ')}`);
   }
 
+  // Tools are edited here in the script, not in emily-inbound.txt — a
+  // tools-only change (e.g. a transfer number) must still publish even when
+  // the prompt text is byte-identical to what's live.
+  const toolsChanged = JSON.stringify(llm.general_tools ?? []) !== JSON.stringify(TOOLS);
+
   console.log(`live : llm v${llm.version}, ${live.length} chars`);
-  console.log(`new  : ${path.basename(FILE)}, ${next.length} chars`);
-  if (next === live) {
+  console.log(`new  : ${path.basename(FILE)}, ${next.length} chars${toolsChanged ? ' (tools changed)' : ''}`);
+  if (next === live && !toolsChanged) {
     console.log('Identical. Nothing to publish.');
     return;
   }
