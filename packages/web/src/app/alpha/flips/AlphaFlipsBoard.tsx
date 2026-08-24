@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/utils';
 
@@ -308,6 +309,13 @@ export default function AlphaFlipsBoard() {
           <StatTile label="Calls, 7 days" value={stats?.total ?? 0} tone="plain" />
           <StatTile label="Voicemail, 7 days" value={stats?.voicemail ?? 0} tone="plain" />
         </div>
+
+        <Link
+          href="/alpha/flips/last-week"
+          className="mt-2 block rounded-lg border border-stone-700 bg-stone-800/60 px-3 py-2 text-center text-sm font-medium text-stone-200 active:bg-stone-700"
+        >
+          Last week&apos;s call logs — audio &amp; transcripts →
+        </Link>
 
         <div className="mt-3 flex gap-2">
           <button
