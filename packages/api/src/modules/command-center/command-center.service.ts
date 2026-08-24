@@ -10,6 +10,7 @@ import {
   trucks,
   dispatchMessages,
   etaCheckCalls,
+  inboundCallLogs,
   unifiedJobs,
   type DriverRow,
   type OutboundCallRow,
@@ -832,6 +833,61 @@ export class CommandCenterService {
       .returning({ id: dispatchMessages.id });
     if (!row) throw new NotFoundException('message not found');
     return { ok: true };
+  }
+
+  // ─── inbound calls (Emily) ───────────────────────────────────────────
+  /**
+   * Every call that reached the 844 line — transcript and recording
+   * included. Captured since migration 0056 but never surfaced anywhere
+   * until now: `inbound_call_logs` had no reader at all.
+   *
+   * List view omits the transcript body (heaviest column, never needed until
+   * a row is opened) — the detail method returns it.
+   */
+  async listInboundCalls(
+    tenantId: string,
+    opts: { phone?: string; branch?: string; limit?: number } = {},
+  ) {
+    const conditions = [eq(inboundCallLogs.tenantId, tenantId)];
+    if (opts.phone) {
+      // Loose match: callers read digits differently than we store them, and
+      // a caller checking on a tow rarely knows the exact stored format.
+      const digits = opts.phone.replace(/\D/g, '');
+      if (digits) conditions.push(sql`regexp_replace(${inboundCallLogs.fromNumber}, '\\D', '', 'g') like ${'%' + digits}`);
+    }
+    if (opts.branch) conditions.push(eq(inboundCallLogs.branch, opts.branch));
+
+    const rows = await this.db
+      .select({
+        id: inboundCallLogs.id,
+        providerCallId: inboundCallLogs.providerCallId,
+        fromNumber: inboundCallLogs.fromNumber,
+        toNumber: inboundCallLogs.toNumber,
+        branch: inboundCallLogs.branch,
+        durationSeconds: inboundCallLogs.durationSeconds,
+        disconnectionReason: inboundCallLogs.disconnectionReason,
+        recordingUrl: inboundCallLogs.recordingUrl,
+        summary: inboundCallLogs.summary,
+        ustdJobNumber: inboundCallLogs.ustdJobNumber,
+        startedAt: inboundCallLogs.startedAt,
+        createdAt: inboundCallLogs.createdAt,
+      })
+      .from(inboundCallLogs)
+      .where(and(...conditions))
+      .orderBy(desc(inboundCallLogs.createdAt))
+      .limit(Math.min(opts.limit ?? 100, 200));
+
+    return rows;
+  }
+
+  async getInboundCall(tenantId: string, id: string) {
+    const [row] = await this.db
+      .select()
+      .from(inboundCallLogs)
+      .where(and(eq(inboundCallLogs.tenantId, tenantId), eq(inboundCallLogs.id, id)))
+      .limit(1);
+    if (!row) throw new NotFoundException('call not found');
+    return row;
   }
 }
 

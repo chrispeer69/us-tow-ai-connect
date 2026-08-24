@@ -38,6 +38,55 @@ interface EtaCheck {
   handledAt: string | null;
 }
 
+/** A message Emily took instead of transferring the call — her third move
+ *  besides answer-it or hand-it-away. See dispatch_messages / ai-connect.service.ts. */
+interface DispatchMessage {
+  id: string;
+  callerName: string | null;
+  callerPhone: string;
+  jobNumber: string | null;
+  topic: string;
+  urgency: string;
+  message: string;
+  callbackRequested: boolean;
+  callbackWindow: string | null;
+  takenAt: string;
+  handledAt: string | null;
+}
+
+/** One row per call to the 844 line, with transcript + recording — captured
+ *  since migration 0056, unreachable from any UI until this page. */
+interface InboundCall {
+  id: string;
+  providerCallId: string;
+  fromNumber: string | null;
+  toNumber: string | null;
+  branch: string;
+  durationSeconds: number | null;
+  disconnectionReason: string | null;
+  recordingUrl: string | null;
+  summary: string | null;
+  ustdJobNumber: string | null;
+  startedAt: string | null;
+  createdAt: string;
+}
+
+interface InboundCallDetail extends InboundCall {
+  transcript: string | null;
+}
+
+const BRANCH_LABEL: Record<string, string> = {
+  update: 'ETA check',
+  new_tow: 'New tow',
+  motor_club: 'Motor club',
+  unknown: 'Unsorted',
+};
+
+const fmtDuration = (secs: number | null) => {
+  if (!secs) return '—';
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+};
+
 const since = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (m < 1) return 'just now';
@@ -54,15 +103,29 @@ const lateness = (eta: string | null) => {
 
 export default function RoadsideBoard() {
   const [rows, setRows] = useState<EtaCheck[] | null>(null);
+  const [messages, setMessages] = useState<DispatchMessage[] | null>(null);
+  const [calls, setCalls] = useState<InboundCall[] | null>(null);
+  const [phoneFilter, setPhoneFilter] = useState('');
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
+  const [callDetail, setCallDetail] = useState<InboundCallDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (phone?: string) => {
     try {
-      const res = await api<EtaCheck[] | { data: EtaCheck[] }>(
-        '/v1/admin/command-center/eta-checks',
-      );
-      setRows(Array.isArray(res) ? res : res.data);
+      const qs = phone ? `?phone=${encodeURIComponent(phone)}` : '';
+      const [etaRes, msgRes, callRes] = await Promise.all([
+        api<EtaCheck[] | { data: EtaCheck[] }>('/v1/admin/command-center/eta-checks'),
+        api<DispatchMessage[] | { data: DispatchMessage[] }>(
+          '/v1/admin/command-center/dispatch-messages',
+        ),
+        api<InboundCall[] | { data: InboundCall[] }>(
+          `/v1/admin/command-center/inbound-calls${qs}`,
+        ),
+      ]);
+      setRows(Array.isArray(etaRes) ? etaRes : etaRes.data);
+      setMessages(Array.isArray(msgRes) ? msgRes : msgRes.data);
+      setCalls(Array.isArray(callRes) ? callRes : callRes.data);
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
@@ -70,11 +133,12 @@ export default function RoadsideBoard() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void load(phoneFilter || undefined);
     // Someone waiting on a truck is a live situation; a minute is the most
     // staleness that is useful here.
-    const t = setInterval(() => void load(), 60000);
+    const t = setInterval(() => void load(phoneFilter || undefined), 60000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   const handled = async (id: string) => {
@@ -84,11 +148,49 @@ export default function RoadsideBoard() {
         method: 'POST',
         json: {},
       });
-      await load();
+      await load(phoneFilter || undefined);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
       setBusy(null);
+    }
+  };
+
+  const messageHandled = async (id: string) => {
+    setBusy(id);
+    try {
+      await api(`/v1/admin/command-center/dispatch-messages/${id}/handled`, {
+        method: 'POST',
+        json: {},
+      });
+      await load(phoneFilter || undefined);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const showCallsFor = (phone: string) => {
+    setPhoneFilter(phone);
+    void load(phone);
+  };
+
+  const toggleCall = async (call: InboundCall) => {
+    if (expandedCallId === call.id) {
+      setExpandedCallId(null);
+      setCallDetail(null);
+      return;
+    }
+    setExpandedCallId(call.id);
+    setCallDetail(null);
+    try {
+      const res = await api<InboundCallDetail | { data: InboundCallDetail }>(
+        `/v1/admin/command-center/inbound-calls/${call.id}`,
+      );
+      setCallDetail('data' in res ? res.data : res);
+    } catch (e) {
+      setErr((e as Error).message);
     }
   };
 
@@ -103,7 +205,10 @@ export default function RoadsideBoard() {
       <div className="mx-auto max-w-xl">
         <div className="mb-4 flex items-baseline justify-between">
           <h1 className="text-lg font-bold text-white">Roadside — ETA calls</h1>
-          <button onClick={() => void load()} className="text-xs text-slate-400 underline">
+          <button
+            onClick={() => void load(phoneFilter || undefined)}
+            className="text-xs text-slate-400 underline"
+          >
             refresh
           </button>
         </div>
@@ -114,13 +219,30 @@ export default function RoadsideBoard() {
           </div>
         )}
 
+        {messages && messages.length > 0 && (
+          <div className="mb-4">
+            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-sky-400">
+              Messages for dispatch — {messages.length}
+            </div>
+            {messages.map((m) => (
+              <MessageCard
+                key={m.id}
+                m={m}
+                onDone={messageHandled}
+                onCalls={showCallsFor}
+                busy={busy === m.id}
+              />
+            ))}
+          </div>
+        )}
+
         {repeat.length > 0 && (
           <div className="mb-4">
             <div className="mb-2 text-xs font-bold uppercase tracking-wider text-rose-400">
               Called more than once — {repeat.length}
             </div>
             {repeat.map((r) => (
-              <Card key={r.id} r={r} hot onDone={handled} busy={busy === r.id} />
+              <Card key={r.id} r={r} hot onDone={handled} onCalls={showCallsFor} busy={busy === r.id} />
             ))}
           </div>
         )}
@@ -131,18 +253,58 @@ export default function RoadsideBoard() {
               Called once — {once.length}
             </div>
             {once.map((r) => (
-              <Card key={r.id} r={r} onDone={handled} busy={busy === r.id} />
+              <Card key={r.id} r={r} onDone={handled} onCalls={showCallsFor} busy={busy === r.id} />
             ))}
           </div>
         )}
 
-        {rows && rows.length === 0 && (
+        {rows && rows.length === 0 && (!messages || messages.length === 0) && (
           <div className="rounded-lg border border-slate-700 bg-slate-900 p-4 text-center text-sm text-slate-400">
             Nobody has called about a tow.
           </div>
         )}
 
         {!rows && <div className="py-10 text-center text-sm text-slate-500">Loading…</div>}
+
+        <div className="mb-2 mt-6 flex items-center justify-between">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Recent calls{phoneFilter ? ` · ${phoneFilter}` : ''}
+          </div>
+          {phoneFilter && (
+            <button
+              onClick={() => {
+                setPhoneFilter('');
+                void load();
+              }}
+              className="text-xs text-slate-400 underline"
+            >
+              clear filter
+            </button>
+          )}
+        </div>
+        <input
+          value={phoneFilter}
+          onChange={(e) => setPhoneFilter(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void load(phoneFilter || undefined);
+          }}
+          placeholder="Filter by phone number…"
+          className="mb-2 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+        />
+        {calls && calls.length === 0 && (
+          <div className="rounded-lg border border-slate-700 bg-slate-900 p-4 text-center text-sm text-slate-400">
+            No calls found.
+          </div>
+        )}
+        {(calls ?? []).map((c) => (
+          <CallCard
+            key={c.id}
+            c={c}
+            expanded={expandedCallId === c.id}
+            detail={expandedCallId === c.id ? callDetail : null}
+            onToggle={() => void toggleCall(c)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -152,11 +314,13 @@ function Card({
   r,
   hot,
   onDone,
+  onCalls,
   busy,
 }: {
   r: EtaCheck;
   hot?: boolean;
   onDone: (id: string) => void;
+  onCalls: (phone: string) => void;
   busy: boolean;
 }) {
   const late = lateness(r.etaRaw);
@@ -210,6 +374,12 @@ function Card({
           Call {r.customerPhone}
         </a>
         <button
+          onClick={() => onCalls(r.customerPhone)}
+          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300"
+        >
+          Calls
+        </button>
+        <button
           onClick={() => onDone(r.id)}
           disabled={busy}
           className="rounded-md border border-slate-600 px-3 text-sm text-slate-300 disabled:opacity-50"
@@ -217,6 +387,126 @@ function Card({
           {busy ? '…' : 'Done'}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** A message Emily took for dispatch — her third move besides answer-it or
+ *  transfer. Urgent ones are sorted first by the API. */
+function MessageCard({
+  m,
+  onDone,
+  onCalls,
+  busy,
+}: {
+  m: DispatchMessage;
+  onDone: (id: string) => void;
+  onCalls: (phone: string) => void;
+  busy: boolean;
+}) {
+  const urgent = m.urgency === 'urgent';
+  return (
+    <div
+      className="mb-2 rounded-lg p-3"
+      style={{
+        background: urgent ? '#450a0a' : '#0c1e2e',
+        border: `2px solid ${urgent ? '#f87171' : '#38bdf8'}`,
+      }}
+    >
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="text-base font-bold text-white">{m.callerName || m.callerPhone}</span>
+        {urgent && (
+          <span className="rounded bg-rose-600 px-1.5 py-0.5 text-xs font-bold text-white">
+            URGENT
+          </span>
+        )}
+        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-300">
+          {m.topic.replace(/_/g, ' ')}
+        </span>
+        <span className="ml-auto text-xs text-slate-400">{since(m.takenAt)}</span>
+      </div>
+
+      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">{m.message}</p>
+
+      <div className="mt-1 text-xs text-slate-400">
+        {m.jobNumber ? `Job #${m.jobNumber} · ` : ''}
+        {m.callbackRequested ? 'wants a callback' : 'no callback requested'}
+        {m.callbackWindow ? ` · ${m.callbackWindow}` : ''}
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <a
+          href={`tel:${m.callerPhone}`}
+          className="flex-1 rounded-md bg-emerald-600 py-2.5 text-center text-sm font-bold text-white"
+        >
+          Call {m.callerPhone}
+        </a>
+        <button
+          onClick={() => onCalls(m.callerPhone)}
+          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300"
+        >
+          Calls
+        </button>
+        <button
+          onClick={() => onDone(m.id)}
+          disabled={busy}
+          className="rounded-md border border-slate-600 px-3 text-sm text-slate-300 disabled:opacity-50"
+        >
+          {busy ? '…' : 'Done'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** One call to the 844 line. Collapsed by default — transcript is the
+ *  heaviest thing on this page and nobody needs it until they ask for it. */
+function CallCard({
+  c,
+  expanded,
+  detail,
+  onToggle,
+}: {
+  c: InboundCall;
+  expanded: boolean;
+  detail: InboundCallDetail | null;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="mb-2 rounded-lg border border-slate-700 bg-slate-900 p-3">
+      <button onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white">{c.fromNumber || 'Unknown number'}</div>
+          <div className="mt-0.5 text-xs text-slate-400">
+            {BRANCH_LABEL[c.branch] ?? c.branch} · {fmtDuration(c.durationSeconds)}
+            {c.ustdJobNumber ? ` · job #${c.ustdJobNumber}` : ''}
+          </div>
+        </div>
+        <span className="shrink-0 text-xs text-slate-500">{since(c.createdAt)}</span>
+      </button>
+
+      {c.summary && !expanded && <p className="mt-2 truncate text-xs text-slate-400">{c.summary}</p>}
+
+      {expanded && (
+        <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
+          {!detail && <p className="text-xs text-slate-400">Loading…</p>}
+          {detail && (
+            <>
+              {detail.summary && <p className="text-sm text-slate-200">{detail.summary}</p>}
+              {detail.recordingUrl && (
+                <audio controls src={detail.recordingUrl} className="w-full" preload="none" />
+              )}
+              {detail.transcript ? (
+                <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                  {detail.transcript}
+                </pre>
+              ) : (
+                <p className="text-xs text-slate-500">No transcript for this call.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

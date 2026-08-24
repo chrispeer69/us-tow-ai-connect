@@ -247,6 +247,24 @@ export class CommandCenterController {
       req.user?.email ?? req.user?.sub ?? null,
     );
   }
+
+  // ─── inbound calls (Emily) ───────────────────────────────────────────
+  // Transcript + recording for every call to the 844 line — captured since
+  // migration 0056, unreachable from any UI until this.
+
+  @Get('inbound-calls')
+  listInboundCalls(@Req() req: AdminRequest, @Query() q: Record<string, string | undefined>) {
+    return this.service.listInboundCalls(req.tenantId, {
+      phone: q.phone,
+      branch: q.branch,
+      limit: q.limit ? Number(q.limit) : undefined,
+    });
+  }
+
+  @Get('inbound-calls/:id')
+  getInboundCall(@Req() req: AdminRequest, @Param('id') id: string) {
+    return this.service.getInboundCall(req.tenantId, id);
+  }
 }
 
 function parseManualScriptType(value: unknown) {
