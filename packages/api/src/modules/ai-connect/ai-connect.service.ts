@@ -321,6 +321,85 @@ export class AiConnectService {
     };
   }
 
+  // ─── claim lookup (ClaimShield) ────────────────────────────────────
+  /**
+   * A motor club rep asking about a damage claim they opened against us.
+   * ClaimShield (ustowshield.com) is a separate product Chris runs — this
+   * is a live read-only passthrough, not data we own or cache. The service
+   * credential lives in Railway (`CLAIMSHIELD_API_KEY`), never in the
+   * agent prompt: Emily calls this endpoint, she never sees the key.
+   *
+   * Returns only what is safe for Emily to say out loud. Money fields
+   * (settlement, unauthorized-deduction amounts, counter-offers) are
+   * deliberately left out of the spoken summary — same rule as job pricing:
+   * she can report status and facts, she cannot negotiate or quote a
+   * dollar figure. `raw` carries the untrimmed record for logging only.
+   */
+  async lookupClaim(
+    input: { claimId?: string | null; jobReference?: string | null; vinLast6?: string | null },
+  ): Promise<{ found: boolean; message?: string; claim?: Record<string, unknown> }> {
+    const claimId = (input.claimId || '').trim();
+    const jobReference = (input.jobReference || '').trim();
+    const vinLast6 = (input.vinLast6 || '').trim();
+    if (!claimId && !jobReference && !vinLast6) {
+      return { found: false, message: 'claim_id, job_reference, or vin_last6 is required' };
+    }
+
+    const key = process.env.CLAIMSHIELD_API_KEY;
+    if (!key) {
+      this.logger.warn('CLAIMSHIELD_API_KEY unset — claim lookup skipped');
+      return { found: false, message: 'Claim lookup is not configured' };
+    }
+
+    const params = new URLSearchParams();
+    if (claimId) params.set('claimId', claimId);
+    else if (jobReference) params.set('jobReference', jobReference);
+    else params.set('vin', vinLast6);
+
+    let body: { results?: Array<Record<string, unknown>> };
+    try {
+      const res = await fetch(`https://www.ustowshield.com/api/v1/claims/lookup?${params}`, {
+        headers: { 'X-Api-Key': key },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`ClaimShield lookup HTTP ${res.status} for ${params}`);
+        return { found: false, message: 'Claim lookup failed' };
+      }
+      body = (await res.json()) as typeof body;
+    } catch (err) {
+      this.logger.warn(`ClaimShield lookup error: ${(err as Error).message}`);
+      return { found: false, message: 'Claim lookup failed' };
+    }
+
+    const hit = body.results?.[0];
+    if (!hit) {
+      return { found: false, message: 'No claim found matching that' };
+    }
+
+    const vehicle = hit.vehicle as
+      | { year?: number; make?: string; model?: string; color?: string | null }
+      | undefined;
+    const customer = hit.customer as { name?: string | null } | undefined;
+    const events = (hit.events as Array<{ content?: string; at?: string }> | undefined) ?? [];
+    const latestNote = events[events.length - 1]?.content ?? null;
+
+    return {
+      found: true,
+      claim: {
+        claimId: hit.claimId,
+        status: hit.status,
+        jobReference: hit.jobReference,
+        claimDescription: hit.claimDescription,
+        motorClubName: hit.motorClubName,
+        vehicle: vehicle ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : null,
+        customerName: customer?.name ?? null,
+        latestNote,
+        lastContactAt: hit.lastContactAt,
+      },
+    };
+  }
+
   // ─── eta ────────────────────────────────────────────────────────────
   /**
    * Live ETA: pick the closest fresh-pinged driver and ask Google Distance

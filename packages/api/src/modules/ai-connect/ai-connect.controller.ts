@@ -53,6 +53,16 @@ class UnwrapRetellArgsPipe implements PipeTransform {
   }
 }
 
+const ClaimLookupSchema = z
+  .object({
+    claim_id: z.string().max(60).nullish(),
+    job_reference: z.string().max(120).nullish(),
+    vin_last6: z.string().max(20).nullish(),
+  })
+  .refine((v) => v.claim_id || v.job_reference || v.vin_last6, {
+    message: 'one of claim_id, job_reference, vin_last6 is required',
+  });
+
 const DispatchMessageSchema = z.object({
   caller_phone: z.string().min(7).max(32),
   message: z.string().min(1).max(2000),
@@ -143,6 +153,29 @@ export class AiConnectController {
       callbackWindow: body.callback_window ?? null,
       providerCallId: body.call_reference ?? null,
     });
+  }
+
+  /**
+   * A motor club rep asking about a damage claim (ClaimShield). Read-only
+   * passthrough — see AiConnectService.lookupClaim for why no money fields
+   * come back.
+   */
+  @Post('claims/lookup')
+  @HttpCode(200)
+  @UseGuards(TenantApiKeyGuard, RateLimitGuard)
+  async lookupClaim(
+    @Body(new UnwrapRetellArgsPipe(), new ZodValidationPipe(ClaimLookupSchema))
+    body: z.infer<typeof ClaimLookupSchema>,
+  ) {
+    const result = await this.service.lookupClaim({
+      claimId: body.claim_id ?? null,
+      jobReference: body.job_reference ?? null,
+      vinLast6: body.vin_last6 ?? null,
+    });
+    if (!result.found) {
+      return { status: 'not_found', message: result.message };
+    }
+    return { status: 'success', data: result.claim };
   }
 
   @Get('eta')

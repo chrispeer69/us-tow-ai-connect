@@ -205,6 +205,27 @@ const TOOLS = [
     speak_after_execution: true,
     execution_message_description: "Tell them you're getting that written down for dispatch, in a few words.",
   },
+  {
+    type: 'custom',
+    name: 'lookup_claim',
+    description:
+      "Look up a damage claim on ClaimShield for a motor club rep calling about one. Try whichever identifier they gave you — claim number, PO/job reference, or the last six of the VIN. Returns status, description, vehicle, and the most recent note. Never returns a settlement amount, a deduction figure, or a counter-offer — those go to dispatch, never say a dollar figure on this tool's behalf.",
+    url: 'https://api.ustowaiconnect.com/v1/ai-connect/claims/lookup',
+    method: 'POST',
+    timeout_ms: 8000,
+    headers: { 'X-Tenant-API-Key': TENANT_API_KEY, 'content-type': 'application/json' },
+    parameters: {
+      type: 'object',
+      properties: {
+        claim_id: { type: 'string', description: 'The claim number as they gave it, e.g. "11" or "Claim #11".' },
+        job_reference: { type: 'string', description: 'A PO number, dispatch number, or case number they gave instead of a claim number.' },
+        vin_last6: { type: 'string', description: 'Last six characters of the VIN, only if that is what they have handy.' },
+      },
+    },
+    speak_during_execution: true,
+    speak_after_execution: true,
+    execution_message_description: 'Tell them you are pulling the claim up now, in a few words.',
+  },
 ];
 
 /**
