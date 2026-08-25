@@ -88,8 +88,17 @@ export class AiConnectController {
   @UseGuards(TenantApiKeyGuard, RateLimitGuard)
   async lookupByPhone(
     @Req() req: TenantAuthenticatedRequest,
+    @Body() rawBody: Record<string, unknown>,
     @Body('phone') phone: string,
   ) {
+    // TEMP DEBUG — 2026-08-25, remove once we've seen a real Retell request.
+    // Config on both ends checks out (POST, content-type: application/json)
+    // but every live call still gets "phone is required". Logging exactly
+    // what actually arrives, since two rounds of static config inspection
+    // have not matched what's happening on real calls.
+    this.logger.warn(
+      `[lookup-debug] content-type=${req.headers['content-type']} rawBody=${JSON.stringify(rawBody)} phone=${JSON.stringify(phone)}`,
+    );
     const result = await this.service.lookupByPhone(req.tenantId, phone ?? '');
     if (!result.found) {
       return { status: 'not_found', message: result.message };
