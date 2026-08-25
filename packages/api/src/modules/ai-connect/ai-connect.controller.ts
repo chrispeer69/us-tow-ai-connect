@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
   UsePipes,
+  type PipeTransform,
 } from '@nestjs/common';
 import { z } from 'zod';
 import {
@@ -33,6 +34,25 @@ import { AiConnectService } from './ai-connect.service';
  * message itself are required — everything else is a bonus, and rejecting a
  * message because the topic was odd would lose the customer's words entirely.
  */
+/**
+ * Retell's POST custom-tool calls wrap the LLM's arguments inside
+ * `{ call: {...entire call context...}, name: "...", args: {...} }` — not
+ * the flat body a `parameters` schema seems to promise. Discovered
+ * 2026-08-25: `lookup_job_by_phone` had correct-looking config (POST,
+ * content-type: application/json) and still failed on every real call,
+ * because `@Body('phone')` was reading a top-level key that never existed
+ * — the real value was at `body.args.phone`. Unwraps `args` when present so
+ * a Zod schema or a plain `@Body('field')` sees the actual arguments.
+ */
+class UnwrapRetellArgsPipe implements PipeTransform {
+  transform(value: unknown): unknown {
+    if (value && typeof value === 'object' && 'args' in (value as Record<string, unknown>)) {
+      return (value as Record<string, unknown>).args;
+    }
+    return value;
+  }
+}
+
 const DispatchMessageSchema = z.object({
   caller_phone: z.string().min(7).max(32),
   message: z.string().min(1).max(2000),
@@ -88,18 +108,9 @@ export class AiConnectController {
   @UseGuards(TenantApiKeyGuard, RateLimitGuard)
   async lookupByPhone(
     @Req() req: TenantAuthenticatedRequest,
-    @Body() rawBody: Record<string, unknown>,
-    @Body('phone') phone: string,
+    @Body(new UnwrapRetellArgsPipe()) args: { phone?: string },
   ) {
-    // TEMP DEBUG — 2026-08-25, remove once we've seen a real Retell request.
-    // Config on both ends checks out (POST, content-type: application/json)
-    // but every live call still gets "phone is required". Logging exactly
-    // what actually arrives, since two rounds of static config inspection
-    // have not matched what's happening on real calls.
-    this.logger.warn(
-      `[lookup-debug] content-type=${req.headers['content-type']} rawBody=${JSON.stringify(rawBody)} phone=${JSON.stringify(phone)}`,
-    );
-    const result = await this.service.lookupByPhone(req.tenantId, phone ?? '');
+    const result = await this.service.lookupByPhone(req.tenantId, args?.phone ?? '');
     if (!result.found) {
       return { status: 'not_found', message: result.message };
     }
@@ -116,10 +127,10 @@ export class AiConnectController {
   @Post('dispatch-message')
   @HttpCode(201)
   @UseGuards(TenantApiKeyGuard, RateLimitGuard)
-  @UsePipes(new ZodValidationPipe(DispatchMessageSchema))
   async dispatchMessage(
     @Req() req: TenantAuthenticatedRequest,
-    @Body() body: z.infer<typeof DispatchMessageSchema>,
+    @Body(new UnwrapRetellArgsPipe(), new ZodValidationPipe(DispatchMessageSchema))
+    body: z.infer<typeof DispatchMessageSchema>,
   ) {
     return this.service.takeDispatchMessage(req.tenantId, {
       callerPhone: body.caller_phone,
