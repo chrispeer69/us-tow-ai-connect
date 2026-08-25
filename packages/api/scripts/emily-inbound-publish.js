@@ -60,9 +60,16 @@ const TOOLS = [
     // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
     // arguments into query_params, only the request body. The old GET config
     // meant this tool has been returning "not_found" on every single call.
+    //
+    // 'content-type' is NOT optional here — without it the POST body never
+    // gets parsed and the symptom is identical to the query_params bug this
+    // was meant to fix ("phone is required"). Verified live 2026-08-25: the
+    // switch to POST alone did NOT fix it, real calls still failed for
+    // hours after v13 published, because this header was missing while it's
+    // present on create_tow_job and take_dispatch_message below.
     method: 'POST',
     timeout_ms: 8000,
-    headers: { 'X-Tenant-API-Key': TENANT_API_KEY },
+    headers: { 'X-Tenant-API-Key': TENANT_API_KEY, 'content-type': 'application/json' },
     parameters: {
       type: 'object',
       required: ['phone'],
