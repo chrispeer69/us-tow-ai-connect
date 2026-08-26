@@ -385,12 +385,19 @@ export class AiConnectService {
     // newest-first today, but "last element" silently became the OLDEST note
     // once that assumption was wrong, and Emily would read it to a caller as
     // current. Never trust position for "latest" again.
-    const events = (hit.events as Array<{ content?: string; at?: string }> | undefined) ?? [];
-    const latestNote =
-      events
-        .filter((e) => e.content && e.at)
-        .sort((a, b) => new Date(b.at as string).getTime() - new Date(a.at as string).getTime())[0]
-        ?.content ?? null;
+    //
+    // Chris, 2026-08-26: she should read through ALL the notes before
+    // answering, not just the newest one — a single note out of context can
+    // read very differently than the arc of the investigation. Only 'note'
+    // events carry that narrative; document uploads and review-routing
+    // events are noise for a spoken summary. Capped at 12 so a long-running
+    // claim doesn't blow up the tool response.
+    const events = (hit.events as Array<{ type?: string; content?: string; at?: string }> | undefined) ?? [];
+    const notes = events
+      .filter((e) => e.type === 'note' && e.content && e.at)
+      .sort((a, b) => new Date(b.at as string).getTime() - new Date(a.at as string).getTime())
+      .slice(0, 12)
+      .map((e) => ({ at: e.at, content: e.content }));
 
     return {
       found: true,
@@ -402,7 +409,9 @@ export class AiConnectService {
         motorClubName: hit.motorClubName,
         vehicle: vehicle ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : null,
         customerName: customer?.name ?? null,
-        latestNote,
+        // Newest first — the tool description tells Emily to read the whole
+        // list before answering, not just notes[0].
+        notes,
         lastContactAt: hit.lastContactAt,
       },
     };

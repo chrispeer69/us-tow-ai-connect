@@ -209,7 +209,7 @@ const TOOLS = [
     type: 'custom',
     name: 'lookup_claim',
     description:
-      "Look up a damage claim on ClaimShield for a motor club rep calling about one. Try whichever identifier they gave you — claim number, PO/job reference, or the last six of the VIN. Returns status, description, vehicle, and the most recent note. Never returns a settlement amount, a deduction figure, or a counter-offer — those go to dispatch, never say a dollar figure on this tool's behalf.",
+      "Look up a damage claim on ClaimShield for a motor club rep calling about one. Try whichever identifier they gave you — claim number, PO/job reference, or the last six of the VIN. Returns status, description, vehicle, and the full note history, newest first. Read through ALL of the notes, not just the first one, before you answer — the newest note is rarely the whole story, and a caller wants to know where things actually stand, not just the last thing that was typed. Never returns a settlement amount, a deduction figure, or a counter-offer — those go to dispatch, never say a dollar figure on this tool's behalf, even if a note's own text happens to mention one.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/claims/lookup',
     method: 'POST',
     timeout_ms: 8000,
