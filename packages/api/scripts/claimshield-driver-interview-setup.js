@@ -59,7 +59,7 @@ async function main() {
       model: 'gpt-4.1',
       general_prompt: prompt,
       begin_message:
-        "Hi, is this {{driver_name}}? This is Emily, an automated assistant calling from Roadside Towing about the tow on {{incident_date}} for the damage claim. This is being recorded for the claim file. About four quick questions, under three minutes.",
+        "Hi, is this {{driver_name}}? This is Emily, an automated assistant calling from Roadside Towing — this is that call about the tow on {{incident_date}} for the damage claim. This is being recorded for the claim file. It's a real interview this time, closer to five minutes than a quick check-in — is now still good?",
       general_tools: [{ type: 'end_call', name: 'end_call', description: 'End the call politely once the interview is done or the driver cannot talk.' }],
     });
     llmId = llm.llm_id;
@@ -71,10 +71,10 @@ async function main() {
       response_engine: { type: 'retell-llm', llm_id: llmId },
       voice_id: '11labs-Emily',
       language: 'en-US',
-      // 210s hard cap — 30s of headroom above the 180s script target so a
-      // slow answer can't get cut off mid-sentence, but nowhere near enough
-      // room for the call to wander.
-      max_call_duration_ms: 210000,
+      // 8 min hard cap. This now runs the full questionnaire (13 topics),
+      // not the earlier 180s condensed version — realistic pacing is
+      // 5-8 minutes, so the cap needs real headroom, not a tight leash.
+      max_call_duration_ms: 480000,
       enable_backchannel: false,
     });
     console.log(`  agent_id ${agent.agent_id}`);
@@ -85,8 +85,9 @@ async function main() {
     await retell(`/update-retell-llm/${llmId}`, 'PATCH', {
       general_prompt: prompt,
       begin_message:
-        "Hi, is this {{driver_name}}? This is Emily, an automated assistant calling from Roadside Towing about the tow on {{incident_date}} for the damage claim. This is being recorded for the claim file. About four quick questions, under three minutes.",
+        "Hi, is this {{driver_name}}? This is Emily, an automated assistant calling from Roadside Towing — this is that call about the tow on {{incident_date}} for the damage claim. This is being recorded for the claim file. It's a real interview this time, closer to five minutes than a quick check-in — is now still good?",
     });
+    await retell(`/update-agent/${agent.agent_id}`, 'PATCH', { max_call_duration_ms: 480000 });
   }
 
   await retell(`/publish-agent/${agent.agent_id}`, 'POST', {}).catch((e) =>

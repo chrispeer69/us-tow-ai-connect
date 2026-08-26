@@ -11,7 +11,7 @@
 const API = process.env.RETELL_API_BASE_URL || 'https://api.retellai.com';
 const KEY = process.env.RETELL_API_KEY;
 const AGENT_ID = 'agent_ff919fc1305f7a512b45707350';
-const AGENT_VERSION = 0;
+const AGENT_VERSION = 1;
 const FROM_NUMBER = '+18447011345';
 const TO_NUMBER = '+16142262773'; // Tim Moore
 
