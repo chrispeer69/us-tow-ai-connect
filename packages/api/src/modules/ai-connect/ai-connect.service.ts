@@ -381,8 +381,16 @@ export class AiConnectService {
       | { year?: number; make?: string; model?: string; color?: string | null }
       | undefined;
     const customer = hit.customer as { name?: string | null } | undefined;
+    // Sort by timestamp rather than trust array order — ClaimShield returns
+    // newest-first today, but "last element" silently became the OLDEST note
+    // once that assumption was wrong, and Emily would read it to a caller as
+    // current. Never trust position for "latest" again.
     const events = (hit.events as Array<{ content?: string; at?: string }> | undefined) ?? [];
-    const latestNote = events[events.length - 1]?.content ?? null;
+    const latestNote =
+      events
+        .filter((e) => e.content && e.at)
+        .sort((a, b) => new Date(b.at as string).getTime() - new Date(a.at as string).getTime())[0]
+        ?.content ?? null;
 
     return {
       found: true,
