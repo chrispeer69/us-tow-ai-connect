@@ -13,10 +13,12 @@ import 'dotenv/config';
 // declarations from Dockerfiles; setting it in JS as a fallback means the
 // container works whether or not the orchestrator honours the Dockerfile.
 import './playwright-env';
+import type { IncomingMessage, ServerResponse } from 'http';
 import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SentryGlobalFilter } from '@sentry/nestjs/setup';
+import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { initSentry } from './common/observability/sentry';
@@ -73,7 +75,24 @@ async function bootstrap() {
     // pattern instead of the global toggle.
     cors: false,
     rawBody: true,
+    // Default body parsers off — replaced below with a raised size limit.
+    bodyParser: false,
   });
+
+  // Express's default JSON/urlencoded limit is 100kb, which silently 500s
+  // any POST over that size. Found 2026-08-27: Retell's call_analyzed
+  // webhook — full transcript + per-word timing for a long call — was
+  // tripping this in production ("PayloadTooLargeError: request entity too
+  // large"), matching that day's call-review finding of transcripts missing
+  // from the review batch. Raised well above any real payload we expect.
+  // `verify` replicates what Nest's own bodyParser:true does for rawBody —
+  // Stripe's and Retell's webhook signature checks read req.rawBody and
+  // silently degrade or reject without it.
+  const captureRawBody = (req: IncomingMessage & { rawBody?: Buffer }, _res: ServerResponse, buf: Buffer) => {
+    if (buf?.length) req.rawBody = buf;
+  };
+  app.use(json({ limit: '10mb', verify: captureRawBody }));
+  app.use(urlencoded({ extended: true, limit: '10mb', verify: captureRawBody }));
 
   // Helmet defaults are safe for an API; the one override is
   // crossOriginResourcePolicy so Thinkrr's agent runtime can pull the
