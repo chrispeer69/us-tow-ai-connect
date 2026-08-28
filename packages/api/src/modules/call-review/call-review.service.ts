@@ -28,7 +28,62 @@ const MIN_TRANSCRIPT_CHARS = 200;
 /** Trim each transcript so one outlier can't dominate the prompt. */
 const MAX_TRANSCRIPT_CHARS = 6000;
 
-interface FunnelMetrics {
+/**
+ * Scenario B (`bodyShopSoftMention` in flip-decision.engine.ts) is a soft
+ * mention, not the numbered offer_1/2/3 ladder — it never sets `offer1Result`
+ * by design. Counting it toward `eligible`/`neverPitched` made the funnel
+ * report a fake leak: 7 separate daily reviews between 08-11 and 08-27 flagged
+ * "auto_body jobs inflate the never-pitched count" as the same recurring
+ * finding, because these calls can never clear an offer_1 attempt they were
+ * never meant to receive.
+ */
+function isOfferLadderEligible(r: OutboundCallLogRow): boolean {
+  return r.flipEligible && r.scenario !== 'auto_body';
+}
+
+const isWin = (r: OutboundCallLogRow) => /WIN|ACCEPTED/i.test(r.flipOutcome ?? '');
+const attempted = (v: string | null) => v != null && v !== 'NOT_ATTEMPTED';
+
+export function computeFunnel(rows: OutboundCallLogRow[]): FunnelMetrics {
+  const eligibleRows = rows.filter(isOfferLadderEligible);
+  const pitchedRows = rows.filter((r) => attempted(r.offer1Result));
+  const wins = rows.filter(isWin).length;
+
+  const byScenarioMap = new Map<
+    string,
+    { scenario: string; calls: number; eligible: number; wins: number }
+  >();
+  for (const r of rows) {
+    const key = r.scenario ?? r.destinationType ?? 'unknown';
+    const entry = byScenarioMap.get(key) ?? { scenario: key, calls: 0, eligible: 0, wins: 0 };
+    entry.calls += 1;
+    if (r.flipEligible) entry.eligible += 1;
+    if (isWin(r)) entry.wins += 1;
+    byScenarioMap.set(key, entry);
+  }
+
+  return {
+    calls: rows.length,
+    eligible: eligibleRows.length,
+    neverPitched: eligibleRows.filter((r) => !attempted(r.offer1Result)).length,
+    offer1Accepted: rows.filter((r) => r.offer1Result === 'ACCEPTED').length,
+    offer1Declined: rows.filter((r) => r.offer1Result === 'DECLINED').length,
+    offer2Reached: rows.filter((r) => attempted(r.offer2Result)).length,
+    offer2Accepted: rows.filter((r) => r.offer2Result === 'ACCEPTED').length,
+    offer3Reached: rows.filter((r) => attempted(r.offer3Result)).length,
+    offer3Accepted: rows.filter((r) => r.offer3Result === 'ACCEPTED').length,
+    pitched: pitchedRows.length,
+    wins,
+    winRateOfCalls: rows.length > 0 ? Number(((wins / rows.length) * 100).toFixed(1)) : 0,
+    winRateOfPitched:
+      pitchedRows.length > 0 ? Number(((wins / pitchedRows.length) * 100).toFixed(1)) : 0,
+    winRateOfEligible:
+      eligibleRows.length > 0 ? Number(((wins / eligibleRows.length) * 100).toFixed(1)) : 0,
+    byScenario: [...byScenarioMap.values()].sort((a, b) => b.calls - a.calls),
+  };
+}
+
+export interface FunnelMetrics {
   calls: number;
   eligible: number;
   neverPitched: number;
@@ -119,7 +174,7 @@ export class CallReviewService {
         ),
       )) as OutboundCallLogRow[];
 
-    const metrics = this.computeFunnel(rows);
+    const metrics = computeFunnel(rows);
 
     const run = await this.upsertRun(tenantId, reviewDate, {
       status: 'RUNNING',
@@ -280,55 +335,6 @@ export class CallReviewService {
     } catch (err) {
       this.logger.warn(`[call-review] email step failed: ${(err as Error).message}`);
     }
-  }
-
-  // ─── funnel ───────────────────────────────────────────────────────────────
-  private computeFunnel(rows: OutboundCallLogRow[]): FunnelMetrics {
-    const isWin = (r: OutboundCallLogRow) => /WIN|ACCEPTED/i.test(r.flipOutcome ?? '');
-    const attempted = (v: string | null) => v != null && v !== 'NOT_ATTEMPTED';
-
-    const eligibleRows = rows.filter((r) => r.flipEligible);
-    const pitchedRows = rows.filter((r) => attempted(r.offer1Result));
-    const wins = rows.filter(isWin).length;
-
-    const byScenarioMap = new Map<
-      string,
-      { scenario: string; calls: number; eligible: number; wins: number }
-    >();
-    for (const r of rows) {
-      const key = r.scenario ?? r.destinationType ?? 'unknown';
-      const entry =
-        byScenarioMap.get(key) ?? { scenario: key, calls: 0, eligible: 0, wins: 0 };
-      entry.calls += 1;
-      if (r.flipEligible) entry.eligible += 1;
-      if (isWin(r)) entry.wins += 1;
-      byScenarioMap.set(key, entry);
-    }
-
-    return {
-      calls: rows.length,
-      eligible: eligibleRows.length,
-      neverPitched: eligibleRows.filter((r) => !attempted(r.offer1Result)).length,
-      offer1Accepted: rows.filter((r) => r.offer1Result === 'ACCEPTED').length,
-      offer1Declined: rows.filter((r) => r.offer1Result === 'DECLINED').length,
-      offer2Reached: rows.filter((r) => attempted(r.offer2Result)).length,
-      offer2Accepted: rows.filter((r) => r.offer2Result === 'ACCEPTED').length,
-      offer3Reached: rows.filter((r) => attempted(r.offer3Result)).length,
-      offer3Accepted: rows.filter((r) => r.offer3Result === 'ACCEPTED').length,
-      pitched: pitchedRows.length,
-      wins,
-      winRateOfCalls:
-        rows.length > 0 ? Number(((wins / rows.length) * 100).toFixed(1)) : 0,
-      winRateOfPitched:
-        pitchedRows.length > 0
-          ? Number(((wins / pitchedRows.length) * 100).toFixed(1))
-          : 0,
-      winRateOfEligible:
-        eligibleRows.length > 0
-          ? Number(((wins / eligibleRows.length) * 100).toFixed(1))
-          : 0,
-      byScenario: [...byScenarioMap.values()].sort((a, b) => b.calls - a.calls),
-    };
   }
 
   // ─── sampling ─────────────────────────────────────────────────────────────
