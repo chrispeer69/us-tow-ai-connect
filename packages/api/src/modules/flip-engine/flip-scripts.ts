@@ -658,7 +658,7 @@ function isUnusableName(name: string | null | undefined): boolean {
   if (/(customers?|llc|inc\b|corp|dept|department|salvage|towing|tow yard|impound|storage|dispatch|account)/i.test(n)) {
     return true;
   }
-  return /^(unknown|n\/?a|null|undefined|customer|caller|test|there|owner|driver|dipping)$/i.test(n);
+  return /^(unknown|n\/?a|null|undefined|customer|caller|test|there|owner|driver|dipping|other)$/i.test(n);
 }
 
 function baseVars(ctx: ScriptContext): Record<string, string> {

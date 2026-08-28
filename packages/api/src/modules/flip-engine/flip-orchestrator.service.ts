@@ -121,6 +121,24 @@ function firstNameOf(full: string | null | undefined): string {
   return n.split(/\s+/)[0];
 }
 
+/**
+ * Values seen in `destinationAddress`/a geocoder's `resolvedAddress` that are
+ * non-empty but too coarse or generic to read to a customer as "the
+ * destination" — found 2026-08-27: "I have the destination as United
+ * States. Is that still correct?" (a geocode that only resolved to
+ * country-level) and "...as somewhere out of the area" (a dispatcher's
+ * free-text note, not an address). The existing `?? 'your destination'`
+ * fallback only catches null/undefined, not a garbage-but-present string.
+ */
+const UNUSABLE_DESTINATION =
+  /^(united states( of america)?|usa|u\.s\.a\.?|somewhere out of (the )?area|unknown|n\/?a|null|undefined|tbd)$/i;
+
+export function usableDestination(text: string | null | undefined): string | null {
+  const t = (text ?? '').trim();
+  if (!t || UNUSABLE_DESTINATION.test(t)) return null;
+  return t;
+}
+
 /** Street address of a partner shop, for naming it inside the offer. */
 /**
  * Session 75 — the other partner shops the agent may name when the offered one
@@ -497,7 +515,10 @@ export class FlipOrchestratorService {
       customerFirstName: firstNameOf(job.customerName),
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
-      destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
+      destination:
+        usableDestination(destination.resolvedAddress) ??
+        usableDestination(job.destinationAddress) ??
+        'your destination',
       issue: issuePhrase(issue.subcategory),
       issueSubcategory: issue.subcategory,
       nearestShop: flipEligible ? nearestShopName : null,
@@ -696,7 +717,10 @@ export class FlipOrchestratorService {
       customerFirstName: firstNameOf(job.customerName),
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
-      destination: destination.resolvedAddress ?? job.destinationAddress ?? 'your destination',
+      destination:
+        usableDestination(destination.resolvedAddress) ??
+        usableDestination(job.destinationAddress) ??
+        'your destination',
       issue: issuePhrase(issue.subcategory),
       issueSubcategory: issue.subcategory,
       nearestShop: flipEligible ? nearestShopName : null,
@@ -1080,7 +1104,10 @@ export class FlipOrchestratorService {
             .filter(Boolean)
             .join(' ') || 'your vehicle',
         pickupLocation: job.pickupAddress ?? 'your location',
-        destination: destination.resolvedAddress ?? job.dropoffAddress ?? 'your destination',
+        destination:
+          usableDestination(destination.resolvedAddress) ??
+          usableDestination(job.dropoffAddress) ??
+          'your destination',
         issue: issuePhrase(issue.subcategory),
         issueSubcategory: issue.subcategory,
         nearestShop: flipEligible ? nearestShopName : null,
@@ -1298,7 +1325,10 @@ export class FlipOrchestratorService {
       customerFirstName: firstNameOf(input.customerName),
       vehicle: input.vehicle || 'your vehicle',
       pickupLocation: input.pickupLocation || 'your location',
-      destination: destination.resolvedAddress ?? input.destination ?? 'your destination',
+      destination:
+        usableDestination(destination.resolvedAddress) ??
+        usableDestination(input.destination) ??
+        'your destination',
       issue: issuePhrase(issue.subcategory),
       issueSubcategory: issue.subcategory,
       nearestShop: flipEligible ? nearestShopName : null,

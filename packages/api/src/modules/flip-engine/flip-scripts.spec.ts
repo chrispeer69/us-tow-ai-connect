@@ -570,6 +570,15 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(named).toContain('Am I speaking with Pat?');
   });
 
+  it('treats a literal "Other" name-field value as unusable, not a real name', () => {
+    // 08-27 review: a real call greeted the customer with "Am I speaking with
+    // Other?" — the same placeholder-value class as "unknown"/"n/a", just a
+    // value that hadn't been added to the denylist yet.
+    const body = renderCallBody('competitor_repair', { ...base, customerFirstName: 'Other' });
+    expect(body).toContain('Am I speaking with the owner of the vehicle?');
+    expect(body).not.toContain('Am I speaking with Other?');
+  });
+
   // Second round — found by adversarial review of the first round.
   it('says "1 mile", never "1 miles"', () => {
     const body = renderCallBody('competitor_repair', {
