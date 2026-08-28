@@ -71,6 +71,9 @@ importers:
       drizzle-orm:
         specifier: ^0.30.0
         version: 0.30.10(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(@types/react@19.2.15)(pg@8.21.0)(react@19.2.6)
+      express:
+        specifier: ^4.22.1
+        version: 4.22.1
       helmet:
         specifier: ^7.1.0
         version: 7.2.0
