@@ -770,7 +770,7 @@ AI: "I do not have a separate tow destination listed, so I have this as service 
 [AGENT: Do not ask for a delivery destination unless the customer says the vehicle also needs to be towed somewhere after the service.]`
     : `[STEP 6 — CONFIRM DELIVERY DESTINATION]
 AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
-[AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate.]`;
+[AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess or lock in a destination type and do NOT move to the close over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" One call closed over an unclear "Um," and logged the job as an unclassified destination that a dispatcher then had to call back to sort out.]`;
 
   const pickup = ctx.scriptBlocks?.confirm_pickup ?? ctx.globalScriptBlocks?.confirm_pickup ?? defaultPickup;
   const vehicle = ctx.scriptBlocks?.confirm_vehicle ?? ctx.globalScriptBlocks?.confirm_vehicle ?? defaultVehicle;
@@ -897,6 +897,11 @@ function globalRules(ctx: ScriptContext): string {
     `- Make the flip offer as one objection-handling flow, not a list of pitches. STOP the moment it is accepted.`,
     `- THERE ARE AT MOST TWO OFFERS ON A CALL: the offer, and one follow-up if they decline. After a second decline you are finished pitching. Never invent a third — no extra credit, no priority slot, no held appointment, no "one last thing". A third offer has been tried 183 times and won twice, and it is what pushed calls past the time limit.`,
     `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
+    // Review history 08-20 through 08-23 found the agent finishing a scripted
+    // pitch over the top of a repeated or explicit "no" instead of stopping.
+    // The two-offer cap above governs how many TIMES you pitch; this governs
+    // what to do mid-sentence when the answer is already unmistakable.
+    `- If the customer clearly refuses or interrupts you with "no", "stop", "I said no", or asks for a human WHILE you are still speaking an offer, stop talking immediately — do not finish the sentence, the shop list, or the benefit description. Acknowledge briefly and move on; never re-read what you were saying.`,
     ...(ctx.pitchConvini ? [
       `- ALWAYS send-frame the free Roadside Emergency Management App near the close, unless the customer hung up, opted out, or asked you to stop.`,
     ] : []),
@@ -957,7 +962,7 @@ function scenarioA(ctx: ScriptContext): string {
   const destinationIntent = hasSeparateDestination(ctx)
     ? `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
 AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
-[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`
+[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess the destination type and do NOT move on over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`
     : `[STEP 6 — DESTINATION IS MISSING: ASK, DO NOT GUESS]
 AI: "I want to make sure I have the right drop-off for you — can you tell me the name or address of the shop this is going to?"
 [AGENT: You do NOT have a destination on file for this job. Never state or imply one, never say a placeholder, and never improvise a vague phrase like "the shop you mentioned". Capture what the customer says and use it for the rest of the call. If they cannot give one, say you'll have dispatch confirm the drop-off and continue.]`;
@@ -1085,13 +1090,23 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
     ? `Totally fair — can I ask what's taking you to {{destination}}?`
     : `Totally fair — can I ask what's taking you to that shop?`;
 
+  // The reassurance used to end on "I'd sort the change out with the driver
+  // — I'll get that switched over, sound good?" — an assumptive close that a
+  // courtesy "yeah" or "sure" satisfies without agreeing to anything.
+  // Recommendation history from 08-22 through 08-27 kept finding the same
+  // failure on live calls even with the consentGate instruction layered on
+  // top (below): a customer says "yeah" meaning "I hear you", the agent
+  // treats it as a yes, and the customer has to interrupt to undo it — or the
+  // reverse, a real yes gets second-guessed because the question was never
+  // asked plainly. Ending on a named either/or removes the ambiguity at the
+  // source instead of relying on the agent to catch it after the fact.
   const defaultOffer2Reassurance = isTireJob
     ? `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
       `a written estimate before any work starts, and the free brake and tire check plus the 10 percent off your next ` +
-      `visit still stand. I'd sort the change out with the driver. Want me to switch it?`
+      `visit still stand. Would you like me to switch the drop-off to {{nearest_shop}}, or keep it where it is?`
     : `Understood — and just so you have it: {{nearest_shop}}${shopAddressPhrase} is certified, they give you ` +
       `a written estimate before any work starts, and the free VIP diagnostic and up to 10 percent off parts and labor still stand. ` +
-      `I'd sort the change out with the driver — I'll get that switched over, sound good?`;
+      `Would you like me to switch the drop-off to {{nearest_shop}}, or keep it where it is?`;
 
   const defaultOffer3 = `I can also add a 50 dollar credit on this repair on top of the discount and hold the priority slot at {{nearest_shop}}. Would you like me to switch the drop-off there?`;
 

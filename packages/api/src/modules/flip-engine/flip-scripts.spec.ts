@@ -167,7 +167,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     // wins at 4.0%, and it is the half Chris asked to strengthen.
     expect(body).toContain("can I ask what's taking you to");
     expect(body).toContain('still stand');
-    expect(body).toContain("I'll get that switched over, sound good?");
+    expect(body).toContain('Would you like me to switch the drop-off to');
   });
 
   it('asks color and drivetrain open rather than confirming them', () => {
@@ -525,7 +525,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('PREFERENCE');
     expect(body).toContain("it's my regular shop");
     expect(body).toContain('written estimate before any work starts');
-    expect(body).toContain("I'll get that switched over, sound good?");
+    expect(body).toContain('Would you like me to switch the drop-off to');
   });
 
   it('puts the offer-2 reassurance after the question, not inside it', () => {
@@ -540,6 +540,22 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     const body = renderCallBody('competitor_repair', base);
     expect(body).toContain('is that a yes to sending the driver to');
     expect(body).toContain('Only log a destination change on an explicit yes');
+  });
+
+  it('closes offer 2 on a named either/or, not an assumptive "sound good?"', () => {
+    // 08-22 through 08-27 review history: "I'll get that switched over, sound
+    // good?" kept drawing a courtesy "yeah" that wasn't real consent. Naming
+    // both options removes the ambiguity at the source.
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain("Would you like me to switch the drop-off to Wayne's Westerville, or keep it where it is?");
+    const reassuranceIdx = body.indexOf('written estimate before any work starts');
+    const offer2Segment = body.slice(reassuranceIdx, reassuranceIdx + 250);
+    expect(offer2Segment).not.toContain('sound good');
+  });
+
+  it('tells the agent to stop mid-sentence on a clear refusal or interruption', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('stop talking immediately');
   });
 
   it('avoids greeting the customer with an unusable name field', () => {
