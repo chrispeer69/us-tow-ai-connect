@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TowbookNormalizer } from './towbook.normalizer';
 import { mapAdapterStatus } from './status-map';
-import { parseVehicleString } from './vehicle-parse';
+import { parseVehicleString, stripTrailingColor } from './vehicle-parse';
 
 describe('mapAdapterStatus', () => {
   it('maps common Towbook strings to the canonical statuses', () => {
@@ -39,6 +39,21 @@ describe('parseVehicleString', () => {
       make: 'Toyota',
       model: 'Camry',
     });
+  });
+});
+
+describe('stripTrailingColor', () => {
+  it('drops a trailing color word', () => {
+    expect(stripTrailingColor('2019 Chevrolet Tahoe Black')).toBe('2019 Chevrolet Tahoe');
+  });
+  it('leaves a vehicle with no color unchanged', () => {
+    expect(stripTrailingColor('2020 Ford F-150')).toBe('2020 Ford F-150');
+  });
+  it('never strips down to nothing on a single-token color-only input', () => {
+    expect(stripTrailingColor('Red')).toBe('Red');
+  });
+  it('is case-insensitive', () => {
+    expect(stripTrailingColor('2018 Honda Civic red')).toBe('2018 Honda Civic');
   });
 });
 

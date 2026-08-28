@@ -37,3 +37,19 @@ export function parseVehicleString(input: string | null | undefined): ParsedVehi
 
   return { year, make, model, color };
 }
+
+/**
+ * Drops a trailing color word from a free-form vehicle string, e.g.
+ * "2019 Chevrolet Tahoe Black" -> "2019 Chevrolet Tahoe". The outbound flip
+ * call asks color as its own open question (the Towbook ticket's color is
+ * only ~50% accurate, so it's never read back as a stated fact) — leaving it
+ * in the vehicle description made the agent state the color as fact one
+ * breath before asking the customer what color it is.
+ */
+export function stripTrailingColor(input: string): string {
+  const tokens = input.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length > 1 && COLORS.has(tokens[tokens.length - 1].toLowerCase())) {
+    tokens.pop();
+  }
+  return tokens.join(' ');
+}

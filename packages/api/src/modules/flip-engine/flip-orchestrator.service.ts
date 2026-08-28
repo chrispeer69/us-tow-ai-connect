@@ -26,7 +26,7 @@ import {
   type ScriptVariant,
 } from './flip-scripts';
 import { GeocoderService } from '../command-center/geocoder.service';
-import { parseVehicleString } from '../command-center/normalizers/vehicle-parse';
+import { parseVehicleString, stripTrailingColor } from '../command-center/normalizers/vehicle-parse';
 
 type ManualCallScriptType =
   | 'auto_flip'
@@ -1559,16 +1559,20 @@ function readFirstManagerPhone(raw: unknown): string | null {
 }
 
 /**
- * Pronounces 4-digit years correctly (e.g. "2015" -> "twenty fifteen")
- * and strips out license plates / VINs so they aren't read aloud.
+ * Pronounces 4-digit years correctly (e.g. "2015" -> "twenty fifteen"),
+ * strips out license plates / VINs so they aren't read aloud, and drops a
+ * trailing color — the STEP 4 confirm line ("And I have a {{vehicle}}. Is
+ * that right?") must not state the color as fact right before the very next
+ * line asks the customer what color it is.
  */
 function formatVehicleYear(vehicle: string | null | undefined): string {
   if (!vehicle) return 'your vehicle';
-  
+
   // Strip license plates / VINs
   let clean = vehicle.split(/(?:\/|\||\n| - )/)[0].trim();
   clean = clean.replace(/\b(?:LP|Lic(?:ense)?(?: Plate)?|Plate|VIN)[:#-]?\s*[A-Z0-9]+\b.*/i, '').trim();
-  
+  clean = stripTrailingColor(clean);
+
   const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
   const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
   
