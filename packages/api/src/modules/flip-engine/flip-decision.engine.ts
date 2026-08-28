@@ -11,6 +11,7 @@ export interface FlipDecisionInput {
     no_flip_categories?: string[];
   };
   destinationReason?: string;
+  vehicleMake?: string | null;
 }
 
 export interface FlipDecision {
@@ -60,7 +61,35 @@ const ALWAYS_NO_FLIP_CATEGORIES: readonly string[] = [
   'glass_damage',
 ];
 
+/**
+ * Chris's call, 2026-08-27: no flip pitches on motorcycles — none of our
+ * partner shops are a sensible alternative for a bike, and the 08-26 review
+ * found one motorcycle job offered three car-repair shops 10-16 miles away.
+ *
+ * `vehicleMake` is a best-effort parse of a free-text Towbook field, so this
+ * only catches marques that sell motorcycles and nothing else in the US
+ * (Honda and BMW deliberately excluded — they also sell cars under the same
+ * make name and a false block there costs more than an occasional missed
+ * motorcycle flip).
+ */
+const MOTORCYCLE_ONLY_MAKES = new Set([
+  'harley-davidson', 'harley davidson', 'harley',
+  'ducati', 'kawasaki', 'yamaha', 'suzuki', 'ktm', 'triumph',
+  'indian', 'indian motorcycle', 'vespa', 'piaggio', 'aprilia',
+  'royal enfield', 'moto guzzi', 'husqvarna', 'victory', 'buell',
+]);
+
 export function decideFlip(input: FlipDecisionInput): FlipDecision {
+  // Hard rule 0: motorcycle → never flip. See MOTORCYCLE_ONLY_MAKES above.
+  if (input.vehicleMake && MOTORCYCLE_ONLY_MAKES.has(input.vehicleMake.trim().toLowerCase())) {
+    return {
+      flipEligible: false,
+      conviniIntensity: 'soft',
+      bodyShopSoftMention: false,
+      reasonCode: 'vehicle_is_motorcycle',
+    };
+  }
+
   // Hard rule 1: AAA-branded / Blocklist → never flip.
   if (input.destinationTag === 'aaa_branded') {
     return {

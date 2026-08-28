@@ -14,6 +14,44 @@ describe('decideFlip', () => {
     expect(r.reasonCode).toBe('aaa_branded_hard_block');
   });
 
+  it('hard-blocks a flip on a motorcycle regardless of destination/issue', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'mechanical',
+      issueConfidence: 0.99,
+      config: {},
+      vehicleMake: 'Harley-Davidson',
+    });
+    expect(r.flipEligible).toBe(false);
+    expect(r.reasonCode).toBe('vehicle_is_motorcycle');
+  });
+
+  it('matches motorcycle makes case-insensitively and with surrounding whitespace', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'mechanical',
+      issueConfidence: 0.99,
+      config: {},
+      vehicleMake: '  ducati ',
+    });
+    expect(r.flipEligible).toBe(false);
+    expect(r.reasonCode).toBe('vehicle_is_motorcycle');
+  });
+
+  it('does not block cars from an ambiguous make like Honda or BMW', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'mechanical',
+      issueConfidence: 0.99,
+      config: {},
+      vehicleMake: 'Honda',
+    });
+    expect(r.flipEligible).toBe(true);
+  });
+
   it('skips flip when destination is our own shop', () => {
     const r = decideFlip({
       source: 'TOWBOOK',

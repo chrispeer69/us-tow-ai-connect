@@ -26,6 +26,7 @@ import {
   type ScriptVariant,
 } from './flip-scripts';
 import { GeocoderService } from '../command-center/geocoder.service';
+import { parseVehicleString } from '../command-center/normalizers/vehicle-parse';
 
 type ManualCallScriptType =
   | 'auto_flip'
@@ -438,6 +439,7 @@ export class FlipOrchestratorService {
       issueSubcategory: issue.subcategory,
       issueConfidence: issue.confidence,
       config: (config.config as Record<string, unknown>) ?? {},
+      vehicleMake: parseVehicleString(job.vehicle).make,
     });
 
     // 4. Pick nearest shop (only when we'll actually pitch a flip).
@@ -632,6 +634,7 @@ export class FlipOrchestratorService {
       issueSubcategory: issue.subcategory,
       issueConfidence: issue.confidence,
       config: cfg,
+      vehicleMake: parseVehicleString(job.vehicle).make,
     });
 
     let nearestShop: {
@@ -1024,6 +1027,7 @@ export class FlipOrchestratorService {
         issueSubcategory: issue.subcategory,
         issueConfidence: issue.confidence,
         config: cfg,
+        vehicleMake: job.vehicleMake,
       });
 
       // Flip pick only when destination is a competing repair shop and issue is eligible.
@@ -1242,6 +1246,7 @@ export class FlipOrchestratorService {
       issueSubcategory: issue.subcategory,
       issueConfidence: issue.confidence,
       config: cfg,
+      vehicleMake: parseVehicleString(input.vehicle).make,
     });
 
     let nearestShopName: string | null = null;
