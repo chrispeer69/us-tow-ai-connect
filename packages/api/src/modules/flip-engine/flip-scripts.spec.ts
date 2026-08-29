@@ -558,6 +558,27 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('stop talking immediately');
   });
 
+  it('treats a flat "stop" or "don\'t want to" as a hard decline that ends the ladder', () => {
+    // 08-28 review: customer said 'Holy shit. None. I don't want to go
+    // there... Stop.' and the agent still finished reading offer 2 — "stop"
+    // wasn't on the exact hard-decline phrase list next to "no offers" etc.
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toMatch(/hard decline.*"stop"\/"don't want to"/);
+  });
+
+  it('reinforces at the opening line itself that "AI:" and stage directions are never spoken', () => {
+    // 08-26 through 08-28 review: 'AI: "Hi, is that Derrick?' and 'I need to
+    // wait for the person to answer before speaking. Let me begin with the
+    // opening line as scripted.' both happened on the opening line — the
+    // existing global rule lives far away in a different function, so this
+    // repeats it right next to the line that actually fails.
+    const body = renderCallBody('competitor_repair', base);
+    const stepOneIdx = body.indexOf('STEP 1 — OPENING');
+    expect(stepOneIdx).toBeGreaterThan(-1);
+    const openingSegment = body.slice(stepOneIdx, stepOneIdx + 400);
+    expect(openingSegment).toContain('never say the word "AI"');
+  });
+
   it('avoids greeting the customer with an unusable name field', () => {
     const coords = renderCallBody('competitor_repair', {
       ...base,

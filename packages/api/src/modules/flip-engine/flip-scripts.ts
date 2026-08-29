@@ -712,6 +712,7 @@ function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string 
       : `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"`;
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
+[AGENT: The very next line is the first thing the customer hears, word for word, starting at the opening quotation mark. "AI:" is a label for you, the reader — never say the word "AI", never speak the label or the quotation marks, and never narrate that you are beginning, waiting, or about to speak. On 2026-08-26 through 2026-08-28 this happened on the opening line itself in multiple calls ('AI: "Hi, is that Derrick?', 'I need to wait for the person to answer before speaking. Let me begin with the opening line as scripted.') — it is the single most damaging place for this to happen, because it is the first thing anyone hears.]
 ${identify}
 [AGENT: Wait for confirmation. If you reached the wrong person or voicemail, leave a brief polite message with the callback number {{callback_number}} and end the call. If you reach an automated menu, a switchboard, or a business greeting rather than a person, do not work through the menu — leave the brief message if you can and end the call.]`;
 
@@ -896,7 +897,7 @@ function globalRules(ctx: ScriptContext): string {
     `- A flat tire IS a repair job. If the vehicle is being towed somewhere and this script contains an offer, make it — a tire arriving at a competitor's shop is still a customer we handed over.`,
     `- Make the flip offer as one objection-handling flow, not a list of pitches. STOP the moment it is accepted.`,
     `- THERE ARE AT MOST TWO OFFERS ON A CALL: the offer, and one follow-up if they decline. After a second decline you are finished pitching. Never invent a third — no extra credit, no priority slot, no held appointment, no "one last thing". A third offer has been tried 183 times and won twice, and it is what pushed calls past the time limit.`,
-    `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", or "I already know where it is going", stop pitching immediately and keep the original destination.`,
+    `- If the customer gives a hard decline such as "no offers", "just send the tow", "I'm not changing", "I already know where it is going", or a flat "stop"/"don't want to", stop pitching immediately and keep the original destination.`,
     // Review history 08-20 through 08-23 found the agent finishing a scripted
     // pitch over the top of a repeated or explicit "no" instead of stopping.
     // The two-offer cap above governs how many TIMES you pitch; this governs
