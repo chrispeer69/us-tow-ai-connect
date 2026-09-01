@@ -149,7 +149,44 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.7';
+export const SCRIPT_VERSION = '3.8';
+// 3.8 (2026-08-31) — from the 08-31 daily review: two agent-adherence gaps,
+//   both fixed by removing an ambiguous [AGENT:] instruction rather than by
+//   changing what gets offered.
+//
+//   BODY_SHOP_SUPPRESSION_ON_MECHANICAL_JOB (4 calls) — the destination-confirm
+//   step told the agent to "use that answer with the issue type to decide
+//   whether the shop offer is appropriate", which invited the agent to
+//   re-decide eligibility live off whatever word the customer used for the
+//   destination. Customers call any place that fixes cars a "body shop",
+//   including on a no-start, overheating, flat tire, or key-fob job (calls
+//   3ab3d936, b2815636, 88328045, 40443ed1) — and the agent suppressed the
+//   whole mechanical offer on hearing the word, even though the pre-call issue
+//   classification had already correctly rendered the offer into PHASE 2.
+//   Eligibility was ALWAYS decided in code from the issue, before the call —
+//   see isCollisionOrGlass() below — so the instruction was redundant at best
+//   and, on these calls, actively wrong. Reworded in both places it appears
+//   (scenario A's destinationIntent block and confirmBlock's default) to
+//   capture the customer's word for notes only and defer entirely to whether
+//   PHASE 2 contains an offer.
+//
+//   PREMATURE_CONCESSION_AT_PROBE (8 calls) — offer 2's constraint/preference
+//   split (2.8, above) was already correct in structure, but two answers with
+//   no explicit constraint language got conceded anyway: "It's basically a new
+//   car" (b1de21ad) and "That's where I originally bought the car" (7d8fecfd).
+//   Neither names an insurer, a warranty, or a dealership obligation — they are
+//   reasons the customer likes that shop, i.e. a PREFERENCE, but nothing in the
+//   CONSTRAINT bucket's wording said a firm-sounding reason still needs a named
+//   rule to count. Added that requirement explicitly, plus the two phrases
+//   above as PREFERENCE examples alongside the existing ones.
+//
+//   NOT touched: the 08-31 review also flagged offer 3 never firing
+//   (LADDER_TRUNCATED_NO_TIER_3, 11 calls) as a defect. It is not one — see the
+//   3.4 note below. Chris killed the third rung deliberately on 2026-08-19 (0
+//   wins in 18 attempts since, 2 in 183 all-time, and it was pushing winning
+//   calls past the provider's time cap). The daily reviewer has no memory of
+//   that decision and will keep re-flagging it; this is the correct behavior,
+//   not a regression.
 // 3.7 (2026-08-20) — ship the collision open-door decline line. Held back
 //   through 3.5 and 3.6 because it tells customers to call a number that was
 //   answering with the outbound flip agent and an empty script body. The
@@ -771,7 +808,7 @@ AI: "I do not have a separate tow destination listed, so I have this as service 
 [AGENT: Do not ask for a delivery destination unless the customer says the vehicle also needs to be towed somewhere after the service.]`
     : `[STEP 6 — CONFIRM DELIVERY DESTINATION]
 AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
-[AGENT: Confirm the destination and capture what kind of place it is. Use that answer with the issue type to decide whether a repair-shop or body-shop offer is appropriate. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess or lock in a destination type and do NOT move to the close over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" One call closed over an unclear "Um," and logged the job as an unclassified destination that a dispatcher then had to call back to sort out.]`;
+[AGENT: Confirm the destination and capture what kind of place it is, for the notes only. This script has already decided from the actual issue whether a shop offer is appropriate — the customer's own word for the destination ("body shop" included) never changes that. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess or lock in a destination type and do NOT move to the close over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" One call closed over an unclear "Um," and logged the job as an unclassified destination that a dispatcher then had to call back to sort out.]`;
 
   const pickup = ctx.scriptBlocks?.confirm_pickup ?? ctx.globalScriptBlocks?.confirm_pickup ?? defaultPickup;
   const vehicle = ctx.scriptBlocks?.confirm_vehicle ?? ctx.globalScriptBlocks?.confirm_vehicle ?? defaultVehicle;
@@ -963,7 +1000,7 @@ function scenarioA(ctx: ScriptContext): string {
   const destinationIntent = hasSeparateDestination(ctx)
     ? `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
 AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
-[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else, but do not verbally lock it yet. Use that answer with the issue type to decide whether the shop offer is appropriate. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess the destination type and do NOT move on over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" If the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow", say "Understood. I'll keep your original destination and focus on getting the driver routed." Then skip all flip offers and continue to the CONVINI close.]`
+[AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else — for the notes only. Do NOT use the customer's own word for it to decide whether to make the offer below: this script has ALREADY decided that from the actual issue before the call started. Customers call any place that works on cars a "body shop", including a mechanic for a no-start, overheating, flat tire, or key fob job — that word alone is not collision damage. If PHASE 2 below contains an offer, make it, regardless of what the customer just called the destination. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess the destination type and do NOT move on over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" Only skip the offer if PHASE 2 itself contains no offer, or if the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow" — then say "Understood. I'll keep your original destination and focus on getting the driver routed." and continue to the CONVINI close.]`
     : `[STEP 6 — DESTINATION IS MISSING: ASK, DO NOT GUESS]
 AI: "I want to make sure I have the right drop-off for you — can you tell me the name or address of the shop this is going to?"
 [AGENT: You do NOT have a destination on file for this job. Never state or imply one, never say a placeholder, and never improvise a vague phrase like "the shop you mentioned". Capture what the customer says and use it for the rest of the call. If they cannot give one, say you'll have dispatch confirm the drop-off and continue.]`;
@@ -1183,8 +1220,8 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
         `[AGENT: Ask that question and LISTEN. It sorts the answer into one of two buckets, and you must not skip ahead to the close without doing so.]`,
-        `[AGENT: CONSTRAINT — their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there. There is genuinely no offer to make: say "That makes sense, I'll leave it as it is" and go to the CONVINI close. Do NOT continue.]`,
-        `[AGENT: PREFERENCE — "it's my regular shop", "I've used them before", "I know the guy", "it's closer", "it's what was on the ticket", or any answer that is habit rather than obligation. These are the MOST COMMON answers and they all still get the line below. Say it. Do NOT treat a preference as a constraint, and never talk the customer out of the offer on their behalf.]`,
+        `[AGENT: CONSTRAINT — the customer names an actual rule that requires the current shop: their insurer or motor club chose it, a warranty requires that dealer, a dealership service obligation, or work already underway there. There is genuinely no offer to make: say "That makes sense, I'll leave it as it is" and go to the CONVINI close. Do NOT continue.]`,
+        `[AGENT: PREFERENCE — "it's my regular shop", "I've used them before", "I know the guy", "it's closer", "it's what was on the ticket", "that's where I bought the car", "it's basically a new car", or any other reason the customer LIKES that destination without naming a rule that requires them to go there. If they explain why they trust or prefer a shop but do not say an insurer, warranty, or dealership REQUIRES it, that is a preference, not a constraint — treat it as one even if it sounds firm. These are the MOST COMMON answers and they all still get the line below. Say it. Do NOT treat a preference as a constraint, and never talk the customer out of the offer on their behalf.]`,
         ``,
         interpolate(
           ctx.scriptBlocks?.offer_2_reassurance ??
