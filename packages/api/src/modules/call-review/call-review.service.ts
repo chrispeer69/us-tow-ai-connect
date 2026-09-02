@@ -57,7 +57,14 @@ export function computeFunnel(rows: OutboundCallLogRow[]): FunnelMetrics {
     const key = r.scenario ?? r.destinationType ?? 'unknown';
     const entry = byScenarioMap.get(key) ?? { scenario: key, calls: 0, eligible: 0, wins: 0 };
     entry.calls += 1;
-    if (r.flipEligible) entry.eligible += 1;
+    // Same ladder-eligibility test as the headline `eligible`/`neverPitched`
+    // figures above — using the raw `flipEligible` column here (auto_body is
+    // TRUE by design, see isOfferLadderEligible's comment) made this table
+    // contradict the headline stat it sits next to in the same report: the
+    // 2026-09-01 review's own "By scenario" table still showed "auto_body:
+    // 12 calls, 12 Eligible, 0 wins" after the headline was already fixed,
+    // and the reviewer LLM re-flagged the inconsistency as a new finding.
+    if (isOfferLadderEligible(r)) entry.eligible += 1;
     if (isWin(r)) entry.wins += 1;
     byScenarioMap.set(key, entry);
   }
@@ -385,8 +392,19 @@ export class CallReviewService {
       '',
       'THE BUSINESS. A customer has requested a tow to some destination. The agent calls to',
       'confirm details and, when the destination is a competitor repair shop, tries to "flip"',
-      'the tow to one of our own shops using a three-tier offer ladder. A WIN is the customer',
-      'agreeing to change destination. The agent also pitches CONVINI, a free tracking app.',
+      'the tow to one of our own shops using a TWO-tier offer ladder (offer 1, then offer 2 if',
+      'offer 1 is declined). A WIN is the customer agreeing to change destination. The agent',
+      'also pitches CONVINI, a free tracking app.',
+      '',
+      'KNOWN, INTENTIONAL BEHAVIOR — do not report these as defects, they are correct:',
+      '  - There is NO third offer. It was deliberately removed from the script on 2026-08-19',
+      '    after going 0-for-18 and pushing winning calls past the call-length cap. "offer 3',
+      '    reached: 0" is correct on every single call, forever — it is not evidence of a',
+      '    skipped step. Do not recommend adding a third offer back or flag its absence.',
+      '  - auto_body calls are intentionally marked flip-eligible even though they never enter',
+      '    the offer_1/2 ladder: the soft single-ask body-shop mention (no discount, no',
+      '    diagnostic) IS the offer for that scenario, and counting it keeps the funnel honest',
+      '    about how many body-shop calls got a real interaction. This is not a data-quality bug.',
       '',
       'YOUR JOB. Read the transcripts, then report:',
       '  - OBJECTIONS: what customers actually said, grouped by substance, with verbatim quotes.',
@@ -453,7 +471,7 @@ export class CallReviewService {
       `  offer 1 accepted:    ${metrics.offer1Accepted}`,
       `  offer 1 declined:    ${metrics.offer1Declined}`,
       `  offer 2 reached:     ${metrics.offer2Reached}  accepted: ${metrics.offer2Accepted}`,
-      `  offer 3 reached:     ${metrics.offer3Reached}  accepted: ${metrics.offer3Accepted}`,
+      `  offer 3 reached:     ${metrics.offer3Reached}  accepted: ${metrics.offer3Accepted}  (retired 2026-08-19 — always 0, this is correct, see rules above)`,
       `  WINS:                ${metrics.wins}  (${metrics.winRateOfEligible}% of eligible)`,
       '',
       'BY SCENARIO',

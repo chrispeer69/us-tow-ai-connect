@@ -63,10 +63,16 @@ describe('computeFunnel', () => {
     expect(metrics.neverPitched).toBe(1);
   });
 
-  it('still counts an auto_body row toward calls and its own byScenario bucket', () => {
+  it('still counts an auto_body row toward calls, but not the byScenario eligible count — same ladder-eligibility rule as the headline stat', () => {
     const metrics = computeFunnel([makeRow({ flipEligible: true, scenario: 'auto_body' })]);
     const bucket = metrics.byScenario.find((s) => s.scenario === 'auto_body');
-    expect(bucket).toEqual({ scenario: 'auto_body', calls: 1, eligible: 1, wins: 0 });
+    expect(bucket).toEqual({ scenario: 'auto_body', calls: 1, eligible: 0, wins: 0 });
+  });
+
+  it('still counts a competitor_repair row toward its own byScenario eligible count', () => {
+    const metrics = computeFunnel([makeRow({ flipEligible: true, scenario: 'competitor_repair' })]);
+    const bucket = metrics.byScenario.find((s) => s.scenario === 'competitor_repair');
+    expect(bucket).toEqual({ scenario: 'competitor_repair', calls: 1, eligible: 1, wins: 0 });
   });
 
   it('counts a win regardless of scenario', () => {
