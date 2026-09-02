@@ -149,7 +149,53 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.8';
+export const SCRIPT_VERSION = '3.9';
+// 3.9 (2026-09-02) — from the 09-01 daily review: the five `# SCENARIO ...`
+//   headers were literal text sent to the agent as part of the prompt body,
+//   and nothing marked them as non-spoken — the global rule bans reading "a
+//   step label, a bracketed instruction, or a placeholder in double braces",
+//   and a `#`-prefixed heading is none of those by name. Call c79a979f
+//   (script 3.8, scenario auto_body) said to the customer: "Given this is
+//   collision/body damage, per Scenario B rules I'll make the one statement
+//   without pressing for a decision, then move to close." Reworded all five
+//   headers (Scenario A/B/C/D/AAA-branded) to `[SCENARIO ... — internal
+//   label, never speak this]`, so they're unambiguously covered by the
+//   existing "never read a bracketed instruction" rule instead of falling
+//   through a format the rule never named. Pure formatting change, no
+//   wording or logic touched.
+//
+//   NOT fixed here, flagged for Chris: the same 09-01 review found two other
+//   real issues that don't have a clean same-day text fix. (1) Three calls
+//   (077aab06, aa941ebd, cfef261b) show offer_1_result/offer_2_result logged
+//   NOT_ATTEMPTED despite the transcript containing a full offer and an
+//   explicit decline — confirmed by hand against 077aab06's transcript, this
+//   is Retell's own post-call grading getting it wrong, not a stale field
+//   description (offer_1_result/offer_2_result's live descriptions are
+//   already accurate) and not a code-side extraction bug (there is no
+//   independent transcript-based check today — the stored value IS the
+//   agent's self-grade). A real fix means building a transcript-based
+//   cross-check, which is a scoped feature, not a one-line change. (2) Two
+//   OTHER post-call fields were stale and got corrected as a draft on the
+//   live Retell agent (staged, NOT published — publishing requires a human
+//   in the Retell UI, and the harness's own write-classifier blocked me from
+//   even attempting the API call directly): `offer_3_result`'s description
+//   still described the $50-credit/priority-slot offer removed in 3.4
+//   (2026-08-19), and `flip_outcome`'s said "FAILED if all 3 offers
+//   declined". Corrected JSON sitting in `packages/api/_pcad_current.json` —
+//   not committed, it's provider config not code — apply via Retell's
+//   update-agent then publish from the UI when ready.
+//
+//   Also NOT a defect, despite being flagged again: OFFER_3_NEVER_FIRED (12
+//   calls) — see the 3.4 note below, still intentional. And the "auto_body
+//   counted as flip_eligible" complaint — see Session 74 in
+//   flip-decision.engine.ts: also intentional (2026-08-18), so the soft
+//   body-shop mention counts as a real, measurable offer. Confirmed via
+//   `select scenario, flip_eligible, count(*) ... group by 1,2` that this
+//   is applied consistently (auto_body always true, our_shop/unknown always
+//   false) — not a data bug, just another case of the reviewer not knowing
+//   the design history. Two false positives in the same report — check this
+//   changelog and flip-decision.engine.ts's own comments before actioning
+//   either again.
 // 3.8 (2026-08-31) — from the 08-31 daily review: two agent-adherence gaps,
 //   both fixed by removing an ambiguous [AGENT:] instruction rather than by
 //   changing what gets offered.
@@ -1352,7 +1398,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   ];
 
   return [
-    `# SCENARIO A — COMPETITOR REPAIR (ONE OFFER, ONE FOLLOW-UP)`,
+    `[SCENARIO A — COMPETITOR REPAIR (ONE OFFER, ONE FOLLOW-UP) — internal label, never speak this]`,
     `[AGENT: The destination appears to be a competitor repair shop. Confirm details, ask intended destination without locking it, then attempt one repair-shop flip flow unless the customer hard-declines.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
@@ -1501,7 +1547,7 @@ function scenarioB(ctx: ScriptContext): string {
   ];
 
   return [
-    `# SCENARIO B — AUTO BODY / GLASS (ONE STATEMENT, NO ASK, NO LADDER)`,
+    `[SCENARIO B — AUTO BODY / GLASS (ONE STATEMENT, NO ASK, NO LADDER) — internal label, never speak this]`,
     `[AGENT: This is body, collision or glass work. There is NO OFFER on this call and NO QUESTION to ask. You make one statement about our own shops, tell them you are texting the info, and move on. Do not ask whether they want to switch, do not invite them to decide, and do not wait for an answer — a question here is pressure on somebody whose car was just wrecked, and it is steering when an insurer has placed the job. Never quote a price, a discount, a timescale or an insurance outcome.]`,
     `[AGENT: THE LADDER IS DISABLED ON THIS SCENARIO. There is no tier 1, 2 or 3. If the customer volunteers that they would like to use ours, that is theirs to raise: say you will get the drop-off updated and that the office will confirm the details. Do not promise the shop can start, or when. If they decline, say nothing further about shops — accept it on the first no, every time.]`,
     `[AGENT: Read the room. If the customer is shaken, was just in a collision, or is dealing with injuries, keep the statement short or drop it entirely and just confirm the tow. Nothing here is worth more than the call going well for them.]`,
@@ -1613,7 +1659,7 @@ function scenarioC(ctx: ScriptContext): string {
       ];
 
   return [
-    `# SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI)`,
+    `[SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI) — internal label, never speak this]`,
     `[AGENT: The destination is a residence or unknown. Confirm details and push the CONVINI app hard.]`,
     // Session 74 — this scenario is where the orchestrator lands every job that
     // is NOT flip-eligible, including jobs with no partner shop and collision /
@@ -1651,7 +1697,7 @@ function scenarioD(ctx: ScriptContext): string {
   ];
 
   return [
-    `# SCENARIO D — OUR SHOP (VIP TREATMENT)`,
+    `[SCENARIO D — OUR SHOP (VIP TREATMENT) — internal label, never speak this]`,
     `[AGENT: The destination is OUR OWN shop. Roll out the red carpet, confirm details, and offer Convini.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
@@ -1680,7 +1726,7 @@ function scenarioAaaBranded(ctx: ScriptContext): string {
   const defaultConvini = conviniCloseFor(ctx);
 
   return [
-    `# SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE)`,
+    `[SCENARIO — AAA-BRANDED DESTINATION (NO FLIP — AAA HARD RULE) — internal label, never speak this]`,
     `[AGENT: This tow is going to a AAA-branded facility. Per policy you must NOT attempt to flip it. Confirm the details and close with a soft CONVINI offer only.]`,
     ``,
     `=== PHASE 1: DATA CONFIRMATION ===`,
