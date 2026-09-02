@@ -42,14 +42,22 @@ export class ClaudeClient {
    *
    * Streams because the prompt carries dozens of transcripts and the response
    * can be long — a non-streaming request at this `max_tokens` risks an HTTP
-   * timeout. `output_config.format` pins the response to ANALYSIS_SCHEMA so
+   * timeout. `output_config.format` pins the response to a JSON schema so
    * there is nothing to parse defensively.
+   *
+   * `schema` defaults to ANALYSIS_SCHEMA (the outbound-flip shape — objections
+   * staged on offer_1/2/3, targets scoped to that script) so every existing
+   * call site is unaffected. A second daily-review pipeline for a different
+   * call type (see alpha-crash-calls) needs its own stage/target vocabulary —
+   * passing a schema here keeps that entirely in its own module instead of
+   * widening the flip-specific enums this one was built around.
    */
-  async analyze(
+  async analyze<T = DailyAnalysis>(
     systemPrompt: string,
     userPrompt: string,
+    schema: Record<string, unknown> = ANALYSIS_SCHEMA as unknown as Record<string, unknown>,
   ): Promise<{
-    analysis: DailyAnalysis;
+    analysis: T;
     inputTokens: number;
     outputTokens: number;
   } | null> {
@@ -64,7 +72,7 @@ export class ClaudeClient {
           effort: this.effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max',
           format: {
             type: 'json_schema',
-            schema: ANALYSIS_SCHEMA as unknown as Record<string, unknown>,
+            schema,
           },
         },
         system: [
@@ -103,7 +111,7 @@ export class ClaudeClient {
       }
 
       return {
-        analysis: JSON.parse(text) as DailyAnalysis,
+        analysis: JSON.parse(text) as T,
         inputTokens: message.usage.input_tokens,
         outputTokens: message.usage.output_tokens,
       };
