@@ -149,7 +149,19 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.10';
+export const SCRIPT_VERSION = '3.11';
+// 3.11 (2026-09-03, same afternoon) — the interrupted-offer exit in 3.10 was
+//   catching a "no" to the reframe ANNOUNCEMENT line. Call 071860fb: agent
+//   said "Now I would like to mention a few great offers from our in-network
+//   partner shops." customer said "No, thank you." and the agent exited
+//   without ever reading offer 1. That line is a statement by design (3.0,
+//   Chris: no permission question in front of the offer) and 3.10 had
+//   accidentally turned it back into one. The exception now starts once
+//   offer 1 itself is being read. First 4.5 hours on 3.10: 12 offers, offer 2
+//   reached on 5 (3.9 the same morning: 11 offers, 9 reached offer 2) — the
+//   intended drop, but watch it; every one of the seven skips was an
+//   interruption, and two of those carried a preference reason ("I want to
+//   use my shop") that 3.9 would have followed with offer 2.
 // 3.10 (2026-09-03) — from the 09-02 daily review. 73 calls, 3 wins, and
 //   offer 2 went 0-for-13 — but the reason was not the copy, it was WHO it was
 //   being read to. Four calls (1b9e3d70, 9c497544, c237e680, 539ada86) show
@@ -1300,7 +1312,11 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
         // 3.10 — a "no" that arrives while the offer is still being read is
         // a different thing from a "no" to the question at the end of it.
-        `[AGENT: EXCEPTION — INTERRUPTED OFFER. If the customer cuts you off with a refusal ("no thank you", "not interested", "no") BEFORE you reach the question at the end of Offer 1, stop mid-sentence and the ladder is over: do NOT ask Offer 2, do NOT ask what is taking them to their shop. Say "No problem." and go straight to the CONVINI close. They declined before hearing the terms; asking them to justify it is what turns a polite no into a hostile one.]`,
+        `[AGENT: EXCEPTION — INTERRUPTED OFFER. If the customer cuts you off with a refusal ("no thank you", "not interested", "no") WHILE you are reading Offer 1 — after "We work with..." has begun and before you reach the question at the end — stop mid-sentence and the ladder is over: do NOT ask Offer 2, do NOT ask what is taking them to their shop. Say "No problem." and go straight to the CONVINI close. They declined the terms as they heard them; asking them to justify it is what turns a polite no into a hostile one.` +
+          (isReframe(ctx)
+            ? ` This does NOT apply to a "no" said to the announcement line before Offer 1 ("Now I would like to mention..." above) — they have not heard the offer yet, so go into Offer 1 as written, once. If they refuse again during it, that is their second no: exit as above.`
+            : ``) +
+          `]`,
       ] : [];
 
   const offer2Block = offersAllowed ? [
