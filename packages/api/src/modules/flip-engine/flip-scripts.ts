@@ -149,7 +149,40 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.9';
+export const SCRIPT_VERSION = '3.10';
+// 3.10 (2026-09-03) — from the 09-02 daily review. 73 calls, 3 wins, and
+//   offer 2 went 0-for-13 — but the reason was not the copy, it was WHO it was
+//   being read to. Four calls (1b9e3d70, 9c497544, c237e680, 539ada86) show
+//   the reassurance being read over customers who had already refused twice:
+//   "I'm not interested" ... "Keep it where it is and stop asking me"; four
+//   separate "No, thank you"s; "Can we end?". The ladder directives said a
+//   bare "no" still gets offer 2 (Chris's 08-14 call, still right — offer 2
+//   holds 12 of the programme's wins) but they never said what to do when
+//   the answer to the offer-2 QUESTION is itself a refusal rather than a
+//   reason. The agent had two buckets, CONSTRAINT and PREFERENCE, and filed
+//   "no thanks" under preference because that was the only other bucket.
+//
+//   Three rules, all deterministic, none of which change what a customer
+//   who engages hears:
+//     - A REFUSAL bucket for offer 2: "no thanks", "not interested", a bare
+//       "no", silence, or a repeat of the decline instead of a reason ends
+//       the ladder. The reassurance is only for a stated preference.
+//     - Ask the offer-2 question ONCE. 539ada86 shows the agent rephrasing
+//       it ("I mean, is there a particular reason...") after "Repair shop",
+//       which is a third ask by another name.
+//     - A refusal that INTERRUPTS offer 1 before the question is reached ends
+//       the ladder too. Asking "what's taking you to X" of someone who cut
+//       off the pitch mid-sentence is what produced the hostile endings.
+//
+//   Also, a global rule against confirming an arrival time: on 1e98287d the
+//   customer guessed "It should be here at 3:30" and the agent answered "the
+//   driver will be there right around 3:30" — a commitment nobody made. The
+//   correct answer (from 3fd59770, same day) is now written down.
+//
+//   Colour: the six calls that stated the colour then asked for it were all
+//   on the webhook path, which builds the spoken vehicle from columns with the
+//   colour in second position — the 08-28 trailing-colour fix never touched
+//   it. Fixed in the orchestrator, not here.
 // 3.9 (2026-09-02) — from the 09-01 daily review: the five `# SCENARIO ...`
 //   headers were literal text sent to the agent as part of the prompt body,
 //   and nothing marked them as non-spoken — the global rule bans reading "a
@@ -986,6 +1019,12 @@ function globalRules(ctx: ScriptContext): string {
     // The two-offer cap above governs how many TIMES you pitch; this governs
     // what to do mid-sentence when the answer is already unmistakable.
     `- If the customer clearly refuses or interrupts you with "no", "stop", "I said no", or asks for a human WHILE you are still speaking an offer, stop talking immediately — do not finish the sentence, the shop list, or the benefit description. Acknowledge briefly and move on; never re-read what you were saying.`,
+    // 3.10 — the second refusal is final, whatever words it uses. "No thank
+    // you" said twice is a hard decline even though neither one alone is.
+    `- TWO REFUSALS END EVERY OFFER. Once a customer has declined twice — any wording, "no", "no thanks", "not interested", "I'm good", or by cutting you off — the offers are over. Do not ask again, do not rephrase the question, do not read a reassurance. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go to the close.`,
+    // 3.10 — 1e98287d: customer said "It should be here at 3:30", agent said
+    // "the driver will be there right around 3:30". We do not know that.
+    `- NEVER CONFIRM OR STATE AN ARRIVAL TIME. You do not have the driver's ETA. If the customer asks when the driver will arrive, or tells you a time they were given or expect, do not agree with it, repeat it, or estimate one. Say: "I don't have the exact ETA in front of me, but the driver will call you directly once they're dispatched." Then continue.`,
     ...(ctx.pitchConvini ? [
       `- ALWAYS send-frame the free Roadside Emergency Management App near the close, unless the customer hung up, opted out, or asked you to stop.`,
     ] : []),
@@ -1259,13 +1298,19 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         interpolate(tooFarDirective, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
         `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
+        // 3.10 — a "no" that arrives while the offer is still being read is
+        // a different thing from a "no" to the question at the end of it.
+        `[AGENT: EXCEPTION — INTERRUPTED OFFER. If the customer cuts you off with a refusal ("no thank you", "not interested", "no") BEFORE you reach the question at the end of Offer 1, stop mid-sentence and the ladder is over: do NOT ask Offer 2, do NOT ask what is taking them to their shop. Say "No problem." and go straight to the CONVINI close. They declined before hearing the terms; asking them to justify it is what turns a polite no into a hostile one.]`,
       ] : [];
 
   const offer2Block = offersAllowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
-        `[AGENT: Ask that question and LISTEN. It sorts the answer into one of two buckets, and you must not skip ahead to the close without doing so.]`,
+        `[AGENT: Ask that question ONCE and LISTEN. Never rephrase it, never ask it a second way ("is there a particular reason..."), never ask it again if the first answer was short. It sorts the answer into one of three buckets, and you must not skip ahead to the close without doing so.]`,
+        // 3.10 — the bucket that was missing. Without it the agent filed "no
+        // thanks" under PREFERENCE and read the reassurance to it.
+        `[AGENT: REFUSAL — the customer answers the question with another decline instead of a reason: "no thanks", "not interested", "no", "I'm good", a repeat of what they already said, silence, or asks to end the call. That is their second no and the ladder is OVER. Do NOT read the reassurance below, do NOT ask again. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go to the CONVINI close.]`,
         `[AGENT: CONSTRAINT — the customer names an actual rule that requires the current shop: their insurer or motor club chose it, a warranty requires that dealer, a dealership service obligation, or work already underway there. There is genuinely no offer to make: say "That makes sense, I'll leave it as it is" and go to the CONVINI close. Do NOT continue.]`,
         `[AGENT: PREFERENCE — "it's my regular shop", "I've used them before", "I know the guy", "it's closer", "it's what was on the ticket", "that's where I bought the car", "it's basically a new car", or any other reason the customer LIKES that destination without naming a rule that requires them to go there. If they explain why they trust or prefer a shop but do not say an insurer, warranty, or dealership REQUIRES it, that is a preference, not a constraint — treat it as one even if it sounds firm. These are the MOST COMMON answers and they all still get the line below. Say it. Do NOT treat a preference as a constraint, and never talk the customer out of the offer on their behalf.]`,
         ``,
@@ -1277,6 +1322,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         ),
         ``,
         interpolate(consentGate, vars),
+        `[AGENT: If the customer interrupts the reassurance with any refusal, stop mid-sentence — do not finish the benefits, do not reach the question. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go to the close.]`,
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
         `[AGENT: If they decline a second time, STOP. There is no third offer. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go to the close. Two offers is the whole ladder — do not invent a discount, a credit, a priority slot or a held appointment to keep going.]`,
       ] : [];

@@ -12,6 +12,12 @@ export interface FlipDecisionInput {
   };
   destinationReason?: string;
   vehicleMake?: string | null;
+  /**
+   * Name of OUR partner shop the pickup is sitting at, when it is at one.
+   * A vehicle leaving one of our own shops for somewhere else is not a flip
+   * candidate — see hard rule 0b.
+   */
+  pickupAtOurShop?: string | null;
 }
 
 export interface FlipDecision {
@@ -87,6 +93,27 @@ export function decideFlip(input: FlipDecisionInput): FlipDecision {
       conviniIntensity: 'soft',
       bodyShopSoftMention: false,
       reasonCode: 'vehicle_is_motorcycle',
+    };
+  }
+
+  // Hard rule 0b: the vehicle is already AT one of our shops and is leaving.
+  //
+  // 2026-09-02, call 6652bd55: pickup was 580 West Town Street — Complete
+  // Brake Service's own address — and the customer was moving the car to the
+  // Mercedes dealer because, in her words, "they cannot fix my issue". The
+  // offer read "Complete Brake Service, about 0 miles away" as the first of
+  // three choices. Every shop in the network is a worse answer than the one
+  // she just left, and pitching any of them tells her we did not listen. No
+  // offer, ordinary confirmation, soft close.
+  //
+  // The proximity test (≤0.2 mi) is the same one the orchestrator already uses
+  // to recognise a DESTINATION as ours; this is its mirror image for the pickup.
+  if (input.pickupAtOurShop) {
+    return {
+      flipEligible: false,
+      conviniIntensity: 'soft',
+      bodyShopSoftMention: false,
+      reasonCode: 'pickup_is_our_shop',
     };
   }
 

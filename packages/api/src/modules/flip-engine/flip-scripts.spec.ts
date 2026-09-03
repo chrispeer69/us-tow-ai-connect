@@ -503,7 +503,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
   it('makes offer 2 a reason-finding question, not a restatement', () => {
     const body = renderCallBody('competitor_repair', base);
     expect(body).toContain("can I ask what's taking you to Firestone on Main?");
-    expect(body).toContain('Ask that question and LISTEN');
+    expect(body).toContain('Ask that question ONCE and LISTEN');
   });
 
   // 2.8. Offer 2 fired on 0 of 13 offer-1 declines on 2026-08-14 because both
@@ -641,6 +641,25 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain('never tell a customer they can ride in the tow truck');
     expect(body).toContain('Never say "AI"');
     expect(body).toContain('Never read a raw latitude/longitude pair aloud');
+  });
+
+  // 3.10 — from the 09-02 review. The ladder must stop on a second refusal
+  // of any wording, and the agent must never confirm an arrival time.
+  it('ends the ladder on a second refusal and never reads the reassurance to a "no thanks"', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('TWO REFUSALS END EVERY OFFER');
+    expect(body).toContain('EXCEPTION — INTERRUPTED OFFER');
+    expect(body).toContain('REFUSAL — the customer answers the question with another decline');
+    expect(body).toContain('Ask that question ONCE');
+    expect(body).toContain('If the customer interrupts the reassurance with any refusal');
+    // The reassurance itself is unchanged — a stated preference still hears it.
+    expect(body).toContain('a written estimate before any work starts');
+  });
+
+  it('never confirms or states a driver arrival time', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('NEVER CONFIRM OR STATE AN ARRIVAL TIME');
+    expect(body).toContain("I don't have the exact ETA in front of me");
   });
 });
 

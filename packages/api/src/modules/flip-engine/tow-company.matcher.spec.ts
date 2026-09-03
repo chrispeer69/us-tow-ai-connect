@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTowCompany } from './tow-company.matcher';
+import { isTowCompany, looksLikeSharedBusinessPhone } from './tow-company.matcher';
 import { readTowCompanyEntries } from './flip-orchestrator.service';
 
 /**
@@ -162,5 +162,42 @@ describe('readTowCompanyEntries — config parsing', () => {
 
   it('returns an empty list when nothing is configured', () => {
     expect(readTowCompanyEntries(null, undefined)).toEqual([]);
+  });
+});
+
+describe('looksLikeSharedBusinessPhone — 2026-09-02', () => {
+  // The real names the club put on Pro Tow's dispatch line in 30 days.
+  it('flags a number that has answered under many different customer names', () => {
+    const r = looksLikeSharedBusinessPhone([
+      'Mia B.', 'Current Vehicle L.', 'Pro T.', 'Pro Tow Towing & R.', 'Salvage At Repair Facility Tow Y.',
+    ]);
+    expect(r.matched).toBe(true);
+    expect(r.distinctNames).toBe(5);
+  });
+
+  it('does NOT flag one motorist whose name the club spelled two ways', () => {
+    const r = looksLikeSharedBusinessPhone(['Eric Buckner', 'Erik Buckner', 'Eric Buckner']);
+    expect(r.matched).toBe(false);
+    expect(r.distinctNames).toBe(2);
+  });
+
+  it('does NOT flag a motorist who has simply been called several times', () => {
+    expect(looksLikeSharedBusinessPhone(['Levi Powell', 'Levi Powell', 'Levi Powell']).matched).toBe(false);
+  });
+
+  it('ignores punctuation and case when counting names', () => {
+    const r = looksLikeSharedBusinessPhone(["Woody's T.", 'woodys t', 'WOODY’S T']);
+    expect(r.distinctNames).toBe(1);
+  });
+
+  it('never counts placeholder names toward the threshold', () => {
+    const r = looksLikeSharedBusinessPhone(['Unknown', '', null, 'Customer', 'Shon Harris', 'N/A']);
+    expect(r.matched).toBe(false);
+    expect(r.distinctNames).toBe(1);
+  });
+
+  it('flags at exactly three distinct names, not two', () => {
+    expect(looksLikeSharedBusinessPhone(['Iaa', 'Iaa C.', 'Salvage A.']).matched).toBe(true);
+    expect(looksLikeSharedBusinessPhone(['Iaa', 'Salvage A.']).matched).toBe(false);
   });
 });

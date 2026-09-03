@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { haversineMiles, selectNearestShops } from './nearest-shop.selector';
+import { haversineMiles, selectNearestShops, shopAtLocation } from './nearest-shop.selector';
 import { Cron } from '@nestjs/schedule';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gte } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import { aiAgentConfigs, outboundCallLogs, tenants, outboundCalls, unifiedJobs } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
@@ -12,7 +12,7 @@ import {
 } from './destination-classifier.service';
 import { FlipEngineService } from './flip-engine.service';
 import { decideFlip, type FlipDecision } from './flip-decision.engine';
-import { isTowCompany, type TowCompanyEntry } from './tow-company.matcher';
+import { isTowCompany, looksLikeSharedBusinessPhone, type TowCompanyEntry } from './tow-company.matcher';
 import {
   IssueClassifierService,
   type ClassifyIssueResult,
@@ -458,6 +458,7 @@ export class FlipOrchestratorService {
       issueConfidence: issue.confidence,
       config: (config.config as Record<string, unknown>) ?? {},
       vehicleMake: parseVehicleString(job.vehicle).make,
+      pickupAtOurShop: shopAtLocation(ourShops, job.pickupLat, job.pickupLng),
     });
 
     // 4. Pick nearest shop (only when we'll actually pitch a flip).
@@ -656,6 +657,7 @@ export class FlipOrchestratorService {
       issueConfidence: issue.confidence,
       config: cfg,
       vehicleMake: parseVehicleString(job.vehicle).make,
+      pickupAtOurShop: shopAtLocation(ourShops, job.pickupLat, job.pickupLng),
     });
 
     let nearestShop: {
@@ -1032,6 +1034,54 @@ export class FlipOrchestratorService {
           active: b.active,
         }));
       const ourShopNames = ourShops.map((s) => s.name.toLowerCase().trim());
+      const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
+      const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
+
+      // 0. Is the "customer" a tow company, an impound lot, an auction yard
+      //    or some other business line?
+      //
+      // This gate has existed since Session 74 — on handleJob, the scraper
+      // path. Every production call since has come through THIS path, so it
+      // never once fired: 0 `no_call_*` rows in the 30 days to 2026-09-02,
+      // while Pro Tow's dispatch line answered 22 of our calls under ten
+      // different customer names and the 09-02 review counted ten calls that
+      // reached a shop, a competing dispatcher, an auction or the city impound
+      // instead of a motorist. Automatic calls only: an operator dialling a
+      // yard by hand is working that job on purpose. Checked before
+      // classification so a suppressed job costs no Places call.
+      if (automatic) {
+        const skip = await this.businessLineCheck({
+          tenantId,
+          customerName: job.callerName ?? null,
+          customerPhone: job.callerPhone,
+          pickupAddress: job.pickupAddress ?? null,
+          ourShopNames: ourShops.map((s) => s.name),
+          companyName:
+            (cfg.company_name as string) || (globalCfg.company_name as string) || 'Roadside Towing',
+          tenantConfig: cfg,
+          globalConfig: globalCfg,
+        });
+        if (skip) {
+          this.logger.log(
+            `[flip-orchestrator] no call: ${skip.reason} job=${job.id} ${skip.detail}`,
+          );
+          await this.db.insert(outboundCallLogs).values({
+            tenantId,
+            customerName: job.callerName ?? 'Unknown',
+            customerPhone: job.callerPhone,
+            vehicle:
+              [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
+                .filter(Boolean)
+                .join(' ') || null,
+            originalDestination: job.dropoffAddress ?? null,
+            flipEligible: false,
+            noFlipReason: skip.reason.slice(0, 120),
+            flipOutcome: 'NOT_ATTEMPTED',
+            scriptVersion: SCRIPT_VERSION,
+          });
+          return;
+        }
+      }
 
       const destination: ClassifyDestinationResult = await this.destinationClassifier.classify({
         destinationName: null,
@@ -1042,9 +1092,6 @@ export class FlipOrchestratorService {
         ourShopNames,
       });
 
-      const globalCfg = (globalConfig as Record<string, unknown>) ?? {};
-      const cfg = (tenant.flipEngineConfig as Record<string, unknown>) ?? {};
-
       const decision = decideFlip({
         source: job.source,
         destinationTag: destination.tag,
@@ -1052,6 +1099,7 @@ export class FlipOrchestratorService {
         issueConfidence: issue.confidence,
         config: cfg,
         vehicleMake: job.vehicleMake,
+        pickupAtOurShop: shopAtLocation(ourShops, job.pickupLat, job.pickupLng),
       });
 
       // Flip pick only when destination is a competing repair shop and issue is eligible.
@@ -1099,10 +1147,15 @@ export class FlipOrchestratorService {
         conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
         diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
         customerFirstName: firstNameOf(job.callerName),
-        vehicle:
-          [job.vehicleYear, job.vehicleColor, job.vehicleMake, job.vehicleModel]
-            .filter(Boolean)
-            .join(' ') || 'your vehicle',
+        // No colour. This path assembled the spoken vehicle from columns and
+        // put the ticket colour second — "2015 Red Honda Civic" — where the
+        // 08-28 trailing-colour fix never reached it, so the agent kept
+        // stating the colour as fact one breath before asking what colour it
+        // is (six calls on 2026-09-02 alone). The log row below keeps the
+        // colour; only the spoken line drops it.
+        vehicle: formatVehicleYear(
+          [job.vehicleYear, job.vehicleMake, job.vehicleModel].filter(Boolean).join(' '),
+        ),
         pickupLocation: job.pickupAddress ?? 'your location',
         destination:
           usableDestination(destination.resolvedAddress) ??
@@ -1182,6 +1235,63 @@ export class FlipOrchestratorService {
       if (automatic) this.seen.delete(seenKey);
       if (!automatic) throw err;
     }
+  }
+
+  /**
+   * 2026-09-02 — should this automatic call NOT be placed because the number
+   * on the ticket belongs to a business line rather than the motorist?
+   *
+   * Two independent tests, cheapest first:
+   *   1. `isTowCompany` — the operator list and the distinctive name tokens
+   *      ("Pro Tow Towing & R.", "Mvp Impound And T.").
+   *   2. The phone's own history — a number that has carried three or more
+   *      different customer names in the last 30 days is a dispatch desk, an
+   *      auction yard or an impound lot, whatever the club typed in the name
+   *      field this time. See `looksLikeSharedBusinessPhone` for the numbers.
+   */
+  private async businessLineCheck(args: {
+    tenantId: string;
+    customerName: string | null;
+    customerPhone: string;
+    pickupAddress: string | null;
+    ourShopNames: string[];
+    companyName: string;
+    tenantConfig: unknown;
+    globalConfig: unknown;
+  }): Promise<{ reason: string; detail: string } | null> {
+    const towCheck = isTowCompany({
+      customerName: args.customerName,
+      pickupAddress: args.pickupAddress,
+      customerPhone: args.customerPhone,
+      entries: readTowCompanyEntries(args.tenantConfig, args.globalConfig),
+      neverMatch: [...args.ourShopNames, args.companyName],
+    });
+    if (towCheck.matched) {
+      return {
+        reason: `no_call_tow_company_${towCheck.rule}`,
+        detail: `rule=${towCheck.rule} field=${towCheck.field} value="${towCheck.matchedValue}"`,
+      };
+    }
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recent = await this.db
+      .select({ name: outboundCallLogs.customerName })
+      .from(outboundCallLogs)
+      .where(
+        and(
+          eq(outboundCallLogs.tenantId, args.tenantId),
+          eq(outboundCallLogs.customerPhone, args.customerPhone),
+          gte(outboundCallLogs.callTime, since),
+        ),
+      );
+    const shared = looksLikeSharedBusinessPhone(recent.map((r) => r.name));
+    if (shared.matched) {
+      return {
+        reason: 'no_call_shared_business_phone',
+        detail: `${shared.distinctNames} distinct customer names on ${args.customerPhone} in 30 days`,
+      };
+    }
+    return null;
   }
 
   private gcSeen() {
@@ -1274,6 +1384,7 @@ export class FlipOrchestratorService {
       issueConfidence: issue.confidence,
       config: cfg,
       vehicleMake: parseVehicleString(input.vehicle).make,
+      pickupAtOurShop: shopAtLocation(ourShops, geocoded?.lat, geocoded?.lng),
     });
 
     let nearestShopName: string | null = null;

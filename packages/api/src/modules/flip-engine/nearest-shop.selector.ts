@@ -105,3 +105,30 @@ export function haversineMiles(
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
+
+/**
+ * 2026-09-02 — is this point sitting AT one of our shops?
+ *
+ * Returns the name of the first active shop within `maxMiles` (default 0.2
+ * miles, ~300 m — the same radius the orchestrator already uses to recognise a
+ * destination as ours). Used for the PICKUP: a car being collected from one of
+ * our own shops is leaving us, and offering it a sister shop "about 0 miles
+ * away" is the offer call 6652bd55 actually made.
+ */
+export function shopAtLocation(
+  shops: Array<{ name: string; active: boolean; lat?: string | number | null; lng?: string | number | null }>,
+  lat: number | string | null | undefined,
+  lng: number | string | null | undefined,
+  maxMiles = 0.2,
+): string | null {
+  if (lat == null || lng == null) return null;
+  const la = Number(lat);
+  const ln = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(ln)) return null;
+  for (const s of shops) {
+    if (!s.active || s.lat == null || s.lng == null) continue;
+    const d = haversineMiles(la, ln, Number(s.lat), Number(s.lng));
+    if (Number.isFinite(d) && d <= maxMiles) return s.name;
+  }
+  return null;
+}

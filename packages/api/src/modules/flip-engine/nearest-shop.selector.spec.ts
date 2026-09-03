@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   haversineMiles,
+  shopAtLocation,
   selectNearestShop,
   type ShopForSelection,
 } from './nearest-shop.selector';
@@ -79,5 +80,27 @@ describe('selectNearestShop', () => {
 
   it('haversineMiles returns 0 for identical points', () => {
     expect(haversineMiles(40, -82, 40, -82)).toBe(0);
+  });
+});
+
+describe('shopAtLocation — 2026-09-02', () => {
+  const shops = [
+    { name: 'Complete Brake Service', active: true, lat: '39.9584', lng: '-83.0195' },
+    { name: 'Closed Shop', active: false, lat: 39.9584, lng: -83.0195 },
+    { name: 'Hilliard Auto Repair', active: true, lat: 40.0334, lng: -83.1583 },
+  ];
+
+  it('names the active shop the point is sitting at', () => {
+    expect(shopAtLocation(shops, 39.9585, -83.0196)).toBe('Complete Brake Service');
+  });
+
+  it('returns null when the nearest shop is more than the radius away', () => {
+    expect(shopAtLocation(shops, 39.9700, -83.0195)).toBeNull();
+  });
+
+  it('ignores inactive shops and missing coordinates', () => {
+    expect(shopAtLocation([shops[1]], 39.9584, -83.0195)).toBeNull();
+    expect(shopAtLocation(shops, null, -83.0195)).toBeNull();
+    expect(shopAtLocation(shops, 'abc', -83.0195)).toBeNull();
   });
 });

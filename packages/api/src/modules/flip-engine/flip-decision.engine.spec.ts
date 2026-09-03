@@ -221,3 +221,34 @@ describe('decideFlip', () => {
     expect(r.flipEligible).toBe(false);
   });
 });
+
+describe('decideFlip — pickup already at one of our shops (3.10)', () => {
+  // 2026-09-02, call 6652bd55: the car was parked AT Complete Brake Service,
+  // leaving for the Mercedes dealer because CBS could not fix it, and the
+  // offer read "Complete Brake Service, about 0 miles away".
+  it('never flips a vehicle that is being collected from our own shop', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'mechanical',
+      issueConfidence: 0.99,
+      config: {},
+      pickupAtOurShop: 'Complete Brake Service',
+    });
+    expect(r.flipEligible).toBe(false);
+    expect(r.reasonCode).toBe('pickup_is_our_shop');
+    expect(r.bodyShopSoftMention).toBe(false);
+  });
+
+  it('is a no-op when the pickup is not at one of our shops', () => {
+    const r = decideFlip({
+      source: 'TOWBOOK',
+      destinationTag: 'competitor_repair',
+      issueSubcategory: 'mechanical',
+      issueConfidence: 0.99,
+      config: {},
+      pickupAtOurShop: null,
+    });
+    expect(r.flipEligible).toBe(true);
+  });
+});

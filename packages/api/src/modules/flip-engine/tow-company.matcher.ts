@@ -142,3 +142,50 @@ function hit(
 ): TowCompanyCheckResult {
   return { matched: true, rule, field, matchedValue };
 }
+
+/**
+ * 2026-09-02 — a phone number that has answered to many different "customers"
+ * is not a customer's phone.
+ *
+ * The name rules above never fired in production: the gate was wired into the
+ * scraper path and not the webhook path that actually places calls (fixed the
+ * same day). But even with the gate on the right path, the names are not
+ * enough on their own. Pro Tow's dispatch line (614-444-8697) was dialled 22
+ * times in the 30 days to 2026-09-02 under ten different customer names —
+ * "Mia B.", "Current Vehicle L.", "Salvage At Repair Facility Tow Y." — and
+ * the club's data entry is not going to get tidier. What IS stable is the
+ * number: a motorist's phone carries one name, maybe a misspelling of it. Ten
+ * names on one line is a business.
+ *
+ * Same precision-over-recall stance as the name rules: three DISTINCT names,
+ * not two, so "Eric Buckner" / "Erik Buckner" (one person, two club tickets)
+ * keeps getting called. Across those 30 days the rule would have suppressed
+ * 43 calls on four numbers — 0 offers made, 0 wins — and nothing else.
+ */
+export const SHARED_PHONE_MIN_DISTINCT_NAMES = 3;
+
+export interface SharedPhoneCheckResult {
+  matched: boolean;
+  distinctNames: number;
+}
+
+/** Names that carry no identity and must not count as a distinct "customer". */
+const NON_NAMES = new Set(['', 'unknown', 'customer', 'na', 'n a', 'none', 'test']);
+
+export function looksLikeSharedBusinessPhone(
+  recentCustomerNames: Array<string | null | undefined>,
+  minDistinct: number = SHARED_PHONE_MIN_DISTINCT_NAMES,
+): SharedPhoneCheckResult {
+  const distinct = new Set<string>();
+  for (const raw of recentCustomerNames) {
+    const n = (raw ?? '')
+      .toLowerCase()
+      .replace(/['’`]/g, '')
+      .replace(/[^a-z ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (NON_NAMES.has(n)) continue;
+    distinct.add(n);
+  }
+  return { matched: distinct.size >= minDistinct, distinctNames: distinct.size };
+}
