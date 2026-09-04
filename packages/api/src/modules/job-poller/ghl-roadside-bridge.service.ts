@@ -114,6 +114,21 @@ export class GhlRoadsideBridgeService {
 
     const tag = stage === 'completed' ? COMPLETED_TAG : stage === 'in_tow' ? IN_TOW_TAG : CONTACT_TAG;
 
+    // A returning customer may still have this tag from an older tow. Remove
+    // then re-add it so GHL's "tag added" trigger fires once for this job too.
+    if (stage !== 'new') {
+      const removeTagResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Version: 'v3',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tags: [tag] }),
+      });
+      if (!removeTagResponse.ok) throw new Error(`GHL tag reset failed: ${removeTagResponse.status}`);
+    }
+
     const tagResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
       method: 'POST',
       headers: {
