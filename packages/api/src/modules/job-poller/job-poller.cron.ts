@@ -15,6 +15,7 @@ import {
   getSessionRefreshTimeoutMs,
 } from '../session-manager/session-manager.service';
 import { SessionExpiredException } from '../../common/exceptions/session-expired.exception';
+import { GhlRoadsideBridgeService } from './ghl-roadside-bridge.service';
 
 const CONCURRENCY = 5;
 
@@ -45,6 +46,7 @@ export class JobPollerCron {
     private readonly towbookNormalizer: TowbookNormalizer,
     private readonly aaaNormalizer: AaaNormalizer,
     private readonly dispatchEngine: DispatchRulesEngineService,
+    private readonly ghlRoadsideBridge: GhlRoadsideBridgeService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -186,6 +188,21 @@ export class JobPollerCron {
 
       try {
         const result = await this.commandCenter.upsertJob(input);
+        if (result.created && input.status !== 'completed') {
+          this.ghlRoadsideBridge.handleNewJob(result.job).catch((err) =>
+            this.logger.warn(`Roadside GHL contact sync failed for ${input.sourceJobId}: ${(err as Error).message}`),
+          );
+        }
+        if (input.status === 'in_tow') {
+          this.ghlRoadsideBridge.handleInTowJob(result.job).catch((err) =>
+            this.logger.warn(`Roadside IN TOW bridge failed for ${input.sourceJobId}: ${(err as Error).message}`),
+          );
+        }
+        if ((result.created || result.statusChanged) && input.status === 'completed') {
+          this.ghlRoadsideBridge.handleCompletedJob(result.job).catch((err) =>
+            this.logger.warn(`Roadside GHL bridge failed for ${input.sourceJobId}: ${(err as Error).message}`),
+          );
+        }
         if (result.created && MOTOR_CLUB_SOURCES.has(source)) {
           this.dispatchEngine
             .evaluateForJob(tenantId, result.job)
@@ -203,7 +220,12 @@ export class JobPollerCron {
     }
 
     try {
-      await this.commandCenter.archiveMissingJobs(tenantId, source, activeSourceJobIds);
+      const archived = await this.commandCenter.archiveMissingJobs(tenantId, source, activeSourceJobIds);
+      for (const job of archived) {
+        this.ghlRoadsideBridge.handleCompletedJob(job).catch((err) =>
+          this.logger.warn(`Roadside GHL bridge failed for archived ${job.sourceJobId}: ${(err as Error).message}`),
+        );
+      }
     } catch (err) {
       this.logger.error(
         `Failed to run cleanup rule (archiveMissingJobs) for tenant ${tenantId}, source ${source}: ${(err as Error).message}`,

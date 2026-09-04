@@ -566,7 +566,7 @@ export class CommandCenterService {
    * current active scrape list. This acts as the "Cleanup Rule" to remove
    * jobs from the Tow Command dashboard that were completed/canceled in Towbook.
    */
-  async archiveMissingJobs(tenantId: string, source: string, activeSourceJobIds: string[]) {
+  async archiveMissingJobs(tenantId: string, source: string, activeSourceJobIds: string[]): Promise<UnifiedJobRow[]> {
     // If the active array is empty, and we mark everything completed, that might be dangerous 
     // if the scraper simply failed to read the board. But typically if it's empty, it's empty.
     // Drizzle `notInArray` with an empty array can throw, so handle that explicitly.
@@ -596,6 +596,7 @@ export class CommandCenterService {
       });
       this.broadcast(tenantId, 'job.updated', job);
     }
+    return updated;
   }
 
   /**
