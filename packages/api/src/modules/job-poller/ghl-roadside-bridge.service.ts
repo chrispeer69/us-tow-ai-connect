@@ -7,6 +7,7 @@ const ROADSIDE_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const CONTACT_TAG = 'ustow-roadside-contact';
 const IN_TOW_TAG = 'ustow-in-tow';
 const COMPLETED_TAG = 'ustow-tow-completed';
+const TEST_MODE_TAG = 'ustow-roadside-test';
 const BLUECOLLARTIPS_BASE_URL = 'https://bluecollartips.app';
 const BLUECOLLARTIPS_COMPANY_SLUG = 'roadside-towing';
 
@@ -32,6 +33,20 @@ export class GhlRoadsideBridgeService {
 
   isEnabled(): boolean {
     return process.env.GHL_ROADSIDE_BRIDGE_ENABLED === 'true';
+  }
+
+  private isTestMode(): boolean {
+    return process.env.GHL_ROADSIDE_BRIDGE_TEST_MODE === 'true';
+  }
+
+  private outboundPhone(actualPhone: string): string {
+    if (!this.isTestMode()) return actualPhone;
+    const testPhone = process.env.GHL_ROADSIDE_BRIDGE_TEST_PHONE?.trim();
+    if (!testPhone) throw new Error('GHL_ROADSIDE_BRIDGE_TEST_PHONE is missing while test mode is enabled');
+    if (!/^\+[1-9]\d{7,14}$/.test(testPhone)) {
+      throw new Error('GHL_ROADSIDE_BRIDGE_TEST_PHONE must use E.164 format, for example +17407461583');
+    }
+    return testPhone;
   }
 
   async handleNewJob(job: UnifiedJobRow): Promise<void> {
@@ -62,8 +77,11 @@ export class GhlRoadsideBridgeService {
     if (sent) return;
 
     const payload = (job.sourcePayload ?? {}) as Record<string, unknown>;
+    const testMode = this.isTestMode();
+    const outboundPhone = this.outboundPhone(job.callerPhone);
     const driverName = typeof payload.driverName === 'string' ? payload.driverName.trim() : '';
-    const name = splitName(job.callerName);
+    const contactName = testMode ? 'Roadside Bridge Test' : job.callerName;
+    const name = splitName(contactName);
     const customFields: [string | undefined, string | undefined][] = [
       [process.env.GHL_TOWBOOK_JOB_FIELD_KEY, job.sourceJobId],
       [process.env.GHL_TOWBOOK_SOURCE_FIELD_KEY, 'towbook'],
@@ -83,8 +101,8 @@ export class GhlRoadsideBridgeService {
       },
       body: JSON.stringify({
         ...name,
-        name: job.callerName ?? undefined,
-        phone: job.callerPhone,
+        name: contactName ?? undefined,
+        phone: outboundPhone,
         locationId: this.locationId,
         source: 'US Tow AI Connect / TowBook',
         customFields: populatedFields.map(([key, field_value]) => ({ key, field_value })),
@@ -97,7 +115,7 @@ export class GhlRoadsideBridgeService {
 
     let reviewUrl: string | undefined;
     if (stage === 'in_tow') {
-      reviewUrl = await this.createBlueCollarTipsLink(job, contactId, driverName);
+      reviewUrl = await this.createBlueCollarTipsLink(job, contactId, driverName, outboundPhone, testMode);
       const reviewFieldKey = process.env.GHL_BLUECOLLARTIPS_URL_FIELD_KEY?.trim();
       if (!reviewFieldKey) throw new Error('GHL_BLUECOLLARTIPS_URL_FIELD_KEY is missing');
       const updateResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
@@ -113,6 +131,7 @@ export class GhlRoadsideBridgeService {
     }
 
     const tag = stage === 'completed' ? COMPLETED_TAG : stage === 'in_tow' ? IN_TOW_TAG : CONTACT_TAG;
+    const tags = testMode ? [tag, TEST_MODE_TAG] : [tag];
 
     // A returning customer may still have this tag from an older tow. Remove
     // then re-add it so GHL's "tag added" trigger fires once for this job too.
@@ -124,7 +143,7 @@ export class GhlRoadsideBridgeService {
           Version: 'v3',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tags: [tag] }),
+        body: JSON.stringify({ tags }),
       });
       if (!removeTagResponse.ok) throw new Error(`GHL tag reset failed: ${removeTagResponse.status}`);
     }
@@ -136,20 +155,26 @@ export class GhlRoadsideBridgeService {
         Version: 'v3',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ tags: [tag] }),
+      body: JSON.stringify({ tags }),
     });
     if (!tagResponse.ok) throw new Error(`GHL tag update failed: ${tagResponse.status}`);
 
     await this.db.insert(jobEvents).values({
       jobId: job.id,
       eventType,
-      payload: { contactId, tag, reviewUrl },
+      payload: { contactId, tag, reviewUrl, testMode },
       actor: 'ghl-roadside-bridge',
     });
     this.logger.log(`Roadside ${stage} sent to GHL for TowBook job ${job.sourceJobId}`);
   }
 
-  private async createBlueCollarTipsLink(job: UnifiedJobRow, contactId: string, driverName: string): Promise<string> {
+  private async createBlueCollarTipsLink(
+    job: UnifiedJobRow,
+    contactId: string,
+    driverName: string,
+    contactPhone: string,
+    testMode: boolean,
+  ): Promise<string> {
     const secret = process.env.BLUECOLLARTIPS_GHL_WEBHOOK_SECRET?.trim();
     if (!secret) throw new Error('BLUECOLLARTIPS_GHL_WEBHOOK_SECRET is missing');
     const response = await fetch(`${BLUECOLLARTIPS_BASE_URL}/api/public/webhooks/ghl`, {
@@ -159,9 +184,11 @@ export class GhlRoadsideBridgeService {
         companySlug: BLUECOLLARTIPS_COMPANY_SLUG,
         jobId: job.sourceJobId,
         ghlContactId: contactId,
-        expiresInDays: 7,
+        expiresInDays: 10,
         driver: driverName ? { name: driverName } : undefined,
-        contact: { name: job.callerName ?? undefined, phone: job.callerPhone ?? undefined },
+        contact: testMode
+          ? { name: 'Roadside Bridge Test', phone: contactPhone }
+          : { name: job.callerName ?? undefined, phone: contactPhone },
       }),
     });
     if (!response.ok) throw new Error(`Blue Collar Tips link creation failed: ${response.status}`);
