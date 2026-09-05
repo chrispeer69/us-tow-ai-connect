@@ -133,9 +133,15 @@ export class GhlRoadsideBridgeService {
     const tag = stage === 'completed' ? COMPLETED_TAG : stage === 'in_tow' ? IN_TOW_TAG : CONTACT_TAG;
     const tags = testMode ? [tag, TEST_MODE_TAG] : [tag];
 
-    // A returning customer may still have this tag from an older tow. Remove
-    // then re-add it so GHL's "tag added" trigger fires once for this job too.
-    if (stage !== 'new') {
+    // A returning customer (and especially the shared test contact) may still
+    // carry COMPLETED from an older tow. Clear lifecycle state at NEW/IN TOW
+    // before adding the current tag, otherwise GHL's completion wait finishes
+    // immediately for the new job.
+    const resetTags =
+      stage === 'completed'
+        ? [COMPLETED_TAG, ...(testMode ? [TEST_MODE_TAG] : [])]
+        : [IN_TOW_TAG, COMPLETED_TAG, ...(testMode && stage === 'in_tow' ? [TEST_MODE_TAG] : [])];
+    if (resetTags.length > 0) {
       const removeTagResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
         method: 'DELETE',
         headers: {
@@ -143,7 +149,7 @@ export class GhlRoadsideBridgeService {
           Version: 'v3',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tags }),
+        body: JSON.stringify({ tags: resetTags }),
       });
       if (!removeTagResponse.ok) throw new Error(`GHL tag reset failed: ${removeTagResponse.status}`);
     }
