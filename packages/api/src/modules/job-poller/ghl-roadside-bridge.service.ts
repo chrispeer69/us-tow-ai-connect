@@ -105,7 +105,7 @@ export class GhlRoadsideBridgeService {
         phone: outboundPhone,
         locationId: this.locationId,
         source: 'US Tow AI Connect / TowBook',
-        customFields: populatedFields.map(([key, field_value]) => ({ key, field_value })),
+        customFields: populatedFields.map(([key, fieldValue]) => ({ key, fieldValue })),
       }),
     });
     if (!response.ok) throw new Error(`GHL contact upsert failed: ${response.status}`);
@@ -125,7 +125,7 @@ export class GhlRoadsideBridgeService {
           Version: 'v3',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ customFields: [{ key: reviewFieldKey, field_value: reviewUrl }] }),
+        body: JSON.stringify({ customFields: [{ key: reviewFieldKey, fieldValue: reviewUrl }] }),
       });
       if (!updateResponse.ok) throw new Error(`GHL review link update failed: ${updateResponse.status}`);
     }
