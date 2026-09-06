@@ -7,13 +7,18 @@ import {
   Request,
   Get,
   Res,
+  Query,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
+import { RoadsideOidcService } from './roadside-oidc.service';
 
 @Controller('v1/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly roadside: RoadsideOidcService,
+  ) {}
 
   @Post('login')
   @UseGuards(AuthGuard('local'))
@@ -39,6 +44,32 @@ export class AuthController {
     // Redirect to frontend with token in URL fragment
     const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_BASE_URL || 'http://localhost:3000';
     res.redirect(`${frontendUrl}/auth-callback?token=${access_token}`);
+  }
+
+  /**
+   * Roadside SSO — the multi-tenant identity portal every US Tow site shares.
+   * GET /v1/auth/roadside starts the OpenID Connect round-trip; the callback
+   * signs the person in (creating them on first visit) and hands the web app
+   * a session token exactly like the Google flow does.
+   */
+  @Get('roadside')
+  async roadsideAuth(@Query('next') next: string | undefined, @Query('login_hint') loginHint: string | undefined, @Res() res: any) {
+    res.redirect(this.roadside.authorizeUrl(next, loginHint));
+  }
+
+  @Get('roadside/callback')
+  async roadsideCallback(@Query() query: Record<string, string>, @Res() res: any) {
+    const frontendUrl = process.env.FRONTEND_URL || process.env.PUBLIC_BASE_URL || 'http://localhost:3000';
+    try {
+      const { claims } = await this.roadside.handleCallback(query);
+      const user = await this.authService.validateSsoLogin(claims.email, claims.name);
+      const { access_token } = await this.authService.login(user);
+      // Fragment, not query: the token never reaches server logs or Referer headers.
+      res.redirect(`${frontendUrl}/auth-callback#token=${access_token}`);
+    } catch (err: any) {
+      const reason = encodeURIComponent(err?.message || 'sso_failed');
+      res.redirect(`${frontendUrl}/sign-in?error=${reason}`);
+    }
   }
 
   @Post('forgot-password')

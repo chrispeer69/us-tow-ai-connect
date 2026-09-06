@@ -267,6 +267,27 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Roadside SSO sign-in. Same provisioning rules as Google: find the user by
+   * email, create them if they are new, and link any tenant memberships or
+   * ownerships that were granted to that email before they ever signed in.
+   */
+  async validateSsoLogin(rawEmail: string, name: string): Promise<UserRow> {
+    const email = rawEmail.trim().toLowerCase();
+    if (!email) throw new BadRequestException('Roadside account lacks email');
+
+    let [user] = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (!user) {
+      const [u] = await this.db.insert(users).values({ email, name: name || null }).returning();
+      user = u;
+    } else if (!user.name && name) {
+      await this.db.update(users).set({ name }).where(eq(users.id, user.id));
+    }
+    await this.db.update(tenantMembers).set({ userId: user.id }).where(eq(tenantMembers.email, email));
+    await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, email));
+    return user;
+  }
+
   async sendPasswordResetOtp(email: string): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
     const [user] = await this.db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);

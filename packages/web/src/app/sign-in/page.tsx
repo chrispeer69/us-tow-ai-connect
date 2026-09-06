@@ -148,6 +148,10 @@ export default function SignInPage() {
     window.location.href = '/api/v1/auth/google';
   };
 
+  const handleRoadside = () => {
+    window.location.href = '/api/v1/auth/roadside';
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
@@ -246,6 +250,17 @@ export default function SignInPage() {
                 />
               </svg>
               Sign in with Google
+            </button>
+
+            <button
+              onClick={handleRoadside}
+              className="mt-3 w-full flex items-center justify-center gap-2 bg-[#dfeaf8] border border-[#b9cfec] hover:bg-[#cfe0f5] text-[#0f2f5f] font-medium py-2.5 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Sign in with Roadside SSO
             </button>
 
             <p className="mt-8 text-center text-sm text-gray-500">
