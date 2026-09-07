@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { jobEvents, unifiedJobs, type UnifiedJobRow } from '../../db/schema';
+import { drivers, jobEvents, unifiedJobs, type UnifiedJobRow } from '../../db/schema';
 
 const ROADSIDE_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const CONTACT_TAG = 'ustow-roadside-contact';
@@ -79,7 +79,13 @@ export class GhlRoadsideBridgeService {
     const payload = (job.sourcePayload ?? {}) as Record<string, unknown>;
     const testMode = this.isTestMode();
     const outboundPhone = this.outboundPhone(job.callerPhone);
-    const driverName = typeof payload.driverName === 'string' ? payload.driverName.trim() : '';
+    const payloadDriverName = typeof payload.driverName === 'string' ? payload.driverName.trim() : '';
+    const assignedDriver = job.assignedDriverId
+      ? await this.db.query.drivers.findFirst({
+          where: and(eq(drivers.id, job.assignedDriverId), eq(drivers.tenantId, ROADSIDE_TENANT_ID)),
+        })
+      : null;
+    const driverName = assignedDriver?.name?.trim() || payloadDriverName;
     const contactName = testMode ? 'Roadside Bridge Test' : job.callerName;
     const name = splitName(contactName);
     const customFields: [string | undefined, string | undefined][] = [
