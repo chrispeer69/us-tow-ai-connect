@@ -62,7 +62,7 @@ export class GhlRoadsideBridgeService {
   }
 
   private async syncJob(job: UnifiedJobRow, stage: BridgeStage): Promise<void> {
-    if (!this.isEnabled() || job.tenantId !== ROADSIDE_TENANT_ID || job.source !== 'towbook') return;
+    if (!this.isEnabled() || job.tenantId !== ROADSIDE_TENANT_ID) return;
     if (!job.callerPhone || (stage === 'in_tow' && job.status !== 'in_tow') || (stage === 'completed' && job.status !== 'completed')) return;
     if (!this.token || !this.locationId) {
       this.logger.warn('Roadside GHL bridge enabled but GHL credentials/location are missing');
@@ -84,7 +84,7 @@ export class GhlRoadsideBridgeService {
     const name = splitName(contactName);
     const customFields: [string | undefined, string | undefined][] = [
       [process.env.GHL_TOWBOOK_JOB_FIELD_KEY, job.sourceJobId],
-      [process.env.GHL_TOWBOOK_SOURCE_FIELD_KEY, 'towbook'],
+      [process.env.GHL_TOWBOOK_SOURCE_FIELD_KEY, job.source],
       [process.env.GHL_TOWBOOK_DRIVER_FIELD_KEY, driverName],
     ];
     if (stage === 'completed') {

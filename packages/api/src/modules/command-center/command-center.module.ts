@@ -7,9 +7,10 @@ import { GeocoderService } from './geocoder.service';
 import { AaaNormalizer } from './normalizers/aaa.normalizer';
 import { TowbookNormalizer } from './normalizers/towbook.normalizer';
 import { BillingModule } from '../billing/billing.module';
+import { GhlRoadsideBridgeModule } from '../ghl-roadside-bridge/ghl-roadside-bridge.module';
 
 @Module({
-  imports: [BillingModule, PushModule],
+  imports: [BillingModule, PushModule, GhlRoadsideBridgeModule],
   controllers: [CommandCenterController],
   providers: [
     CommandCenterService,

@@ -26,6 +26,7 @@ import { BillingService } from '../billing/billing.service';
 import { PushService } from '../push/push.service';
 import { FlipOrchestratorService } from '../flip-engine/flip-orchestrator.service';
 import type { UnifiedJobInput, UnifiedJobStatus } from './normalizers/types';
+import { GhlRoadsideBridgeService } from '../job-poller/ghl-roadside-bridge.service';
 
 type EnrichedJob = UnifiedJobRow & {
   driver?: DriverRow | null;
@@ -101,6 +102,7 @@ export class CommandCenterService {
     private readonly geocoder: GeocoderService,
     private readonly gateway: CommandCenterGateway,
     private readonly push: PushService,
+    private readonly ghlRoadsideBridge: GhlRoadsideBridgeService,
     // Optional: present only when BillingModule is wired (it always is in the
     // running app). Optional injection keeps unit tests that construct the
     // service directly from breaking. Session 28. Must be the last parameter
@@ -251,6 +253,15 @@ export class CommandCenterService {
       notes: notes ?? null,
     });
     this.broadcast(tenantId, 'job.updated', updated);
+    if (nextStatus === 'in_tow') {
+      this.ghlRoadsideBridge.handleInTowJob(updated).catch((err) =>
+        this.logger.warn(`Roadside IN TOW bridge failed for ${jobId}: ${(err as Error).message}`),
+      );
+    } else if (nextStatus === 'completed') {
+      this.ghlRoadsideBridge.handleCompletedJob(updated).catch((err) =>
+        this.logger.warn(`Roadside completed bridge failed for ${jobId}: ${(err as Error).message}`),
+      );
+    }
     return updated;
   }
 
@@ -294,6 +305,9 @@ export class CommandCenterService {
       priority: input.priority ?? 'normal',
       etaMinutes: null,
     });
+    this.ghlRoadsideBridge.handleNewJob(result.job).catch((err) =>
+      this.logger.warn(`Roadside new bridge failed for ${result.job.id}: ${(err as Error).message}`),
+    );
     return result.job;
   }
 
