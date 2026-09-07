@@ -118,6 +118,29 @@ export class GhlRoadsideBridgeService {
       reviewUrl = await this.createBlueCollarTipsLink(job, contactId, driverName, outboundPhone, testMode);
       const reviewFieldKey = process.env.GHL_BLUECOLLARTIPS_URL_FIELD_KEY?.trim();
       if (!reviewFieldKey) throw new Error('GHL_BLUECOLLARTIPS_URL_FIELD_KEY is missing');
+      const fieldsResponse = await fetch(
+        `https://services.leadconnectorhq.com/locations/${this.locationId}/customFields?model=contact`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            Version: 'v3',
+            Accept: 'application/json',
+          },
+        },
+      );
+      if (!fieldsResponse.ok) {
+        throw new Error(`GHL custom fields lookup failed: ${fieldsResponse.status}`);
+      }
+      const fieldsResult = (await fieldsResponse.json()) as {
+        customFields?: Array<{ id?: string; fieldKey?: string }>;
+      };
+      const reviewField = fieldsResult.customFields?.find(
+        (field) => field.fieldKey === reviewFieldKey,
+      );
+      if (!reviewField?.id) {
+        throw new Error(`GHL custom field not found: ${reviewFieldKey}`);
+      }
       const updateResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
         method: 'PUT',
         headers: {
@@ -125,9 +148,18 @@ export class GhlRoadsideBridgeService {
           Version: 'v3',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ customFields: [{ key: reviewFieldKey, fieldValue: reviewUrl }] }),
+        body: JSON.stringify({
+          customFields: [{ id: reviewField.id, key: reviewFieldKey, fieldValue: reviewUrl }],
+        }),
       });
-      if (!updateResponse.ok) throw new Error(`GHL review link update failed: ${updateResponse.status}`);
+      const updateBody = await updateResponse.text();
+      if (!updateResponse.ok) {
+        throw new Error(`GHL review link update failed: ${updateResponse.status} ${updateBody.slice(0, 300)}`);
+      }
+      this.logger.log(
+        `GHL review link update accepted for TowBook job ${job.sourceJobId} ` +
+        `(field ${reviewFieldKey}, contact ${contactId})`,
+      );
     }
 
     const tag = stage === 'completed' ? COMPLETED_TAG : stage === 'in_tow' ? IN_TOW_TAG : CONTACT_TAG;
