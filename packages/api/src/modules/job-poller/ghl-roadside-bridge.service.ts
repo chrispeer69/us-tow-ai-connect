@@ -79,11 +79,6 @@ export class GhlRoadsideBridgeService {
     const payload = (job.sourcePayload ?? {}) as Record<string, unknown>;
     const testMode = this.isTestMode();
     const outboundPhone = this.outboundPhone(job.callerPhone);
-    const contactEmail = typeof payload.email === 'string'
-      ? payload.email.trim()
-      : typeof payload.customerEmail === 'string'
-        ? payload.customerEmail.trim()
-        : undefined;
     const payloadDriverName = typeof payload.driverName === 'string' ? payload.driverName.trim() : '';
     const assignedDriver = job.assignedDriverId
       ? await this.db.query.drivers.findFirst({
@@ -226,6 +221,12 @@ export class GhlRoadsideBridgeService {
   ): Promise<string> {
     const secret = process.env.BLUECOLLARTIPS_GHL_WEBHOOK_SECRET?.trim();
     if (!secret) throw new Error('BLUECOLLARTIPS_GHL_WEBHOOK_SECRET is missing');
+    const payload = (job.sourcePayload ?? {}) as Record<string, unknown>;
+    const contactEmail = typeof payload.email === 'string'
+      ? payload.email.trim()
+      : typeof payload.customerEmail === 'string'
+        ? payload.customerEmail.trim()
+        : undefined;
     const response = await fetch(`${BLUECOLLARTIPS_BASE_URL}/api/public/webhooks/ghl`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': secret },
