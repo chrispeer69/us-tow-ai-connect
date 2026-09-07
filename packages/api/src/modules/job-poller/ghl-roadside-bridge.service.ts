@@ -79,6 +79,11 @@ export class GhlRoadsideBridgeService {
     const payload = (job.sourcePayload ?? {}) as Record<string, unknown>;
     const testMode = this.isTestMode();
     const outboundPhone = this.outboundPhone(job.callerPhone);
+    const contactEmail = typeof payload.email === 'string'
+      ? payload.email.trim()
+      : typeof payload.customerEmail === 'string'
+        ? payload.customerEmail.trim()
+        : undefined;
     const payloadDriverName = typeof payload.driverName === 'string' ? payload.driverName.trim() : '';
     const assignedDriver = job.assignedDriverId
       ? await this.db.query.drivers.findFirst({
@@ -231,8 +236,8 @@ export class GhlRoadsideBridgeService {
         expiresInDays: 10,
         driver: driverName ? { name: driverName } : undefined,
         contact: testMode
-          ? { name: 'Roadside Bridge Test', phone: contactPhone }
-          : { name: job.callerName ?? undefined, phone: contactPhone },
+          ? { name: 'Roadside Bridge Test', phone: contactPhone, email: contactEmail }
+          : { name: job.callerName ?? undefined, phone: contactPhone, email: contactEmail },
       }),
     });
     if (!response.ok) throw new Error(`Blue Collar Tips link creation failed: ${response.status}`);
