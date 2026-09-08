@@ -6,6 +6,7 @@ import { and, eq, inArray, or, desc, sql } from 'drizzle-orm';
 import { users, tenantMembers, tenants, passwordResetOtps, UserRow } from '../../db/schema';
 import { DB_CLIENT, DbClient } from '../../db/db.module';
 import { AuthEmailService } from './auth-email.service';
+import type { UsTowSsoClaims } from './ustow-sso.service';
 
 export interface JwtPayload {
   userId: string;
@@ -13,6 +14,8 @@ export interface JwtPayload {
   tenantId?: string;
   role?: string;
   platformRole?: string;
+  /** SSO: US Tow SSO session id — set only on tokens issued through "Sign in with US Tow". */
+  sid?: string;
 }
 
 /**
@@ -41,7 +44,7 @@ export class AuthService {
     return null;
   }
 
-  async login(user: UserRow) {
+  async login(user: UserRow, opts: { sid?: string } = {}) {
     // Find their default tenant member profile — first by userId, then by email.
     //
     // Session 74 — this used to be `.limit(1)` with no ordering, so a user who
@@ -141,6 +144,7 @@ export class AuthService {
       tenantId: member?.tenantId,
       role: member?.role,
       platformRole,
+      sid: opts.sid,
     };
 
     try { return { access_token: this.jwtService.sign(payload) }; } catch (e: any) { throw new Error("JWT Crash: " + e.message); }
@@ -286,6 +290,107 @@ export class AuthService {
     await this.db.update(tenantMembers).set({ userId: user.id }).where(eq(tenantMembers.email, email));
     await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, email));
     return user;
+  }
+
+  /**
+   * SSO: "Sign in with US Tow".
+   *
+   * Identity is matched BY EMAIL (case-insensitive), never by `sub` alone, so a
+   * person who already has a password or Google login lands in the same
+   * account. On first sign-in the user row is created from the claims and
+   * `sso_sub` is stamped. Memberships / ownerships granted to that email before
+   * they ever signed in are linked exactly as the Google and Roadside flows do.
+   *
+   * Then the SSO organisation is mapped onto a tenant (see linkSsoOrgToTenant).
+   */
+  async validateUsTowSsoLogin(claims: UsTowSsoClaims): Promise<UserRow> {
+    const email = claims.email.trim().toLowerCase();
+    if (!email) throw new BadRequestException('US Tow account lacks email');
+
+    let [user] = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (!user) {
+      const [u] = await this.db
+        .insert(users)
+        .values({ email, name: claims.name || null, ssoSub: claims.sub })
+        .returning();
+      user = u;
+      this.logger.log(`[sso] created user ${email} from US Tow SSO (sub=${claims.sub})`);
+    } else {
+      const patch: Partial<typeof users.$inferInsert> = {};
+      if (!user.name && claims.name) patch.name = claims.name;
+      if (user.ssoSub !== claims.sub) patch.ssoSub = claims.sub;
+      if (Object.keys(patch).length > 0) {
+        await this.db.update(users).set(patch).where(eq(users.id, user.id));
+      }
+    }
+    await this.db.update(tenantMembers).set({ userId: user.id }).where(eq(tenantMembers.email, email));
+    await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, email));
+
+    await this.linkSsoOrgToTenant(user, email, claims);
+    return user;
+  }
+
+  /**
+   * Map the SSO `org_slug` claim to one of our tenants, if one exists.
+   *
+   * Lookup order: an explicit `tenants.sso_org_slug`, then a tenant whose
+   * company name slugifies to the claim. No match = no-op; the person still
+   * signs in and lands wherever login() would have put them.
+   *
+   * On a match: a person with no membership there is joined with the role
+   * derived from their SSO roles; an existing member simply gets lastLoginAt
+   * stamped so login() lands them in that tenant. An existing member's LOCAL
+   * role is never rewritten — the tenant owner's RBAC decisions win over the
+   * identity provider — and a SUSPENDED member stays suspended.
+   */
+  private async linkSsoOrgToTenant(user: UserRow, email: string, claims: UsTowSsoClaims): Promise<void> {
+    const slug = (claims.orgSlug || '').trim().toLowerCase();
+    if (!slug) return;
+
+    const cols = { id: tenants.id, companyName: tenants.companyName, isActive: tenants.isActive };
+    const explicit = await this.db.select(cols).from(tenants).where(eq(tenants.ssoOrgSlug, slug)).limit(1);
+    let tenant: (typeof explicit)[number] | undefined = explicit[0];
+    if (!tenant) {
+      const active = await this.db.select(cols).from(tenants).where(eq(tenants.isActive, true));
+      tenant = active.find((t) => slugify(t.companyName) === slug);
+    }
+    if (!tenant || !tenant.isActive) {
+      this.logger.log(`[sso] org "${slug}" has no matching tenant for ${email}; no auto-join`);
+      return;
+    }
+
+    const [member] = await this.db
+      .select()
+      .from(tenantMembers)
+      .where(
+        and(
+          eq(tenantMembers.tenantId, tenant.id),
+          or(eq(tenantMembers.userId, user.id), eq(tenantMembers.email, email)),
+        ),
+      )
+      .limit(1);
+
+    const now = new Date();
+    if (!member) {
+      const role = mapSsoRole(claims.roles);
+      await this.db.insert(tenantMembers).values({
+        tenantId: tenant.id,
+        userId: user.id,
+        email,
+        name: claims.name || null,
+        role,
+        status: 'ACTIVE',
+        invitedBy: 'ustow-sso',
+        acceptedAt: now,
+        lastLoginAt: now,
+      });
+      this.logger.log(`[sso] joined ${email} to ${tenant.companyName} as ${role} (org=${slug})`);
+    } else if (member.status !== 'SUSPENDED') {
+      await this.db
+        .update(tenantMembers)
+        .set({ userId: user.id, lastLoginAt: now })
+        .where(eq(tenantMembers.id, member.id));
+    }
   }
 
   async sendPasswordResetOtp(email: string): Promise<void> {
@@ -464,6 +569,7 @@ export class AuthService {
       tenantId: targetTenantId,
       role: membership?.role ?? 'SUPPORT',
       platformRole: user.platformRole,
+      sid: user.sid,
     };
 
     // Switching IS working there, so it decides where the next login lands.
@@ -510,6 +616,7 @@ export class AuthService {
       tenantId: targetTenantId,
       role: 'SUPPORT',
       platformRole: 'super_admin',
+      sid: adminUser.sid,
     };
 
     try { return { access_token: this.jwtService.sign(payload) }; } catch (e: any) { throw new Error("JWT Crash: " + e.message); }
@@ -542,6 +649,32 @@ function consoleProfileFor(config: unknown): ConsoleProfile {
   // nav-config.tsx's 'crash-leads' branch.
   if (kind === 'crash_leads') return 'crash-leads';
   return 'full';
+}
+
+/**
+ * SSO roles -> tenant_members.role. The allowed set is enforced by the CHECK
+ * constraint in 0038_support_role.sql: OWNER | DISPATCHER | DRIVER |
+ * ACCOUNTING | VIEWER | SUPPORT. `owner` / `admin` both become OWNER (the
+ * site's admin role); anything unrecognised gets the least-privileged VIEWER.
+ * Highest role wins when several are present.
+ */
+export function mapSsoRole(roles: string[]): 'OWNER' | 'DISPATCHER' | 'ACCOUNTING' | 'DRIVER' | 'VIEWER' {
+  const set = new Set(roles.map((r) => r.trim().toLowerCase()));
+  if (set.has('owner') || set.has('admin')) return 'OWNER';
+  if (set.has('dispatcher') || set.has('dispatch')) return 'DISPATCHER';
+  if (set.has('accounting') || set.has('billing')) return 'ACCOUNTING';
+  if (set.has('driver')) return 'DRIVER';
+  return 'VIEWER';
+}
+
+/** "Roadside Towing, LLC" -> "roadside-towing-llc" — the same shape US Tow SSO uses for org_slug. */
+export function slugify(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '') // strip the accents NFKD split off
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function isConfiguredSuperAdminEmail(email: string): boolean {

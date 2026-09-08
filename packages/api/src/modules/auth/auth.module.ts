@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { LocalStrategy } from './local.strategy';
 import { GoogleStrategy } from './google.strategy';
 import { RoadsideOidcService } from './roadside-oidc.service';
+import { UsTowSsoService } from './ustow-sso.service';
 
 function resolveJwtSecret(): string {
   const secret = process.env.ENCRYPTION_KEY;
@@ -33,7 +34,7 @@ function resolveJwtSecret(): string {
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, GoogleStrategy, RoadsideOidcService, AuthEmailService],
+  providers: [AuthService, LocalStrategy, JwtStrategy, GoogleStrategy, RoadsideOidcService, UsTowSsoService, AuthEmailService],
   exports: [AuthService, JwtModule, AuthEmailService],
 })
 export class AuthModule {}

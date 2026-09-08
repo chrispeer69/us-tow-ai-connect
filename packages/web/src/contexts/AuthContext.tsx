@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { clearActiveTenant } from '@/lib/active-tenant';
+import { takeSsoLogoutUrl } from '@/lib/sso-session';
 
 interface AuthContextType {
   token: string | null;
@@ -77,7 +78,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setToken(null);
-    window.location.href = '/sign-in';
+    // SSO: a session that came in through "Sign in with US Tow" is ended at
+    // the identity provider as well; it lands back on the site root.
+    window.location.href = takeSsoLogoutUrl() ?? '/sign-in';
   };
 
   return (

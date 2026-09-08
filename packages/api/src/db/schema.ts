@@ -48,6 +48,10 @@ export const tenants = pgTable('tenants', {
   // Session 28: hard gate raised when a per-job (credit) tenant runs out of
   // credits. The job poller / command center checks this before ingesting.
   billingBlocked: boolean('billing_blocked').notNull().default(false),
+  // SSO: the US Tow SSO organisation (`org_slug` claim) this tenant belongs to.
+  // A person signing in with US Tow from that org is auto-joined to this tenant.
+  // Null = unmapped; the sign-in then falls back to slugify(company_name).
+  ssoOrgSlug: varchar('sso_org_slug', { length: 120 }),
   // Session 49: outbound voice orchestrator opt-in. Disabled by default; the
   // admin UI flips this when the tenant has signed the TCPA acknowledgement.
   // Config jsonb shape:
@@ -1173,6 +1177,9 @@ export const users = pgTable(
     googleId: varchar('google_id', { length: 255 }).unique(),
     name: varchar('name', { length: 255 }),
     platformRole: varchar('platform_role', { length: 20 }).notNull().default('tenant_user'),
+    // SSO: the US Tow SSO `sub` claim, stamped on first "Sign in with US Tow".
+    // Lookup is still by email; this is an audit link back to the identity provider.
+    ssoSub: varchar('sso_sub', { length: 255 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
