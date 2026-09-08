@@ -26,8 +26,13 @@ export default function SignInPage() {
    */
   const [redirectTo, setRedirectTo] = useState('/admin/command-center');
   React.useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get('redirect');
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('redirect');
     if (raw && raw.startsWith('/') && !raw.startsWith('//')) setRedirectTo(raw);
+    // SSO: the API sends a failed US Tow / Roadside sign-in back here with
+    // ?error=<reason> (e.g. "This app is not on your US Tow dashboard").
+    const ssoError = params.get('error');
+    if (ssoError) setError(ssoError === 'missing_token' ? 'Sign-in did not complete. Please try again.' : ssoError);
   }, []);
   
   const [mode, setMode] = useState<Mode>('LOGIN');
@@ -152,6 +157,12 @@ export default function SignInPage() {
     window.location.href = '/api/v1/auth/roadside';
   };
 
+  // SSO: "Sign in with US Tow" — /auth/login starts the OpenID Connect flow
+  // and remembers where to land afterwards.
+  const handleUsTow = () => {
+    window.location.href = `/auth/login?next=${encodeURIComponent(redirectTo)}`;
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
@@ -228,8 +239,19 @@ export default function SignInPage() {
             </div>
 
             <button
+              onClick={handleUsTow}
+              className="mt-6 w-full flex items-center justify-center gap-2 bg-[#0f2f5f] hover:bg-[#0b2348] text-white font-semibold py-2.5 rounded-lg transition-colors shadow-sm"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2 3 6v6c0 5 3.8 9.4 9 10 5.2-.6 9-5 9-10V6z" />
+                <path d="m9 12 2 2 4-4" />
+              </svg>
+              Sign in with US Tow
+            </button>
+
+            <button
               onClick={handleGoogle}
-              className="mt-6 w-full flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-lg transition-colors"
+              className="mt-3 w-full flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-lg transition-colors"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path

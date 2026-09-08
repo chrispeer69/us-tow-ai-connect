@@ -60,7 +60,7 @@ us-tow-ai-connect/
 | Database | PostgreSQL 16 (Railway), Drizzle ORM |
 | Browser Automation | Playwright 1.43+ |
 | Cache | Redis 7 (Railway) |
-| Auth | JWT + bcrypt (dashboard), API Key (Thinkrr) |
+| Auth | JWT + bcrypt (dashboard), Google OAuth, US Tow SSO (OIDC — `/auth/login`, see `docs/sessions/S82_DECISIONS.md`), API Key (Thinkrr) |
 | Encryption | AES-256-GCM (credentials at rest) |
 | Hosting | Railway |
 | CI/CD | GitHub Actions |

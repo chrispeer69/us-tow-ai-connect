@@ -1,6 +1,7 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { UsTowSsoService } from './ustow-sso.service';
 
 function resolveJwtSecret(): string {
   const secret = process.env.ENCRYPTION_KEY;
@@ -15,7 +16,7 @@ function resolveJwtSecret(): string {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(private readonly sso: UsTowSsoService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -24,12 +25,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // SSO: a token issued through "Sign in with US Tow" carries the SSO session
+    // id. Back-channel logout revokes that id, and the 7-day session dies with it.
+    if (payload.sid && (await this.sso.isSessionRevoked(payload.sid))) {
+      throw new UnauthorizedException('You have been signed out of US Tow. Please sign in again.');
+    }
     return {
       userId: payload.userId,
       email: payload.email,
       tenantId: payload.tenantId,
       role: payload.role,
       platformRole: payload.platformRole,
+      sid: payload.sid,
     };
   }
 }

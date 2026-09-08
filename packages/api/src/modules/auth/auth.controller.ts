@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   Controller,
+  HttpCode,
   Post,
   Body,
+  UnauthorizedException,
   UseGuards,
   Request,
   Get,
@@ -12,12 +14,14 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { RoadsideOidcService } from './roadside-oidc.service';
+import { hasSsoApp, UsTowSsoService } from './ustow-sso.service';
 
 @Controller('v1/auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly roadside: RoadsideOidcService,
+    private readonly ustow: UsTowSsoService,
   ) {}
 
   @Post('login')
@@ -70,6 +74,75 @@ export class AuthController {
       const reason = encodeURIComponent(err?.message || 'sso_failed');
       res.redirect(`${frontendUrl}/sign-in?error=${reason}`);
     }
+  }
+
+  /**
+   * SSO: "Sign in with US Tow" (see ustow-sso.service.ts for the full flow).
+   *
+   * The browser reaches these through the web app: www/auth/login -> /api/v1/auth/sso,
+   * and the registered redirect URI www/auth/callback -> /api/v1/auth/sso/callback.
+   */
+  @Get('sso')
+  async ustowSsoAuth(
+    @Query('next') next: string | undefined,
+    @Query('login_hint') loginHint: string | undefined,
+    @Res() res: any,
+  ) {
+    if (!this.ustow.enabled) {
+      return res.redirect(this.signInError('US Tow sign-in is not configured on this server.'));
+    }
+    res.redirect(this.ustow.authorizeUrl(next, loginHint));
+  }
+
+  @Get('sso/callback')
+  async ustowSsoCallback(@Query() query: Record<string, string>, @Res() res: any) {
+    try {
+      const { claims, idToken, next } = await this.ustow.handleCallback(query);
+      // Authorisation: the SSO lists which apps a person may open. Refuse
+      // anyone whose dashboard does not include this one.
+      if (!hasSsoApp(claims, this.ustow.clientId)) {
+        throw new UnauthorizedException(
+          'This app is not on your US Tow dashboard. Ask your US Tow administrator to add US Tow AI-Connect.',
+        );
+      }
+      const user = await this.authService.validateUsTowSsoLogin(claims);
+      const { access_token } = await this.authService.login(user, { sid: claims.sid });
+      // Fragment, not query: the tokens never reach server logs or Referer headers.
+      // `sso=ustow` + the id_token let the web app finish the SSO session on logout.
+      const fragment = new URLSearchParams({ token: access_token, sso: 'ustow', id_token: idToken });
+      const target = next ? `?next=${encodeURIComponent(next)}` : '';
+      res.redirect(`${this.ustow.webOrigin}/auth-callback${target}#${fragment.toString()}`);
+    } catch (err: any) {
+      res.redirect(this.signInError(err?.message || 'sso_failed'));
+    }
+  }
+
+  /** Site logout continues here when the session came from US Tow: end the SSO session, land on the site root. */
+  @Get('sso/logout')
+  async ustowSsoLogout(@Query('id_token_hint') idTokenHint: string | undefined, @Res() res: any) {
+    res.redirect(this.ustow.logoutUrl(idTokenHint));
+  }
+
+  /**
+   * OIDC back-channel logout. US Tow SSO POSTs `logout_token` (form field)
+   * when the person signs out anywhere; the session id inside is revoked and
+   * every dashboard token carrying it stops validating (JwtStrategy).
+   */
+  @Post('sso/backchannel-logout')
+  @HttpCode(200)
+  async ustowSsoBackchannelLogout(@Body() body: { logout_token?: string }) {
+    let sid: string | undefined;
+    try {
+      ({ sid } = await this.ustow.verifyLogoutToken(body?.logout_token));
+    } catch {
+      throw new BadRequestException('invalid logout_token');
+    }
+    if (sid) await this.ustow.revokeSession(sid);
+    return { ok: true };
+  }
+
+  private signInError(message: string): string {
+    return `${this.ustow.webOrigin}/sign-in?error=${encodeURIComponent(message)}`;
   }
 
   @Post('forgot-password')
