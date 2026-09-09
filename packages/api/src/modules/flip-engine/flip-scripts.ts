@@ -149,7 +149,28 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.11';
+export const SCRIPT_VERSION = '3.12';
+// 3.12 (2026-09-09) — from the 09-08 daily review (80 calls, 33 pitched, 0
+//   wins). Two things, one of them a rule change:
+//   (1) DEALERSHIP DESTINATIONS GET ONE RUNG. Since 08-17: 142 pitches to
+//   dealership-bound tows, offer 1 won 5 (Dave Gill x2, Bob-Boyd, two dealer
+//   parts counters), offer 2 won 0 of 80. The review's HIGH item was to stop
+//   the whole ladder on dealerships; the data says keep offer 1 and drop the
+//   re-ask. `ctx.destinationIsDealer` (car_dealer place type or a brand /
+//   dealer-group name — see dealer-destination.ts) now swaps the "a bare no
+//   still gets offer 2" directive for a one-and-done exit and drops the offer
+//   2 block entirely. Expect offer-2 attempts to fall by roughly a third and
+//   offer-2 wins to be unchanged, because there were none to lose.
+//   (2) A rule against the invented speed claim: two 09-08 calls told the
+//   customer our partners "can often get to it faster". Not in this script,
+//   not in the Retell prompt, not in any tenant override — the model made it
+//   up. Now forbidden in the global rules next to the ride-along ban.
+//   NOT changed, flagged to Chris instead: offer 2 has won 0 of 102 since
+//   script 3.8 went live 09-01, against 7 of 165 on 3.7 (08-20..08-31). The
+//   either/or close is not the cause — it went live 08-28 and won 3 of its
+//   first 58. Nothing else in 3.8's offer-2 text is an obvious mechanism, so
+//   this is not rewritten a fourth time on a maybe; the revert criterion is
+//   written in the memory note.
 // 3.11 (2026-09-03, same afternoon) — the interrupted-offer exit in 3.10 was
 //   catching a "no" to the reframe ANNOUNCEMENT line. Call 071860fb: agent
 //   said "Now I would like to mention a few great offers from our in-network
@@ -574,6 +595,13 @@ export interface ScriptContext {
    * in alpha_shops the whole time — they were simply never passed in.
    */
   nearestShopAddress?: string | null;
+
+  /**
+   * 3.12 — the destination is a franchise dealership (Google `car_dealer`
+   * type or a brand / dealer-group name). Offer 1 is still made; the offer-2
+   * re-ask is not. See dealer-destination.ts for the numbers.
+   */
+  destinationIsDealer?: boolean | null;
 
   /**
    * Session 75 — the other partner shops, nearest-first, EXCLUDING the one
@@ -1046,6 +1074,10 @@ function globalRules(ctx: ScriptContext): string {
     `- THE SCRIPT DECIDES WHETHER TO PITCH, NOT YOU. If this script contains a repair-shop offer, make it. If it does not, there is no offer to make — do not construct one because the job "sounds like" a flip, and do not skip a written offer because you judge the customer unlikely to accept.`,
     `- If no partner shop is named anywhere in this script, we have no shop for this job. Never refer to "a partner shop", "a shop nearby", or "a shop that specializes in that" without a name from this script.`,
     `- Never promise anything about the tow itself that is not written here — in particular never tell a customer they can ride in the tow truck.`,
+    // 3.12 — two 09-08 calls told the customer our partners "can often get to
+    // it faster". Nobody wrote that anywhere. We do not compete on speed and
+    // cannot stand behind it.
+    `- Never claim a partner shop is faster, can get to the vehicle sooner, has a shorter wait, or can "get it in" quicker than the customer's own shop. We do not compete on speed and this script makes no timing promise anywhere. If asked how long, say the shop will give them a time once they have looked at it.`,
     // Applies everywhere, not just Scenario A: money and coverage are the two
     // subjects where an invented answer becomes a commitment we have to honour.
     `- Never tell a customer whether their insurance or warranty covers something, what it will cost them, or who will pay. If they ask and this script has no written answer, say you'll have the office confirm and move on.`,
@@ -1309,7 +1341,12 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         interpolate(consentGate, vars),
         interpolate(tooFarDirective, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
+        // 3.12 — a dealership destination is one rung. 0 of 80 offer-2 re-asks
+        // ever won there; the customer has usually just explained a warranty
+        // or a service plan and hears the same discount again.
+        ctx.destinationIsDealer
+          ? `[AGENT: DEALERSHIP DESTINATION — ONE OFFER ONLY. If they decline Offer 1 for any reason, or with no reason, that is the end of the offers: do NOT ask what is taking them to the dealership, do NOT re-ask, do NOT read any reassurance. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go straight to the CONVINI close.]`
+          : `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
         // 3.10 — a "no" that arrives while the offer is still being read is
         // a different thing from a "no" to the question at the end of it.
         `[AGENT: EXCEPTION — INTERRUPTED OFFER. If the customer cuts you off with a refusal ("no thank you", "not interested", "no") WHILE you are reading Offer 1 — after "We work with..." has begun and before you reach the question at the end — stop mid-sentence and the ladder is over: do NOT ask Offer 2, do NOT ask what is taking them to their shop. Say "No problem." and go straight to the CONVINI close. They declined the terms as they heard them; asking them to justify it is what turns a polite no into a hostile one.` +
@@ -1319,7 +1356,10 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
           `]`,
       ] : [];
 
-  const offer2Block = offersAllowed ? [
+  // 3.12 — no second rung on a dealership destination (see the directive in
+  // the flip block above and dealer-destination.ts for the record).
+  const offer2Allowed = offersAllowed && !ctx.destinationIsDealer;
+  const offer2Block = offer2Allowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,

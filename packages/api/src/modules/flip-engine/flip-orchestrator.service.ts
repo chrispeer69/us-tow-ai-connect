@@ -13,6 +13,7 @@ import {
 import { FlipEngineService } from './flip-engine.service';
 import { decideFlip, type FlipDecision } from './flip-decision.engine';
 import { isTowCompany, looksLikeSharedBusinessPhone, type TowCompanyEntry } from './tow-company.matcher';
+import { isDealerDestination } from './dealer-destination';
 import {
   IssueClassifierService,
   type ClassifyIssueResult,
@@ -526,6 +527,7 @@ export class FlipOrchestratorService {
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, job.destinationName, job.destinationAddress),
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
         : null,
@@ -729,6 +731,7 @@ export class FlipOrchestratorService {
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, job.destinationName, job.destinationAddress),
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
         : null,
@@ -1167,6 +1170,7 @@ export class FlipOrchestratorService {
         nearestShopDistanceMiles:
           flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
         nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+        destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, job.dropoffAddress),
         alternateShops: flipEligible
           ? alternateShopsFor(ourShops, Number(job.pickupLat), Number(job.pickupLng), nearestShopName)
           : null,
@@ -1445,6 +1449,7 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles: flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, input.destination),
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, geocoded?.lat ?? null, geocoded?.lng ?? null, nearestShopName)
         : null,
