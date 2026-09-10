@@ -149,7 +149,19 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.12';
+export const SCRIPT_VERSION = '3.13';
+// 3.13 (2026-09-10) — CONFIRM THE CUSTOMER'S FULL NAME. Chris: "ensure the
+//   customer name, first and last, are confirmed and completed on each job
+//   when we call and confirm details — and then that needs put in the first
+//   name block and the last name block". New STEP 2b at the top of the
+//   confirm block, both A/B arms: with a full name on the ticket the agent
+//   confirms it; with a first name only it asks for the last; with no usable
+//   name it asks for both. The name is one of the few things that IS read back
+//   once. Two new post-call fields (customer_first_name / customer_last_name,
+//   Retell agent v55) -> outbound_call_logs.confirmed_first_name/last_name ->
+//   unified_jobs.caller_name + the Roadside GHL contact's first/last blocks
+//   (ghl-roadside-bridge syncConfirmedName) + a NAME line on the Towbook AI
+//   note when it differs from the ticket.
 // 3.12 (2026-09-09) — from the 09-08 daily review (80 calls, 33 pitched, 0
 //   wins). Two things, one of them a rule change:
 //   (1) DEALERSHIP DESTINATIONS GET ONE RUNG. Since 08-17: 142 pitches to
@@ -579,6 +591,8 @@ export interface ScriptContext {
 
   // Customer + job
   customerFirstName: string;
+  /** 3.13 — the ticket's full name, so the confirm step can read it back. */
+  customerFullName?: string | null;
   vehicle: string; // "2019 Blue Honda Civic"
   pickupLocation: string;
   destination: string; // resolved destination address/name
@@ -817,6 +831,35 @@ function isUnusableName(name: string | null | undefined): boolean {
   return /^(unknown|n\/?a|null|undefined|customer|caller|test|there|owner|driver|dipping|other)$/i.test(n);
 }
 
+/**
+ * 3.13 — the ticket's full name when it is a usable first name plus at least
+ * one more word; null otherwise. "Pat" alone or a business name is not a full
+ * name to read back.
+ */
+function usableFullName(ctx: ScriptContext): string | null {
+  if (isUnusableName(ctx.customerFirstName)) return null;
+  const full = (ctx.customerFullName ?? '').replace(/\s+/g, ' ').trim();
+  const parts = full.split(' ').filter(Boolean);
+  if (parts.length < 2) return null;
+  if (parts[0].toLowerCase() !== ctx.customerFirstName.trim().toLowerCase()) return null;
+  return full;
+}
+
+/** 3.13 — STEP 2b. Confirm a full name, complete a partial one, or ask for both. */
+function confirmNameBlock(ctx: ScriptContext, vars: Record<string, string>): string {
+  const ask = usableFullName(ctx)
+    ? `AI: "And so the driver has the right name, I have you down as {{customer_full_name}} — is that right?"`
+    : !isUnusableName(ctx.customerFirstName)
+      ? `AI: "And can I get your last name, so the driver has it right?"`
+      : `AI: "And can I get your first and last name for the driver?"`;
+  return interpolate(
+    `[STEP 2b — CONFIRM FULL NAME]
+${ask}
+[AGENT: We need a FIRST and a LAST name on every job. This is one of the few things you DO read back: if the customer gives or corrects a name, say it back once ("Thanks — Pat Smith, got it") so the spelling is checked, then move on. If they spell it, take the spelling. If they only give one name, ask once for the other. If they will not give a last name, say "No problem" and move on — never press, never guess, never invent one, and never read a name off the ticket that they did not confirm. Record the first and last name exactly as the customer gave them.]`,
+    vars,
+  );
+}
+
 function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
     rep_name: ctx.repName,
@@ -837,6 +880,8 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
     customer_salutation: isUnusableName(ctx.customerFirstName)
       ? ''
       : `, ${ctx.customerFirstName}`,
+    // 3.13 — the whole name as the ticket has it, for the confirm-name step.
+    customer_full_name: usableFullName(ctx) ?? '',
     vehicle: ctx.vehicle,
     pickup_location: ctx.pickupLocation,
     destination: ctx.destination,
@@ -946,14 +991,20 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   // it in one arm only would confound the comparison it is not part of.
   const intake = dispatchIntakeBlock();
 
+  // 3.13 — the name comes first on both arms: it is the one detail every
+  // downstream system keys on, and the customer has just confirmed who they are.
+  const nameStep = confirmNameBlock(ctx, vars);
+
   if (isReframe(ctx)) {
-    const blocks = [interpolate(pickup, vars)];
+    const blocks = [nameStep, ``, interpolate(pickup, vars)];
     if (includeDestination) blocks.push(``, destinationBlock);
     blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars), ``, intake);
     return blocks.join('\n');
   }
 
   const blocks = [
+    nameStep,
+    ``,
     interpolate(pickup, vars),
     ``,
     interpolate(vehicle, vars),
@@ -1091,7 +1142,7 @@ function globalRules(ctx: ScriptContext): string {
     // a rule: never rush a customer who is upset, describing damage, or still
     // answering, and never skip a question to save time.
     `- NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM. It is annoying and it wastes the call. They said it; they know what they said. Acknowledge in one or two words — "Got it", "Thanks", "Perfect" — and go straight to the next question. Do not say "Got it, in a parking lot, nose out", do not say "so that's a 2015 white Kia", and never announce that you are noting something down, that the driver will have it, or that the mechanic will see it.`,
-    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, or a shop name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
+    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, a shop name, or the customer's own name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
     `- PACE: aim to finish the whole call in about two minutes. Ask, listen, acknowledge in a word or two, ask the next thing. Do not spend words you do not need, and do not let the confirmation questions crowd out the offer and the close.`,
     `- PACE: this is a target, not a rule. Never cut a customer off, never hurry someone who is shaken or describing damage, and never drop a question to save time. If the call needs longer, take longer.`,
     `- Never read a raw latitude/longitude pair aloud. If a location is only coordinates, say "the location we have on file" and ask the customer to describe it.`,

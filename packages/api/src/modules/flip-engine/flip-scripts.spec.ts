@@ -129,7 +129,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain("NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM");
     expect(body).toContain('about two minutes');
     // An address or a shop name still gets checked — that is accuracy, not echo.
-    expect(body).toContain('a street address, a phone number, or a shop name');
+    expect(body).toContain("a street address, a phone number, a shop name, or the customer's own name");
     // ...and pace must never turn into rushing someone.
     expect(body).toContain('a target, not a rule');
   });

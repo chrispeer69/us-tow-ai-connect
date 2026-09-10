@@ -46,6 +46,10 @@ export interface RetellAnalysisFields {
   issue_description: string | null;
   confirmed_destination: string | null;
   new_destination: string | null;
+  // 3.13 — the customer's name as confirmed on the call (first / last), so the
+  // job, the GHL contact and the Towbook note can carry the real one.
+  customer_first_name: string | null;
+  customer_last_name: string | null;
 }
 
 export function extractRetellAnalysis(
@@ -76,6 +80,8 @@ export function extractRetellAnalysis(
     issue_description: (pick('issue_description') as string) ?? null,
     confirmed_destination: (pick('confirmed_destination') as string) ?? null,
     new_destination: (pick('new_destination') as string) ?? null,
+    customer_first_name: (pick('customer_first_name') as string) ?? null,
+    customer_last_name: (pick('customer_last_name') as string) ?? null,
   };
 }
 

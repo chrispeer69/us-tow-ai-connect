@@ -212,6 +212,65 @@ export class GhlRoadsideBridgeService {
     this.logger.log(`Roadside ${stage} sent to GHL for TowBook job ${job.sourceJobId}`);
   }
 
+  /**
+   * 3.13 (2026-09-10) — write the name the customer confirmed on the AI call
+   * into the contact's first-name and last-name blocks. Chris: "the customer
+   * name, first and last, confirmed and completed on each job ... then put in
+   * the first name block and the last name block".
+   *
+   * Upserts by phone, so it lands on the same contact the lifecycle sync
+   * created (or creates it, if the call finished before the job sync ran).
+   * Never sends an empty last name: GHL would blank the block.
+   */
+  async syncConfirmedName(job: UnifiedJobRow, firstName: string, lastName: string | null): Promise<void> {
+    if (!this.isEnabled() || job.tenantId !== ROADSIDE_TENANT_ID || !job.callerPhone) return;
+    if (!this.token || !this.locationId) {
+      this.logger.warn('Roadside GHL bridge enabled but GHL credentials/location are missing');
+      return;
+    }
+    const testMode = this.isTestMode();
+    const first = testMode ? 'Roadside' : firstName.trim();
+    const last = testMode ? 'Bridge Test' : (lastName ?? '').trim();
+    if (!first) return;
+
+    const already = await this.db.query.jobEvents.findFirst({
+      where: and(eq(jobEvents.jobId, job.id), eq(jobEvents.eventType, 'ghl_name_confirmed')),
+      orderBy: [desc(jobEvents.createdAt)],
+    });
+    const alreadyPayload = (already?.payload ?? {}) as { firstName?: string; lastName?: string };
+    if (already && alreadyPayload.firstName === first && (alreadyPayload.lastName ?? '') === last) return;
+
+    const body: Record<string, unknown> = {
+      firstName: first,
+      name: [first, last].filter(Boolean).join(' '),
+      phone: this.outboundPhone(job.callerPhone),
+      locationId: this.locationId,
+      source: 'US Tow AI Connect / TowBook',
+    };
+    if (last) body.lastName = last;
+
+    const response = await fetch('https://services.leadconnectorhq.com/contacts/upsert', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Version: 'v3',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`GHL confirmed-name upsert failed: ${response.status}`);
+    const result = (await response.json()) as { contact?: { id?: string } };
+    const contactId = result.contact?.id;
+
+    await this.db.insert(jobEvents).values({
+      jobId: job.id,
+      eventType: 'ghl_name_confirmed',
+      payload: { contactId, firstName: first, lastName: last, testMode },
+      actor: 'ghl-roadside-bridge',
+    });
+    this.logger.log(`Roadside confirmed name "${body.name}" sent to GHL for TowBook job ${job.sourceJobId}`);
+  }
+
   private async createBlueCollarTipsLink(
     job: UnifiedJobRow,
     contactId: string,

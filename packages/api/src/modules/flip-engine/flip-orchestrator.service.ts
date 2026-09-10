@@ -515,6 +515,7 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
       customerFirstName: firstNameOf(job.customerName),
+      customerFullName: job.customerName ?? null,
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
       destination:
@@ -719,6 +720,7 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
       customerFirstName: firstNameOf(job.customerName),
+      customerFullName: job.customerName ?? null,
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
       destination:
@@ -1150,6 +1152,7 @@ export class FlipOrchestratorService {
         conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
         diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
         customerFirstName: firstNameOf(job.callerName),
+        customerFullName: job.callerName ?? null,
         // No colour. This path assembled the spoken vehicle from columns and
         // put the ticket colour second — "2015 Red Honda Civic" — where the
         // 08-28 trailing-colour fix never reached it, so the agent kept
@@ -1438,6 +1441,7 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
       customerFirstName: firstNameOf(input.customerName),
+      customerFullName: input.customerName ?? null,
       vehicle: input.vehicle || 'your vehicle',
       pickupLocation: input.pickupLocation || 'your location',
       destination:

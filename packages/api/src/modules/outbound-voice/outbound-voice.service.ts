@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
@@ -10,6 +10,7 @@ import {
   platformSettings,
   tenantBilling,
   tenants,
+  unifiedJobs,
   type OutboundCallRow,
 } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
@@ -34,6 +35,7 @@ import {
   SCRIPT_TEMPLATES,
 } from './script-templates';
 import { GeocoderService } from '../command-center/geocoder.service';
+import { GhlRoadsideBridgeService } from '../job-poller/ghl-roadside-bridge.service';
 import { selectNearestShop, selectNearestShops } from '../flip-engine/nearest-shop.selector';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
 import { RetellOutboundClient } from './retell-outbound.client';
@@ -77,6 +79,9 @@ export class OutboundVoiceService {
     private readonly sms: TwilioSmsService,
     private readonly push: PushService,
     private readonly geocoder: GeocoderService,
+    // 3.13 — optional so the unit specs (which build the service by hand) and
+    // any host without the Roadside bridge module still construct cleanly.
+    @Optional() private readonly ghlRoadsideBridge?: GhlRoadsideBridgeService,
   ) {
     this.logger.log(`[outbound-voice] active provider: ${this.provider.providerName}`);
   }
@@ -1006,6 +1011,42 @@ export class OutboundVoiceService {
     return rows[0];
   }
 
+  /**
+   * 3.13 — carry the name the customer confirmed on the call to the places
+   * that display it: the unified job (Command Center board, Towbook note) and
+   * the Roadside GHL contact's first-name / last-name blocks.
+   *
+   * Only ever ADDS or CORRECTS a name. A last name the customer declined to
+   * give leaves the ticket's own last name alone; nothing here can blank a
+   * field that had something in it.
+   */
+  private async propagateConfirmedName(
+    call: typeof outboundCalls.$inferSelect,
+    name: { firstName: string | null; lastName: string | null },
+  ): Promise<void> {
+    if (!name.firstName && !name.lastName) return;
+    if (!call.relatedJobId) return;
+    const job = await this.db.query.unifiedJobs.findFirst({
+      where: and(eq(unifiedJobs.id, call.relatedJobId), eq(unifiedJobs.tenantId, call.tenantId)),
+    });
+    if (!job) return;
+
+    const ticketParts = (job.callerName ?? '').trim().split(/\s+/).filter(Boolean);
+    const firstName = name.firstName ?? ticketParts[0] ?? null;
+    const lastName = name.lastName ?? (ticketParts.length > 1 ? ticketParts.slice(1).join(' ') : null);
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (!fullName) return;
+
+    if (fullName.toLowerCase() !== (job.callerName ?? '').trim().toLowerCase()) {
+      await this.db.update(unifiedJobs).set({ callerName: fullName }).where(eq(unifiedJobs.id, job.id));
+      this.logger.log(`[outbound-voice] job ${job.id} caller name "${job.callerName ?? ''}" -> "${fullName}" (confirmed on call ${call.id})`);
+    }
+
+    if (this.ghlRoadsideBridge && firstName) {
+      await this.ghlRoadsideBridge.syncConfirmedName({ ...job, callerName: fullName }, firstName, lastName);
+    }
+  }
+
   private async notifyManagersOfAttentionNeeded(
     call: typeof outboundCalls.$inferSelect,
     details: { status: string; error?: string | null },
@@ -1189,10 +1230,28 @@ export class OutboundVoiceService {
     // analysis, which is why both 2026-08-17 wins showed a null destination on a
     // call where the customer plainly named the shop.
     assignIfPresent(update, 'newDestination', analysis.new_destination);
+    // 3.13 — the confirmed customer name. Cleaned here rather than in
+    // assignIfPresent because "unknown" is NOT a value we want to keep for a
+    // name (it is for the intake fields), and a name needs letters in it.
+    const confirmedFirst = cleanConfirmedName(analysis.customer_first_name);
+    const confirmedLast = cleanConfirmedName(analysis.customer_last_name);
+    if (confirmedFirst) update.confirmedFirstName = confirmedFirst;
+    if (confirmedLast) update.confirmedLastName = confirmedLast;
 
     if (accepted) update.managementNotified = true;
 
     await this.db.update(outboundCallLogs).set(update).where(eq(outboundCallLogs.id, log.id));
+
+    // 3.13 — push the confirmed name onto the job and the GHL contact. Best
+    // effort: a GHL outage must not fail the webhook that just stored the call.
+    if (confirmedFirst || confirmedLast) {
+      await this.propagateConfirmedName(call, {
+        firstName: confirmedFirst ?? cleanConfirmedName(log.confirmedFirstName),
+        lastName: confirmedLast ?? cleanConfirmedName(log.confirmedLastName),
+      }).catch((err) =>
+        this.logger.warn(`[outbound-voice] confirmed-name propagation failed call=${call.id}: ${String(err)}`),
+      );
+    }
 
     // Send CONVINI SMS to customer if the AI promised it
     if (update.conviniLinkSent && log.customerPhone) {
@@ -2000,6 +2059,21 @@ function pickAcceptedOfferFromAnalysis(
  *                                 sweep cannot blank an answer an earlier
  *                                 webhook captured.
  */
+/**
+ * 3.13 — a name the agent captured on the call, or null when it captured
+ * nothing usable. "unknown", "N/A", digits and one-letter fragments are null.
+ * Leading capital so "smith" spoken aloud lands as "Smith"; the rest is kept
+ * as given (McDonald, O'Brien, de la Cruz all survive).
+ */
+export function cleanConfirmedName(value: unknown): string | null {
+  if (value == null) return null;
+  const text = String(value).replace(/["“”]/g, '').replace(/\s+/g, ' ').trim();
+  if (text.length < 2 || text.length > 60) return null;
+  if (!/[a-z]/i.test(text)) return null;
+  if (/^(unknown|n\/?a|null|undefined|none|no|not given|declined|refused|customer|caller|there|owner|driver)$/i.test(text)) return null;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function assignIfPresent<K extends keyof typeof outboundCallLogs.$inferInsert>(
   target: Partial<typeof outboundCallLogs.$inferInsert>,
   key: K,

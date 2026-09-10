@@ -41,6 +41,14 @@ export const AI_NOTES_HEADER = 'AI Notes';
 
 export interface AiNotesInput {
   /**
+   * 3.13 — NAME. The first and last name the customer confirmed on the call,
+   * and the name the ticket carried, so the line only renders when the call
+   * actually changed or completed something.
+   */
+  confirmedName?: string | null;
+  ticketName?: string | null;
+
+  /**
    * KEYS — who is meeting the driver and where the keys are. Chris's hard rule:
    * the customer must be present with the keys or we do not tow, unless they
    * leave the keys with the car and sign a release. "Keys left in my mailbox"
@@ -141,6 +149,16 @@ function clean(value: string | null | undefined): string | null {
  */
 export function composeAiNotes(input: AiNotesInput): string | null {
   const lines: string[] = [];
+
+  // 3.13 — a confirmed name that differs from the ticket is the first line:
+  // it is what the driver will call the customer and what dispatch searches on.
+  const confirmedName = clean(input.confirmedName);
+  const ticketName = clean(input.ticketName);
+  if (confirmedName && confirmedName.toLowerCase() !== (ticketName ?? '').toLowerCase()) {
+    lines.push(
+      ticketName ? `NAME: ${confirmedName} (ticket had "${ticketName}").` : `NAME: ${confirmedName}.`,
+    );
+  }
 
   // Ordered the way a driver reads it, not the way we collected it:
   //   can I do this job at all -> where am I going -> how do I approach it ->

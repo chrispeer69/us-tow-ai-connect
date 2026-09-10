@@ -385,6 +385,13 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
   // a real 2026-08-17 call, and exactly the kind of thing a driver needs before
   // they roll rather than after.
   confirmedDestination: text('confirmed_destination'),
+  // 3.13 (2026-09-10) — Chris: "ensure the customer name, first and last, is
+  // confirmed and completed on each job when we call". The confirm-details step
+  // now asks for or confirms both, the agent emits them post-call, and they are
+  // pushed to the job record, the GHL contact's first/last name blocks, and the
+  // Towbook AI note. Stored exactly as the customer gave them.
+  confirmedFirstName: text('confirmed_first_name'),
+  confirmedLastName: text('confirmed_last_name'),
 });
 export type OutboundCallLogRow = typeof outboundCallLogs.$inferSelect;
 
