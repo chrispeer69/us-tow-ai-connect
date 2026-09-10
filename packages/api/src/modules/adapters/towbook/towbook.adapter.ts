@@ -50,6 +50,11 @@ const ETA_COLUMN_ID = '4';
 const DRIVER_COLUMN_ID = '5';
 const STATUS_COLUMN_ID = '14';
 const CONTACT_COLUMN_ID = '22'; // "Name (xxx) xxx-xxxx"
+// 2026-09-10 — the motor-club PO number. Verified on a live row: the cell is
+// in the DOM (hidden, columnid 18, text "114071513") without expanding the
+// row, and the row's own textContent carries it as "PO #114071513". Rows
+// with no PO simply have no columnid-18 cell.
+const PO_COLUMN_ID = '18';
 
 // Non-address columns. The address fallback (scoreAddress / selectAddresses)
 // must never consider these — they hold a vehicle, an ETA, a driver name, a
@@ -61,6 +66,7 @@ const RESERVED_COLUMN_IDS = new Set<string>([
   DRIVER_COLUMN_ID,
   STATUS_COLUMN_ID,
   CONTACT_COLUMN_ID,
+  PO_COLUMN_ID,
 ]);
 
 // The pickup ("Tow From") and destination ("Tow To") address columns were NOT
@@ -157,6 +163,28 @@ export function cssEscapeAttr(value: string): string {
 export interface TowbookRawRow {
   dataId: string;
   cells: Record<string, string>;
+  /** The board's own job number, from the row's `data-call-number` ("#127729"). */
+  callNumber?: string;
+}
+
+/** Digits of a job/PO/reference number as a caller would read it; '' if none. */
+export function digitsOnly(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+/**
+ * 2026-09-10 — the PO number for a row: the PO cell when the board renders
+ * one, else the "PO #114071513" fragment in the row's full text (textContent
+ * includes the hidden detail block; innerText does not).
+ */
+export function extractPoNumber(cells: Record<string, string>): string {
+  const cell = (cells[PO_COLUMN_ID] ?? '').trim();
+  if (cell) return cell;
+  const full = cells['_fullText'] ?? '';
+  // Digits only: in textContent the next label ("Dispatcher") follows the
+  // number with no separator, so an alphanumeric class would swallow it.
+  const m = full.match(/PO\s*#\s*:?\s*(\d{4,})/i);
+  return m ? m[1] : '';
 }
 
 /** Parse a comma-separated columnid env list into trimmed, non-empty ids. */
@@ -299,6 +327,10 @@ export function assembleActiveJob(
     pickup,
     destination,
     lastUpdated: opts.nowIso ?? new Date().toISOString(),
+    // The number printed on the board row ("#127729") — what our own people
+    // quote. Falls back to the leading "#nnnnnn" of the row text.
+    callNumber: digitsOnly(row.callNumber) || digitsOnly((cells['_rawText'] ?? '').match(/^\s*#(\d{3,8})\b/)?.[1]),
+    poNumber: extractPoNumber(cells),
   };
 }
 
@@ -1104,7 +1136,15 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
           if (!(id in cells) || (!cells[id] && text)) cells[id] = text;
         }
         cells['_rawText'] = row.innerText || row.textContent || '';
-        return { dataId: row.getAttribute('data-id') || '', cells };
+        // textContent reaches the hidden detail block (PO #, dispatcher, notes)
+        // that innerText skips. Kept separately so nothing that scanned
+        // _rawText before sees a different string now.
+        cells['_fullText'] = row.textContent || '';
+        return {
+          dataId: row.getAttribute('data-id') || '',
+          callNumber: row.getAttribute('data-call-number') || '',
+          cells,
+        };
       });
       
       return { rawRows: extractedRows, dynamicPickupIds: pickupIds, dynamicDropoffIds: dropoffIds };

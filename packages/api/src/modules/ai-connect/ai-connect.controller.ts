@@ -139,8 +139,16 @@ export class AiConnectController {
     @Req() req: TenantAuthenticatedRequest,
     @Body() raw: unknown,
   ) {
-    const args = new UnwrapRetellArgsPipe().transform(raw) as { phone?: string } | undefined;
-    const result = await this.service.lookupByPhone(req.tenantId, args?.phone ?? '', {
+    const args = new UnwrapRetellArgsPipe().transform(raw) as
+      | { phone?: string; job_number?: string; po_number?: string }
+      | undefined;
+    // 2026-09-10 — three keys, not one: our job number, the motor-club PO,
+    // or the phone; caller ID as the last resort. Same route and tool name
+    // so a call already in progress on the old tool config keeps working.
+    const result = await this.service.lookupJob(req.tenantId, {
+      phone: args?.phone ?? '',
+      jobNumber: args?.job_number ?? '',
+      poNumber: args?.po_number ?? '',
       fallbackPhone: retellInboundCallerId(raw),
     });
     if (!result.found) {

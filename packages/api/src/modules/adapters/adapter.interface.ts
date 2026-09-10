@@ -16,6 +16,15 @@ export interface ActiveJob {
   /** Destination / drop-off address ("Tow To"). Empty string when not present (e.g. tow-to TBD). */
   destination: string;
   lastUpdated: string;
+  /**
+   * 2026-09-10 — the two other ways a caller identifies a job (Chris: the
+   * phone is how a customer finds it, the motor-club PO is what the club and
+   * many customers quote, the job number is what our own people quote).
+   * Digits only, '' when the board does not show one. Optional because the
+   * other adapters do not capture them yet.
+   */
+  callNumber?: string;
+  poNumber?: string;
 }
 
 export interface AdapterConnectionTestResult {

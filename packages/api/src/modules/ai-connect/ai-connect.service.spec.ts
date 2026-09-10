@@ -199,6 +199,77 @@ describe('AiConnectService.lookupByPhone — caller-ID fallback (2026-09-10)', (
   });
 });
 
+describe('AiConnectService.lookupJob — job number and PO number (2026-09-10)', () => {
+  const jobs = JSON.stringify([
+    {
+      jobId: '283277202',
+      callNumber: '127716',
+      poNumber: '114071513',
+      customerName: 'James H.',
+      customerPhone: '6146572450',
+      vehicle: '2020 LINC Aviator Red',
+      status: 'On scene',
+      driverName: 'Alex Kordalis',
+      eta: '2:04 PM',
+      pickup: '',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+    {
+      jobId: '283304458',
+      callNumber: '127729',
+      poNumber: '',
+      customerName: 'Upreach',
+      customerPhone: '6143385480',
+      vehicle: '2014 Dodge Grand Caravan',
+      status: 'Dispatched',
+      driverName: 'Jerod Berry',
+      eta: 'Unknown',
+      pickup: '',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+  ]);
+  const make = () =>
+    new AiConnectService(
+      makeDb() as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+
+  it('finds a job by the number printed on the board', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '#127729' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283304458');
+    expect(r.matchedBy).toBe('job_number');
+  });
+
+  it('finds a job by the motor-club PO number', async () => {
+    const r = await make().lookupJob(TENANT_ID, { poNumber: '114071513' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283277202');
+    expect(r.matchedBy).toBe('po_number');
+  });
+
+  it('prefers the job number over a phone that points elsewhere', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '127716', phone: '6143385480' });
+    expect(r.job?.jobId).toBe('283277202');
+    expect(r.matchedBy).toBe('job_number');
+  });
+
+  it('falls through PO -> phone -> caller ID', async () => {
+    const r = await make().lookupJob(TENANT_ID, { poNumber: '999', phone: '6140000000', fallbackPhone: '+16143385480' });
+    expect(r.found).toBe(true);
+    expect(r.matchedBy).toBe('caller_id');
+  });
+
+  it('reports "phone is required" only when it was given nothing at all', async () => {
+    expect((await make().lookupJob(TENANT_ID, {})).message).toBe('phone is required');
+    expect((await make().lookupJob(TENANT_ID, { poNumber: '1' })).message).toMatch(/No active job/);
+  });
+});
+
 describe('AiConnectService.estimateEta', () => {
   it('falls back to default ETA when no driver pings exist', async () => {
     const svc = new AiConnectService(

@@ -55,7 +55,7 @@ const TOOLS = [
     type: 'custom',
     name: 'lookup_job_by_phone',
     description:
-      "Look up the caller's active tow using the phone number on the job. Call this as soon as they give you a phone number. Returns customer name, vehicle, status, driver, ETA, pickup and destination.",
+      "Look up the caller's active tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number. Call it as soon as they give you one of those — do not collect all three. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number) and matched_by.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/lookup/by-phone',
     // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
     // arguments into query_params, only the request body. The old GET config
@@ -72,9 +72,14 @@ const TOOLS = [
     headers: { 'X-Tenant-API-Key': TENANT_API_KEY, 'content-type': 'application/json' },
     parameters: {
       type: 'object',
-      required: ['phone'],
+      // 2026-09-10 — none required: a caller gives whichever they have. The
+      // server tries job_number, then po_number, then phone, then the number
+      // they are calling from.
+      required: [],
       properties: {
-        phone: { type: 'string', description: 'The phone number on the tow job, digits only, e.g. 6148818702' },
+        phone: { type: 'string', description: 'The phone number on the tow job, digits only, e.g. 6148818702. Leave out if they gave a PO or job number instead.' },
+        po_number: { type: 'string', description: "The motor club's PO, purchase order, reference, dispatch or club number, exactly as read out, e.g. 114071513." },
+        job_number: { type: 'string', description: 'Our own Roadside job / call / ticket number, digits only, e.g. 127716. Usually only an employee has this.' },
       },
     },
     speak_during_execution: true,
@@ -279,6 +284,9 @@ const MUST_CONTAIN = [
   "I'm an automated assistant",
 ];
 
+/** Agent-level delivery settings, published alongside the prompt (see --apply). */
+const AGENT_PACING = { voice_speed: 0.92, responsiveness: 0.6, interruption_sensitivity: 0.9 };
+
 /** Remove the USTD toggle markers and normalise line endings. */
 function stripMarkers(raw) {
   return raw
@@ -329,6 +337,12 @@ async function main() {
   }
 
   const greeting = greetingFrom(next);
+  // 2026-09-10 — pacing. Chris: "talking a tad too fast and not giving others
+  // time to talk". voice_speed below 1 slows the delivery; responsiveness
+  // below 1 makes her wait longer after the caller stops before she answers.
+  // Interruption sensitivity stays high so a caller can always cut in.
+  await retell(`/update-agent/${AGENT}`, 'PATCH', AGENT_PACING);
+  console.log(`  agent pacing patched: ${JSON.stringify(AGENT_PACING)}`);
   await retell(`/update-retell-llm/${LLM}`, 'PATCH', {
     general_prompt: next,
     begin_message: greeting,

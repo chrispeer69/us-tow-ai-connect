@@ -50,10 +50,15 @@ const DEFAULT_SERVICES = [
   { key: 'MOTOR_CLUB', label: 'Motor Club Work' },
 ];
 
+/** The last ten digits of a phone, so "+1 614..." and "614..." compare equal. */
+function last10(digits: string): string {
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
 export interface LookupByPhoneResult {
   found: boolean;
-  /** 2026-09-10 — which number found the job: the one the caller gave, or their caller ID. */
-  matchedBy?: 'given' | 'caller_id';
+  /** 2026-09-10 — what found the job: the phone the caller gave, their caller ID, our job number, or the motor-club PO. */
+  matchedBy?: 'given' | 'caller_id' | 'job_number' | 'po_number';
   source?: 'TOWBOOK' | 'AAA_PORTAL';
   job?: {
     jobId: string;
@@ -127,21 +132,88 @@ export class AiConnectService {
     phoneRaw: string,
     options: { fallbackPhone?: string | null } = {},
   ): Promise<LookupByPhoneResult> {
-    const given = this.findActiveJobByPhone(tenantId, phoneRaw);
-    const primary = await given;
-    if (primary.found) return { ...primary, matchedBy: 'given' };
-
-    const fallback = (options.fallbackPhone ?? '').replace(/\D/g, '');
-    const givenDigits = phoneRaw.replace(/\D/g, '');
-    if (fallback && fallback.slice(-10) !== givenDigits.slice(-10)) {
-      const byCallerId = await this.findActiveJobByPhone(tenantId, fallback);
-      if (byCallerId.found) return { ...byCallerId, matchedBy: 'caller_id' };
-    }
-    return primary.message === 'phone is required' && fallback
-      ? { found: false, message: 'No active job found for that phone number' }
-      : primary;
+    return this.lookupJob(tenantId, { phone: phoneRaw, fallbackPhone: options.fallbackPhone });
   }
 
+  /**
+   * 2026-09-10 — one lookup, three keys. Chris, from the Towbook board: the
+   * job number is what our own people quote, the motor-club PO number is
+   * what the club (and many customers) quote, and the phone is how a
+   * customer is found. Tried in that order because a job or PO number is
+   * unambiguous where a phone can sit on two jobs; the caller ID is last.
+   */
+  async lookupJob(
+    tenantId: string,
+    keys: { phone?: string | null; jobNumber?: string | null; poNumber?: string | null; fallbackPhone?: string | null },
+  ): Promise<LookupByPhoneResult> {
+    const jobNumber = (keys.jobNumber ?? '').replace(/\D/g, '');
+    const poNumber = (keys.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const phone = (keys.phone ?? '').replace(/\D/g, '');
+    const fallback = (keys.fallbackPhone ?? '').replace(/\D/g, '');
+
+    if (jobNumber) {
+      const hit = await this.findActiveJob(tenantId, (j) => {
+        const call = (j.callNumber ?? '').replace(/\D/g, '');
+        return (call !== '' && call === jobNumber) || j.jobId === jobNumber;
+      });
+      if (hit.found) return { ...hit, matchedBy: 'job_number' };
+    }
+    if (poNumber) {
+      const hit = await this.findActiveJob(tenantId, (j) => {
+        const po = (j.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        return po !== '' && (po === poNumber || (poNumber.length >= 6 && po.endsWith(poNumber)));
+      });
+      if (hit.found) return { ...hit, matchedBy: 'po_number' };
+    }
+    if (phone) {
+      const hit = await this.findActiveJob(tenantId, (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(phone));
+      if (hit.found) return { ...hit, matchedBy: 'given' };
+    }
+    if (fallback && last10(fallback) !== last10(phone)) {
+      const hit = await this.findActiveJob(tenantId, (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(fallback));
+      if (hit.found) return { ...hit, matchedBy: 'caller_id' };
+    }
+    if (!jobNumber && !poNumber && !phone && !fallback) {
+      return { found: false, message: 'phone is required' };
+    }
+    return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  private async findActiveJob(
+    tenantId: string,
+    matches: (job: ActiveJob) => boolean,
+  ): Promise<LookupByPhoneResult> {
+    const sources: Array<{ key: string; source: 'TOWBOOK' | 'AAA_PORTAL' }> = [
+      { key: `jobs:towbook:${tenantId}`, source: 'TOWBOOK' },
+      { key: `jobs:aaa_portal:${tenantId}`, source: 'AAA_PORTAL' },
+    ];
+    for (const { key, source } of sources) {
+      let raw: string | null = null;
+      try {
+        raw = await this.redis.get(key);
+      } catch (err) {
+        this.logger.warn(`Redis read failed for ${key}: ${(err as Error).message}`);
+        continue;
+      }
+      if (!raw) continue;
+      let jobs: ActiveJob[];
+      try {
+        jobs = JSON.parse(raw) as ActiveJob[];
+      } catch {
+        continue;
+      }
+      const hit = jobs.find(matches);
+      if (hit) {
+        void this.recordEtaCheck(tenantId, source, hit).catch((err) =>
+          this.logger.warn(`eta-check record failed: ${(err as Error).message}`),
+        );
+        return { found: true, source, job: hit };
+      }
+    }
+    return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /** @deprecated 2026-09-10 — kept for the two older call sites; use lookupJob. */
   private async findActiveJobByPhone(tenantId: string, phoneRaw: string): Promise<LookupByPhoneResult> {
     const phone = phoneRaw.replace(/\D/g, '');
     if (!phone) {
