@@ -52,6 +52,8 @@ const DEFAULT_SERVICES = [
 
 export interface LookupByPhoneResult {
   found: boolean;
+  /** 2026-09-10 — which number found the job: the one the caller gave, or their caller ID. */
+  matchedBy?: 'given' | 'caller_id';
   source?: 'TOWBOOK' | 'AAA_PORTAL';
   job?: {
     jobId: string;
@@ -113,7 +115,34 @@ export class AiConnectService {
   }
 
   // ─── lookup-by-phone ────────────────────────────────────────────────
-  async lookupByPhone(tenantId: string, phoneRaw: string): Promise<LookupByPhoneResult> {
+  /**
+   * Look a live job up by the number the caller gave, and — 2026-09-10 — by
+   * the number they are calling from when the given one finds nothing. Seven
+   * of nine not_found lookups in the first ten days of September were callers
+   * reading out a different number than the one on the ticket; every one of
+   * them ended in a transfer that the caller ID would have avoided.
+   */
+  async lookupByPhone(
+    tenantId: string,
+    phoneRaw: string,
+    options: { fallbackPhone?: string | null } = {},
+  ): Promise<LookupByPhoneResult> {
+    const given = this.findActiveJobByPhone(tenantId, phoneRaw);
+    const primary = await given;
+    if (primary.found) return { ...primary, matchedBy: 'given' };
+
+    const fallback = (options.fallbackPhone ?? '').replace(/\D/g, '');
+    const givenDigits = phoneRaw.replace(/\D/g, '');
+    if (fallback && fallback.slice(-10) !== givenDigits.slice(-10)) {
+      const byCallerId = await this.findActiveJobByPhone(tenantId, fallback);
+      if (byCallerId.found) return { ...byCallerId, matchedBy: 'caller_id' };
+    }
+    return primary.message === 'phone is required' && fallback
+      ? { found: false, message: 'No active job found for that phone number' }
+      : primary;
+  }
+
+  private async findActiveJobByPhone(tenantId: string, phoneRaw: string): Promise<LookupByPhoneResult> {
     const phone = phoneRaw.replace(/\D/g, '');
     if (!phone) {
       return { found: false, message: 'phone is required' };

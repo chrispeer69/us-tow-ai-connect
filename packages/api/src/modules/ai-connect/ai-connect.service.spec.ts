@@ -151,6 +151,54 @@ describe('AiConnectService.lookupByPhone', () => {
   });
 });
 
+describe('AiConnectService.lookupByPhone — caller-ID fallback (2026-09-10)', () => {
+  const jobs = JSON.stringify([
+    {
+      jobId: 'TB-7',
+      customerName: 'C',
+      customerPhone: '(614) 948-9826',
+      vehicle: '',
+      status: 'Dispatched',
+      driverName: '',
+      eta: '30 min',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+  ]);
+  const make = () =>
+    new AiConnectService(
+      makeDb() as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+
+  it('finds the job under the caller ID when the number the caller gave is not on the ticket', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '6149489866', { fallbackPhone: '+16149489826' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('TB-7');
+    expect(r.matchedBy).toBe('caller_id');
+  });
+
+  it('reports a match on the given number as given', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '66149489826', { fallbackPhone: '+16140000000' });
+    expect(r.found).toBe(true);
+    expect(r.matchedBy).toBe('given');
+  });
+
+  it('still returns not_found when neither number is on a live job', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '6140000001', { fallbackPhone: '+16140000002' });
+    expect(r.found).toBe(false);
+    expect(r.message).toMatch(/No active job/);
+  });
+
+  it('uses the caller ID alone when no number was captured', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '', { fallbackPhone: '+16149489826' });
+    expect(r.found).toBe(true);
+    expect(r.matchedBy).toBe('caller_id');
+  });
+});
+
 describe('AiConnectService.estimateEta', () => {
   it('falls back to default ETA when no driver pings exist', async () => {
     const svc = new AiConnectService(
