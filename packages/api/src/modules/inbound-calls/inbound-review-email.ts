@@ -38,7 +38,7 @@ export function renderInboundReviewEmailText(input: InboundReviewEmailInput): st
     return lines.join('\n');
   }
   lines.push(
-    `${m.calls} calls · ${m.conversations} conversations · ${m.lookups} lookups · ${m.found} found (${m.foundByCallerId} by caller ID) · ${m.notFound} not found · ${m.transferred} transferred · ${m.messagesTaken} messages · ${m.jobsCreated} new tows · median ${m.medianDurationSec}s`,
+    `${m.calls} calls · ${m.conversations} conversations · ${m.lookups} lookups · ${m.found} found (${m.foundByCallerId} by caller ID, ${m.foundClosed} already closed) · ${m.notFound} not found · ${m.transferred} transferred · ${m.messagesTaken} messages · ${m.jobsCreated} new tows · median ${m.medianDurationSec}s`,
   );
   lines.push('');
   if (analysis) {

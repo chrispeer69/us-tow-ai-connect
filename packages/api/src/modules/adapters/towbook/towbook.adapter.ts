@@ -23,6 +23,19 @@ import { alreadyContainsAiNote, appendAiNotes } from '../../flip-engine/ai-notes
  * See ASSUMPTIONS.md.
  */
 const CHROMIUM_ARGS = ['--no-sandbox', '--disable-dev-shm-usage'];
+// 2026-09-11 — the board's "(3 hrs 5 mins late)" is computed by Towbook's
+// page script from the BROWSER's clock and timezone. Railway runs in UTC, so
+// every ETA looked four hours later than it was: a job whose driver was
+// dispatched six minutes ago read "3 hrs late", Emily apologised for a wait
+// that had not happened, and the flip engine's lateness figures were off by
+// 240 minutes. Proven 2026-09-11 against the live board: the same row read
+// "7:30 AM (3 hrs 9 mins late)" in a UTC context and not late at all in an
+// Eastern one. Towbook shows times in the account's timezone; the browser
+// has to agree with it.
+const BROWSER_CONTEXT = {
+  timezoneId: process.env.TOWBOOK_BROWSER_TIMEZONE || 'America/New_York',
+  locale: 'en-US',
+} as const;
 const SESSION_TTL_SECONDS = 3600;
 const JOBS_CACHE_TTL_SECONDS = 300;
 
@@ -378,7 +391,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     let browser: import('playwright').Browser | undefined;
     try {
       browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
-      const context = await browser.newContext();
+      const context = await browser.newContext(BROWSER_CONTEXT);
       const page = await context.newPage();
 
       await page.goto(this.LOGIN_URL, { waitUntil: 'networkidle', timeout: 30_000 });
@@ -419,7 +432,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     let browser: import('playwright').Browser | undefined;
     try {
       browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
-      const context = await browser.newContext({ storageState });
+      const context = await browser.newContext({ ...BROWSER_CONTEXT, storageState });
       const page = await context.newPage();
 
       await page.goto(this.DISPATCH_URL, { waitUntil: 'networkidle', timeout: 30_000 });
@@ -461,7 +474,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     let browser: import('playwright').Browser | undefined;
     try {
       browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
-      const context = await browser.newContext();
+      const context = await browser.newContext(BROWSER_CONTEXT);
       const page = await context.newPage();
       await page.goto(this.LOGIN_URL, { waitUntil: 'networkidle', timeout: 30_000 });
       await page.fill('#Username', creds.username);
@@ -585,7 +598,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     let browser: import('playwright').Browser | undefined;
     try {
       browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
-      const context = await browser.newContext({ storageState: JSON.parse(stateJson) });
+      const context = await browser.newContext({ ...BROWSER_CONTEXT, storageState: JSON.parse(stateJson) });
       const page = await context.newPage();
 
       const opened = await this.openJobModal(page, tenantId, sourceJobId);
@@ -716,7 +729,7 @@ export class TowbookAdapter implements TowingSoftwareAdapter {
     let browser: import('playwright').Browser | undefined;
     try {
       browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
-      const context = await browser.newContext({ storageState: JSON.parse(stateJson) });
+      const context = await browser.newContext({ ...BROWSER_CONTEXT, storageState: JSON.parse(stateJson) });
       const page = await context.newPage();
 
       const opened = await this.openJobModal(page, tenantId, sourceJobId);

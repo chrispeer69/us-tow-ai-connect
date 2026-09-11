@@ -193,7 +193,7 @@ export class InboundReviewService {
       `  calls answered:            ${m.calls}`,
       `  real conversations:        ${m.conversations}   (no conversation: ${m.noConversation})`,
       `  lookups run:               ${m.lookups}`,
-      `  job found:                 ${m.found}   (of which by caller ID: ${m.foundByCallerId})`,
+      `  job found:                 ${m.found}   (of which by caller ID: ${m.foundByCallerId}; already completed/cancelled: ${m.foundClosed})`,
       `  not found:                 ${m.notFound}`,
       `  transferred to dispatch:   ${m.transferred}   (after found: ${m.transferredAfterFound}, after not found: ${m.transferredAfterNotFound}, no lookup: ${m.transferredNoLookup})`,
       `  messages taken:            ${m.messagesTaken}`,

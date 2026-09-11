@@ -268,6 +268,143 @@ describe('AiConnectService.lookupJob — job number and PO number (2026-09-10)',
     expect((await make().lookupJob(TENANT_ID, {})).message).toBe('phone is required');
     expect((await make().lookupJob(TENANT_ID, { poNumber: '1' })).message).toMatch(/No active job/);
   });
+
+  it('tolerates a stray leading digit on the job number (2026-09-11)', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '1127729' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283304458');
+    expect(r.matchedBy).toBe('job_number');
+    expect(r.jobState).toBe('active');
+  });
+
+  it('a suffix match needs the whole board number; a different number never matches', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '9127729' });
+    // 5+ digit suffix match is allowed; this one matches because the board
+    // number is a suffix. A genuinely different number must not.
+    expect(r.found).toBe(true);
+    expect((await make().lookupJob(TENANT_ID, { jobNumber: '127728' })).found).toBe(false);
+  });
+});
+
+describe('AiConnectService.lookupJob — closed jobs from unified_jobs (2026-09-11)', () => {
+  const liveJobs = JSON.stringify([
+    {
+      jobId: '283304458',
+      callNumber: '127729',
+      poNumber: '',
+      customerName: 'Upreach',
+      customerPhone: '6143385480',
+      vehicle: '2014 Dodge Grand Caravan',
+      status: 'Dispatched',
+      driverName: 'Jerod Berry',
+      eta: 'Unknown',
+      pickup: '',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+  ]);
+  const closedRows = [
+    {
+      sourceJobId: '283261433',
+      status: 'completed',
+      callerPhone: '6145622009',
+      callerName: 'Elmer N.',
+      completedAt: new Date('2026-09-10T15:10:00Z'),
+      updatedAt: new Date('2026-09-10T15:10:00Z'),
+      sourcePayload: {
+        jobId: '283261433',
+        callNumber: '127731',
+        poNumber: '114080001',
+        customerName: 'Elmer N.',
+        customerPhone: '6145622009',
+        vehicle: '2018 CADL XTS Black',
+        status: 'Destination Arrival at 11:02 AM',
+        driverName: 'Dustin DeLauder',
+        eta: '9:11 AM (1 hr 51 mins late)',
+        pickup: '8045 Bedford Ct, Westerville, OH 43082',
+        destination: '7038 Northgate Way, Westerville, OH 43082',
+        lastUpdated: '2026-09-10T15:09:02.281Z',
+      },
+    },
+    {
+      sourceJobId: '283300000',
+      status: 'canceled',
+      callerPhone: '4192969162',
+      callerName: 'Jazmyne Dye',
+      completedAt: null,
+      updatedAt: new Date('2026-09-10T21:31:03.672Z'),
+      sourcePayload: { jobId: '283300000', callNumber: '127750', poNumber: '1062047007', customerPhone: '4192969162', status: 'Cancelled by Motor Club' },
+    },
+  ];
+  function makeClosedDb(rows: unknown[]) {
+    const calls: unknown[] = [];
+    const chain: Record<string, unknown> = {};
+    chain.from = () => chain;
+    chain.where = (w: unknown) => {
+      calls.push(w);
+      return chain;
+    };
+    chain.orderBy = () => chain;
+    chain.limit = () => Promise.resolve(rows);
+    return { calls, select: () => chain };
+  }
+  const make = (db = makeClosedDb(closedRows)) =>
+    new AiConnectService(
+      db as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: liveJobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+
+  it('finds a completed job by phone when the live board has no match', async () => {
+    const r = await make().lookupJob(TENANT_ID, { phone: '6145622009' });
+    expect(r.found).toBe(true);
+    expect(r.jobState).toBe('completed');
+    expect(r.matchedBy).toBe('given');
+    expect(r.closedAt).toBe('2026-09-10T15:10:00.000Z');
+    expect(r.job?.status).toBe('Destination Arrival at 11:02 AM');
+    expect(r.job?.driverName).toBe('Dustin DeLauder');
+    expect(r.job?.callNumber).toBe('127731');
+  });
+
+  it('finds a completed job by PO and by job number', async () => {
+    expect((await make().lookupJob(TENANT_ID, { poNumber: '114080001' })).matchedBy).toBe('po_number');
+    const byCall = await make().lookupJob(TENANT_ID, { jobNumber: '127731' });
+    expect(byCall.matchedBy).toBe('job_number');
+    expect(byCall.jobState).toBe('completed');
+  });
+
+  it('reports a cancelled job as canceled, and by caller ID', async () => {
+    const r = await make().lookupJob(TENANT_ID, { phone: '6140000000', fallbackPhone: '+14192969162' });
+    expect(r.found).toBe(true);
+    expect(r.jobState).toBe('canceled');
+    expect(r.matchedBy).toBe('caller_id');
+    expect(r.closedAt).toBe('2026-09-10T21:31:03.672Z');
+  });
+
+  it('never consults closed jobs when the live board matches', async () => {
+    const db = makeClosedDb(closedRows);
+    const r = await make(db).lookupJob(TENANT_ID, { phone: '6143385480' });
+    expect(r.jobState).toBe('active');
+    expect(r.job?.jobId).toBe('283304458');
+    expect(db.calls).toHaveLength(0);
+  });
+
+  it('still returns not_found when nothing closed matches either', async () => {
+    const r = await make().lookupJob(TENANT_ID, { phone: '6149999999' });
+    expect(r.found).toBe(false);
+    expect(r.message).toMatch(/No active job/);
+  });
+
+  it('survives a database error on the closed-job path', async () => {
+    const chain: Record<string, unknown> = {};
+    chain.from = () => chain;
+    chain.where = () => chain;
+    chain.orderBy = () => chain;
+    chain.limit = () => Promise.reject(new Error('boom'));
+    const r = await make({ calls: [], select: () => chain } as never).lookupJob(TENANT_ID, { phone: '6145622009' });
+    expect(r.found).toBe(false);
+  });
 });
 
 describe('AiConnectService.estimateEta', () => {

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { and, eq, asc, desc, sql } from 'drizzle-orm';
+import { and, eq, asc, desc, gt, inArray, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
@@ -12,6 +12,7 @@ import {
   routingRules,
   smartActions,
   tenants,
+  unifiedJobs,
 } from '../../db/schema';
 import type {
   DispatchRequestCreate,
@@ -60,6 +61,16 @@ export interface LookupByPhoneResult {
   /** 2026-09-10 — what found the job: the phone the caller gave, their caller ID, our job number, or the motor-club PO. */
   matchedBy?: 'given' | 'caller_id' | 'job_number' | 'po_number';
   source?: 'TOWBOOK' | 'AAA_PORTAL';
+  /**
+   * 2026-09-11 — 'active' is the live board. 'completed' / 'canceled' come
+   * from our own unified_jobs history when the board has no match: a customer
+   * ringing about a tow that finished that morning used to be told "I can't
+   * find it" and offered dispatch, which is the wrong answer to "did my car
+   * get there?".
+   */
+  jobState?: 'active' | 'completed' | 'canceled';
+  /** ISO timestamp of when the job left the live board (closed jobs only). */
+  closedAt?: string;
   job?: {
     jobId: string;
     customerName: string;
@@ -68,11 +79,18 @@ export interface LookupByPhoneResult {
     status: string;
     driverName: string;
     eta: string;
+    pickup?: string;
     destination: string;
     lastUpdated: string;
+    callNumber?: string;
+    poNumber?: string;
   };
   message?: string;
 }
+
+/** How far back the closed-job fallback looks. A day covers "it was picked up this morning". */
+const CLOSED_JOB_LOOKBACK_HOURS = 24;
+const CLOSED_JOB_SCAN_LIMIT = 300;
 
 @Injectable()
 export class AiConnectService {
@@ -151,32 +169,134 @@ export class AiConnectService {
     const phone = (keys.phone ?? '').replace(/\D/g, '');
     const fallback = (keys.fallbackPhone ?? '').replace(/\D/g, '');
 
+    // The matchers, in priority order. Each is tried against the live board
+    // first; only when every one misses do we look at closed jobs, so a live
+    // job can never be shadowed by yesterday's.
+    const matchers: Array<{ by: NonNullable<LookupByPhoneResult['matchedBy']>; test: (j: ActiveJob) => boolean }> = [];
     if (jobNumber) {
-      const hit = await this.findActiveJob(tenantId, (j) => {
-        const call = (j.callNumber ?? '').replace(/\D/g, '');
-        return (call !== '' && call === jobNumber) || j.jobId === jobNumber;
+      matchers.push({
+        by: 'job_number',
+        test: (j) => {
+          const call = (j.callNumber ?? '').replace(/\D/g, '');
+          // A stray leading digit ("one two seven seven four eight" heard as
+          // 1127748) must not miss — a Roadside call number is six digits.
+          return (
+            (call !== '' && (call === jobNumber || (call.length >= 5 && jobNumber.length > call.length && jobNumber.endsWith(call)))) ||
+            j.jobId === jobNumber
+          );
+        },
       });
-      if (hit.found) return { ...hit, matchedBy: 'job_number' };
     }
     if (poNumber) {
-      const hit = await this.findActiveJob(tenantId, (j) => {
-        const po = (j.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-        return po !== '' && (po === poNumber || (poNumber.length >= 6 && po.endsWith(poNumber)));
+      matchers.push({
+        by: 'po_number',
+        test: (j) => {
+          const po = (j.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+          return po !== '' && (po === poNumber || (poNumber.length >= 6 && po.endsWith(poNumber)));
+        },
       });
-      if (hit.found) return { ...hit, matchedBy: 'po_number' };
     }
     if (phone) {
-      const hit = await this.findActiveJob(tenantId, (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(phone));
-      if (hit.found) return { ...hit, matchedBy: 'given' };
+      matchers.push({ by: 'given', test: (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(phone) });
     }
     if (fallback && last10(fallback) !== last10(phone)) {
-      const hit = await this.findActiveJob(tenantId, (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(fallback));
-      if (hit.found) return { ...hit, matchedBy: 'caller_id' };
+      matchers.push({ by: 'caller_id', test: (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(fallback) });
     }
-    if (!jobNumber && !poNumber && !phone && !fallback) {
+    if (matchers.length === 0) {
       return { found: false, message: 'phone is required' };
     }
+    for (const m of matchers) {
+      const hit = await this.findActiveJob(tenantId, m.test);
+      if (hit.found) return { ...hit, matchedBy: m.by, jobState: 'active' };
+    }
+    const closed = await this.findRecentlyClosedJob(tenantId, matchers);
+    if (closed) return closed;
     return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * 2026-09-11 — the live cache is active jobs only; a job that completed an
+   * hour ago is not findable by any key. Six not_found lookups in the first
+   * ten days of September were customers ringing about a tow that had
+   * already finished. The job-poller keeps every job it has ever seen in
+   * unified_jobs with the last board row in source_payload, so the same
+   * matchers run over the last day of closed rows. No eta-check row is
+   * recorded for these — nobody is waiting on a truck.
+   */
+  private async findRecentlyClosedJob(
+    tenantId: string,
+    matchers: Array<{ by: NonNullable<LookupByPhoneResult['matchedBy']>; test: (j: ActiveJob) => boolean }>,
+  ): Promise<LookupByPhoneResult | null> {
+    const since = new Date(Date.now() - CLOSED_JOB_LOOKBACK_HOURS * 60 * 60 * 1000);
+    let rows: Array<{
+      sourceJobId: string;
+      status: string;
+      callerPhone: string | null;
+      callerName: string | null;
+      sourcePayload: unknown;
+      completedAt: Date | null;
+      updatedAt: Date;
+    }>;
+    try {
+      rows = await this.db
+        .select({
+          sourceJobId: unifiedJobs.sourceJobId,
+          status: unifiedJobs.status,
+          callerPhone: unifiedJobs.callerPhone,
+          callerName: unifiedJobs.callerName,
+          sourcePayload: unifiedJobs.sourcePayload,
+          completedAt: unifiedJobs.completedAt,
+          updatedAt: unifiedJobs.updatedAt,
+        })
+        .from(unifiedJobs)
+        .where(
+          and(
+            eq(unifiedJobs.tenantId, tenantId),
+            inArray(unifiedJobs.status, ['completed', 'canceled']),
+            gt(unifiedJobs.updatedAt, since),
+          ),
+        )
+        .orderBy(desc(unifiedJobs.updatedAt))
+        .limit(CLOSED_JOB_SCAN_LIMIT);
+    } catch (err) {
+      this.logger.warn(`closed-job lookup failed: ${(err as Error).message}`);
+      return null;
+    }
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const asJob = (r: (typeof rows)[number]): ActiveJob => {
+      const p = (r.sourcePayload && typeof r.sourcePayload === 'object' ? r.sourcePayload : {}) as Partial<ActiveJob>;
+      return {
+        jobId: p.jobId || r.sourceJobId,
+        customerName: p.customerName || r.callerName || '',
+        customerPhone: (p.customerPhone || r.callerPhone || '').replace(/\D/g, ''),
+        vehicle: p.vehicle || '',
+        status: p.status || r.status,
+        driverName: p.driverName || '',
+        eta: p.eta || 'Unknown',
+        pickup: p.pickup || '',
+        destination: p.destination || '',
+        lastUpdated: p.lastUpdated || r.updatedAt.toISOString(),
+        callNumber: p.callNumber || '',
+        poNumber: p.poNumber || '',
+      };
+    };
+    for (const m of matchers) {
+      for (const r of rows) {
+        const job = asJob(r);
+        if (!m.test(job)) continue;
+        const state: 'completed' | 'canceled' = r.status === 'canceled' ? 'canceled' : 'completed';
+        return {
+          found: true,
+          source: 'TOWBOOK',
+          matchedBy: m.by,
+          jobState: state,
+          closedAt: (r.completedAt ?? r.updatedAt).toISOString(),
+          job,
+        };
+      }
+    }
+    return null;
   }
 
   private async findActiveJob(

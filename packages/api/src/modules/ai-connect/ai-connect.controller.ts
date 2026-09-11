@@ -154,7 +154,16 @@ export class AiConnectController {
     if (!result.found) {
       return { status: 'not_found', message: result.message };
     }
-    return { status: 'success', source: result.source, data: result.job, matched_by: result.matchedBy };
+    // 2026-09-11 — job_state tells Emily whether this is a live tow or one
+    // that already finished (see AiConnectService.findRecentlyClosedJob).
+    return {
+      status: 'success',
+      source: result.source,
+      data: result.job,
+      matched_by: result.matchedBy,
+      job_state: result.jobState ?? 'active',
+      ...(result.closedAt ? { closed_at: result.closedAt } : {}),
+    };
   }
 
   /**

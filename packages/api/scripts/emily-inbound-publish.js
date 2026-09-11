@@ -55,7 +55,7 @@ const TOOLS = [
     type: 'custom',
     name: 'lookup_job_by_phone',
     description:
-      "Look up the caller's active tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number. Call it as soon as they give you one of those — do not collect all three. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number) and matched_by.",
+      "Look up the caller's tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number — or with NO arguments at all, which checks the number they are calling from. Call it with no arguments first the moment you know they are asking about an existing tow; only ask for a number if that misses. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number), matched_by, and job_state: 'active' for a live tow, 'completed' or 'canceled' (with closed_at) for one that finished in the last day.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/lookup/by-phone',
     // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
     // arguments into query_params, only the request body. The old GET config
@@ -82,9 +82,13 @@ const TOOLS = [
         job_number: { type: 'string', description: 'Our own Roadside job / call / ticket number, digits only, e.g. 127716. Usually only an employee has this.' },
       },
     },
-    speak_during_execution: true,
+    // 2026-09-11 — silent. The lookup answers in ~200 ms, faster than Emily
+    // can say "let me pull that up", so with speak_during_execution the
+    // filler was cut in half around the result on every single call:
+    // "Let / [result] / me pull that up for you now.Got it —". A beat of
+    // silence and then the answer is what a dispatcher sounds like.
+    speak_during_execution: false,
     speak_after_execution: true,
-    execution_message_description: 'Tell the caller you are pulling it up now, in a few words.',
   },
   {
     type: 'custom',
@@ -284,8 +288,24 @@ const MUST_CONTAIN = [
   "I'm an automated assistant",
 ];
 
-/** Agent-level delivery settings, published alongside the prompt (see --apply). */
-const AGENT_PACING = { voice_speed: 0.92, responsiveness: 0.6, interruption_sensitivity: 0.9 };
+/**
+ * Agent-level delivery settings, published alongside the prompt (see --apply).
+ *
+ * 2026-09-11: interruption_sensitivity 0.9 -> 1. On 09-10 she finished the
+ * greeting and her sentences over the caller on most short calls ("A: Are you
+ * / U: Yeah. / A: checking on a / U: Better talk to a live person") — a "yeah"
+ * was being treated as a backchannel rather than the caller taking the turn.
+ * reminder_trigger_ms 10000 -> 20000: she was re-asking for the phone number
+ * ("Whenever you're ready…") while callers were still finding it, the exact
+ * opposite of the "leave room" rule.
+ */
+const AGENT_PACING = {
+  voice_speed: 0.92,
+  responsiveness: 0.6,
+  interruption_sensitivity: 1,
+  reminder_trigger_ms: 20000,
+  reminder_max_count: 1,
+};
 
 /** Remove the USTD toggle markers and normalise line endings. */
 function stripMarkers(raw) {

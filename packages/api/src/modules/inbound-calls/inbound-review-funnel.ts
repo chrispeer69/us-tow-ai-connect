@@ -58,6 +58,8 @@ export interface ClassifiedInboundCall {
   lookupFound: boolean;
   lookupNotFound: boolean;
   matchedBy: string | null;
+  /** 2026-09-11 — 'active' | 'completed' | 'canceled' from the lookup result, null if no lookup found anything. */
+  jobState: string | null;
   transferred: boolean;
   transferAfter: 'found' | 'not_found' | 'no_lookup' | null;
   transferReason: string;
@@ -76,6 +78,8 @@ export interface InboundFunnelMetrics {
   found: number;
   notFound: number;
   foundByCallerId: number;
+  /** Lookups that matched a job which had already completed or been cancelled (unified_jobs fallback). */
+  foundClosed: number;
   transferred: number;
   transferredAfterFound: number;
   transferredAfterNotFound: number;
@@ -154,17 +158,22 @@ export function classifyInboundCall(call: RetellInboundCall): ClassifiedInboundC
   const lookupKeys = new Set<string>();
   for (const inv of lookupCalls) {
     const args = safeJson(inv.arguments) ?? {};
-    for (const k of ['phone', 'po_number', 'job_number']) if (args[k]) lookupKeys.add(k);
+    let any = false;
+    for (const k of ['phone', 'po_number', 'job_number']) if (args[k]) { lookupKeys.add(k); any = true; }
+    // 2026-09-11 — an argument-less call is the silent caller-ID check.
+    if (!any) lookupKeys.add('caller_id');
   }
   let lookupFound = false;
   let lookupNotFound = false;
   let matchedBy: string | null = null;
+  let jobState: string | null = null;
   for (const r of results) {
     const body = safeJson(r.content);
     if (!body) continue;
     if (body.status === 'success' && body.source) {
       lookupFound = true;
       if (typeof body.matched_by === 'string') matchedBy = body.matched_by;
+      if (typeof body.job_state === 'string') jobState = body.job_state;
     } else if (body.status === 'not_found') {
       lookupNotFound = true;
     }
@@ -201,6 +210,7 @@ export function classifyInboundCall(call: RetellInboundCall): ClassifiedInboundC
     lookupFound,
     lookupNotFound: lookupNotFound && !lookupFound,
     matchedBy,
+    jobState,
     transferred,
     transferAfter: transferred ? (lookupFound ? 'found' : lookupNotFound ? 'not_found' : 'no_lookup') : null,
     transferReason: String(custom.transfer_reason ?? ''),
@@ -228,6 +238,7 @@ export function computeInboundFunnel(calls: ClassifiedInboundCall[]): InboundFun
     found: count((c) => c.lookupFound),
     notFound: count((c) => c.lookupNotFound),
     foundByCallerId: count((c) => c.matchedBy === 'caller_id'),
+    foundClosed: count((c) => c.lookupFound && (c.jobState === 'completed' || c.jobState === 'canceled')),
     transferred: count((c) => c.transferred),
     transferredAfterFound: count((c) => c.transferAfter === 'found'),
     transferredAfterNotFound: count((c) => c.transferAfter === 'not_found'),
