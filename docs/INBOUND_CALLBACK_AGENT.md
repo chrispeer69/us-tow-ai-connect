@@ -152,7 +152,7 @@ because it points customers at this number:
 
 Now that the number answers properly, that line can ship.
 
-## 2026-09-11 — the 09-10 review, actioned (agent v19)
+## 2026-09-11 — the 09-10 review, actioned (agent v18, published 06:53 ET; v17 is the rollback: PATCH the 844 inbound binding to agent_version 17)
 
 The first daily inbound review (44 calls on 2026-09-10) was checked finding by
 finding against the Retell transcripts and the production data. What shipped:
