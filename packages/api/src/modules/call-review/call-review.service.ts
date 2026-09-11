@@ -135,7 +135,8 @@ export class CallReviewService {
    * this catches daily is defects and sudden regressions, which need no
    * statistical patience.
    */
-  @Cron('0 15 6 * * *', { name: 'call-review-daily', timeZone: 'America/New_York' })
+  // 2026-09-10 — Chris: all three daily reports (inbound, outbound, crash) at 6 AM ET.
+  @Cron('0 0 6 * * *', { name: 'call-review-daily', timeZone: 'America/New_York' })
   async dailyCron(): Promise<void> {
     if (process.env.CALL_REVIEW_ENABLED === 'false') return;
 
