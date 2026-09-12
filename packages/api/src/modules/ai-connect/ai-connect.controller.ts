@@ -172,6 +172,10 @@ export class AiConnectController {
       matched_by: result.matchedBy,
       job_state: result.jobState ?? 'active',
       ...(result.closedAt ? { closed_at: result.closedAt } : {}),
+      // 2026-09-12 — somebody already rang about this job in an earlier
+      // conversation. The prompt skips the thirty-minute line and transfers.
+      repeat_call: result.repeatCall === true,
+      prior_calls_about_this_job: result.priorCalls ?? 0,
     };
   }
 

@@ -122,6 +122,59 @@ describe('AiConnectService.lookupByPhone', () => {
     expect(r.job?.jobId).toBe('TB-1');
   });
 
+  it('flags a repeat caller when an earlier conversation already asked about this job', async () => {
+    const jobs = JSON.stringify([
+      { jobId: 'TB-1', customerName: 'A', customerPhone: '6141112222', vehicle: '', status: 'Dispatched', driverName: '', eta: '', destination: '', lastUpdated: '' },
+    ]);
+    const priorRow = (minutesAgo: number) => ({
+      calls: 2,
+      lastCalledAt: new Date(Date.now() - minutesAgo * 60 * 1000),
+    });
+    const dbWith = (rows: unknown[]) => {
+      const db = makeDb();
+      const chain: Record<string, unknown> = {};
+      chain.from = () => chain;
+      chain.where = () => chain;
+      chain.orderBy = () => chain;
+      chain.limit = () => Promise.resolve(rows);
+      (db as unknown as { select: unknown }).select = () => chain;
+      return db;
+    };
+
+    // Earlier conversation, 40 minutes ago: repeat.
+    let svc = new AiConnectService(
+      dbWith([priorRow(40)]) as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+    let r = await svc.lookupByPhone(TENANT_ID, '6141112222');
+    expect(r.found).toBe(true);
+    expect(r.repeatCall).toBe(true);
+    expect(r.priorCalls).toBe(2);
+
+    // Same conversation (Emily's caller-ID lookup 2 minutes ago): NOT a repeat.
+    svc = new AiConnectService(
+      dbWith([priorRow(2)]) as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+    r = await svc.lookupByPhone(TENANT_ID, '6141112222');
+    expect(r.repeatCall).toBe(false);
+
+    // Nobody has rung before: NOT a repeat.
+    svc = new AiConnectService(
+      dbWith([]) as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+    r = await svc.lookupByPhone(TENANT_ID, '6141112222');
+    expect(r.repeatCall).toBe(false);
+    expect(r.priorCalls).toBe(0);
+  });
+
   it('falls back to AAA when Towbook has no match', async () => {
     const aaa = JSON.stringify([
       {
@@ -346,7 +399,18 @@ describe('AiConnectService.lookupJob — closed jobs from unified_jobs (2026-09-
     };
     chain.orderBy = () => chain;
     chain.limit = () => Promise.resolve(rows);
-    return { calls, select: () => chain };
+    // The eta_check_calls prior-read (2026-09-12) is a select too; it is
+    // not a closed-job query, so it neither counts nor returns closed rows.
+    const quiet: Record<string, unknown> = {};
+    quiet.from = () => quiet;
+    quiet.where = () => quiet;
+    quiet.orderBy = () => quiet;
+    quiet.limit = () => Promise.resolve([]);
+    return {
+      calls,
+      select: (shape?: unknown) =>
+        shape && typeof shape === 'object' && 'calls' in (shape as object) ? quiet : chain,
+    };
   }
   const make = (db = makeClosedDb(closedRows)) =>
     new AiConnectService(

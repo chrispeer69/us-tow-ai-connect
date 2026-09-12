@@ -240,3 +240,24 @@ single `serviceType` enum error, not four `Required`s. Then the first live
   from the same stranded caller after the failed booking.
 - 3 completed/cancelled jobs the caller disputed; 3 unintelligible; rest
   correct per WHEN TO TRANSFER (money, insurance, complaint).
+
+## 2026-09-12 (afternoon) — repeat callers auto-forward; motor-club availability stays a transfer
+
+Chris, on the 47-transfer breakdown: "MC availability — we would need to
+build out a knowledge pack to answer those calls — for now, transfer. Add
+repeat caller escalation — those should auto forward to dispatch."
+
+- **Motor-club availability** ("can you take this one", no PO): unchanged,
+  transfer. The prompt's THREE section now says so explicitly so Emily does
+  not try to answer or take it as a message. Answering these needs a
+  knowledge pack (service area, rates policy, capacity) that does not exist
+  yet.
+- **Repeat callers**: the lookup now returns `repeat_call: true` when an
+  open `eta_check_calls` row for that (job, phone) shows an earlier call
+  more than 10 minutes ago — i.e. a previous conversation, not Emily's own
+  second lookup in this one. Read BEFORE this call is recorded. Also
+  `prior_calls_about_this_job`. The prompt (new REPEAT CALLER section,
+  applied to ONE and THREE, and listed under WHEN TO TRANSFER) skips the
+  thirty-minute line entirely for a repeat — by flag or by what the caller
+  says — acknowledges it once and transfers. 09-11 had ~10 of these (PO
+  114136078 ×3, 614-378-0387 ×4, 740-817-2235 ×3).

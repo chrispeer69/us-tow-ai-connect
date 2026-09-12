@@ -32,6 +32,8 @@ const DEFAULT_ETA_MINS = 45;
 // Emily may call the lookup more than once in a single conversation. Alerting
 // on each one teaches Chris to ignore the notification.
 const ALERT_QUIET_MINUTES = 15;
+/** A lookup this soon after the last one is the same conversation, not a repeat caller. */
+const REPEAT_CALL_GAP_MINUTES = 10;
 // Pings older than this are ignored when picking "the nearest available
 // driver" — a stale ping from 2 hours ago is worse than no ping at all
 // because it makes the agent quote a confidently-wrong number.
@@ -72,6 +74,16 @@ export interface LookupByPhoneResult {
   jobState?: 'active' | 'completed' | 'canceled';
   /** ISO timestamp of when the job left the live board (closed jobs only). */
   closedAt?: string;
+  /**
+   * 2026-09-12 — true when somebody already rang about this job in an
+   * EARLIER conversation (an open eta_check_calls row whose last call was
+   * more than REPEAT_CALL_GAP_MINUTES ago). Chris: repeat callers who have
+   * already heard the thirty-minute line "should auto forward to dispatch".
+   * Two lookups inside one conversation do not count as a repeat.
+   */
+  repeatCall?: boolean;
+  /** How many earlier calls that open row had recorded (0 when none). */
+  priorCalls?: number;
   job?: {
     jobId: string;
     customerName: string;
@@ -325,10 +337,13 @@ export class AiConnectService {
       }
       const hit = jobs.find(matches);
       if (hit) {
+        // Read the counter BEFORE recording this call, so "repeat" means an
+        // earlier conversation and not the lookup Emily ran ten seconds ago.
+        const prior = await this.priorEtaChecks(tenantId, hit);
         void this.recordEtaCheck(tenantId, source, hit).catch((err) =>
           this.logger.warn(`eta-check record failed: ${(err as Error).message}`),
         );
-        return { found: true, source, job: hit };
+        return { found: true, source, job: hit, repeatCall: prior.repeat, priorCalls: prior.calls };
       }
     }
     return { found: false, message: 'No active job found for that phone number' };
@@ -375,6 +390,37 @@ export class AiConnectService {
       }
     }
     return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * Has anyone already rung about this job in an earlier conversation?
+   * Never throws — a counter read must not cost a stranded caller the answer.
+   */
+  private async priorEtaChecks(
+    tenantId: string,
+    job: ActiveJob,
+  ): Promise<{ repeat: boolean; calls: number }> {
+    try {
+      const [row] = await this.db
+        .select({ calls: etaCheckCalls.calls, lastCalledAt: etaCheckCalls.lastCalledAt })
+        .from(etaCheckCalls)
+        .where(
+          and(
+            eq(etaCheckCalls.tenantId, tenantId),
+            eq(etaCheckCalls.jobId, job.jobId),
+            eq(etaCheckCalls.customerPhone, job.customerPhone),
+            sql`${etaCheckCalls.handledAt} is null`,
+          ),
+        )
+        .orderBy(desc(etaCheckCalls.lastCalledAt))
+        .limit(1);
+      if (!row) return { repeat: false, calls: 0 };
+      const gapMs = Date.now() - new Date(row.lastCalledAt).getTime();
+      return { repeat: gapMs > REPEAT_CALL_GAP_MINUTES * 60 * 1000, calls: row.calls };
+    } catch (err) {
+      this.logger.warn(`eta-check prior read failed: ${(err as Error).message}`);
+      return { repeat: false, calls: 0 };
+    }
   }
 
   /**

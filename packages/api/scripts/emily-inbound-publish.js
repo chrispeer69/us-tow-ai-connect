@@ -55,7 +55,7 @@ const TOOLS = [
     type: 'custom',
     name: 'lookup_job_by_phone',
     description:
-      "Look up the caller's tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number — or with NO arguments at all, which checks the number they are calling from. Call it with no arguments first the moment you know they are asking about an existing tow; only ask for a number if that misses. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number), matched_by, and job_state: 'active' for a live tow, 'completed' or 'canceled' (with closed_at) for one that finished in the last day.",
+      "Look up the caller's tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number — or with NO arguments at all, which checks the number they are calling from. Call it with no arguments first the moment you know they are asking about an existing tow; only ask for a number if that misses. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number), matched_by, and job_state: 'active' for a live tow, 'completed' or 'canceled' (with closed_at) for one that finished in the last day. Also repeat_call: true when someone already rang about this job in an earlier call — they have heard the update before, so do not repeat it: acknowledge and transfer to dispatch.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/lookup/by-phone',
     // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
     // arguments into query_params, only the request body. The old GET config
