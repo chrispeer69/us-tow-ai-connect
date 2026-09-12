@@ -182,3 +182,61 @@ Publish: `node scripts/emily-inbound-publish.js --apply` after the API deploy
 (the closed-job `job_state` field and the timezone fix live server-side). The
 daily review now reports "already closed" matches and counts an argument-less
 lookup as a `caller_id` key.
+
+## 2026-09-12 — create_tow_job had never worked (silent-integration incident 7)
+
+Chris, reading the 09-11 daily review (85 calls, 47 transferred, 1 new tow
+attempted, 0 booked): "Emily is first and foremost a dispatcher — her first
+job is to identify new tow requests and get them set up."
+
+**Finding.** Every `create_tow_job` call since the tool was built on 08-23 —
+four of four (08-23 Chris's own test, 08-24, 09-11 19:47, 09-12 07:16) —
+returned HTTP 400 `Validation Failed` with `Required` on `customer`,
+`vehicle`, `serviceType` and `pickup`. All four fields were in the call.
+Cause: Retell wraps every custom-tool POST as `{ call, name, args }`; the
+tool pointed straight at `api.ustowdispatch.com/v1/jobs/phone-intake`, which
+reads the flat body. Same bug that broke `lookup_job_by_phone` and
+`take_dispatch_message` (fixed 08-25 with `UnwrapRetellArgsPipe`); this tool
+was never moved behind that pipe because it did not go through our API. The
+08-23 "verified end to end" note was a hand-posted flat body, not a Retell
+call.
+
+**Fix (this commit).**
+- `POST /v1/ai-connect/create-tow-job` — unwraps, forwards to USTD with the
+  server-side `USTD_API_KEY` (the key is no longer in the Retell tool
+  config), fills `callReference` from the call context when the LLM omits
+  it, sends `Idempotency-Key`, strips Retell's `execution_message`. Always
+  answers 200 with `status: 'success' | 'error'` so Emily can act on it;
+  a USTD rejection is logged with the decoded field errors
+  (`describeUstdErrors` resolves USTD's flattened error envelope).
+- On success: stamps `inbound_call_logs.ustd_job_number` (upsert of a stub
+  row the call_ended webhook later fills in) and pushes "New tow booked by
+  Emily — #N" to tenant admins (same channel as urgent dispatch messages).
+  This is the office notification that did not exist before.
+- Tool config: URL → our API, `X-Tenant-API-Key`, timeout 20 s, description
+  says `status: 'error'` means NOT booked.
+- Prompt: closing block treats `status "error"` as a failure; roll/steer/
+  brake and keys are two separate questions; drivetrain is the one short
+  question, not a list (both stacked on the 09-11 intake).
+- Tests: `create-tow-job.spec.ts` replays the exact 09-11 payload and 400
+  body.
+
+**Verify after deploy:** POST a Retell-shaped body with `serviceType:
+'zzz'` to the new route with the Roadside tenant key — the answer must be a
+single `serviceType` enum error, not four `Required`s. Then the first live
+`create_tow_job` result with `status: success` and a job on the USTD board.
+
+**Transfers (47 of 78 on 09-11), where they actually came from:**
+- ~13 motor-club reps: availability / "can you take this" with no PO
+  (Honk, Allstate Secondary, TraxNOW) — policy says transfer; Chris to
+  decide whether Emily should take these as a structured message.
+- ~12 asked for a person by name of role ("dispatch", "agent",
+  "representative", "customer service") — v18's transfer-on-first-ask rule
+  from the 09-10 review, working as designed.
+- ~10 repeat callers on the same job (PO 114136078 ×3, 614-378-0387 ×4,
+  740-817-2235 ×3, 614-202-5059 ×5) who had already heard the thirty-minute
+  line — prompt gap: no "you've already been told that" escalation.
+- 4 new-tow callers: 1 unsafe (correct), 1 the failed booking, 2 follow-ups
+  from the same stranded caller after the failed booking.
+- 3 completed/cancelled jobs the caller disputed; 3 unintelligible; rest
+  correct per WHEN TO TRANSFER (money, insurance, complaint).

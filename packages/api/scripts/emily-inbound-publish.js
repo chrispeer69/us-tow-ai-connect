@@ -94,15 +94,17 @@ const TOOLS = [
     type: 'custom',
     name: 'create_tow_job',
     description:
-      'Create the tow job in US Tow Dispatch. Call this ONCE, after you have the callback number, the location, what happened and the vehicle. Returns the job number and the price.',
-    url: 'https://api.ustowdispatch.com/v1/jobs/phone-intake',
+      "Create the tow job in US Tow Dispatch. Call this ONCE, after you have the callback number, the location, what happened and the vehicle. Returns status 'success' with job_number, price and a confirmation line to say — or status 'error', which means the job was NOT booked: do not tell them they are booked, get them to dispatch.",
+    // 2026-09-12 — via our own API, not straight to USTD. Retell wraps every
+    // custom-tool POST as { call, name, args }; USTD's phone-intake reads
+    // the flat body, so every booking since 08-23 (4 of 4) was a 400
+    // "Required" on fields that were sitting one level down. The proxy
+    // unwraps, holds the USTD key server-side, stamps the job number on the
+    // call, and pushes "New tow booked" to the office.
+    url: 'https://api.ustowaiconnect.com/v1/ai-connect/create-tow-job',
     method: 'POST',
-    timeout_ms: 15000,
-    headers: {
-      authorization:
-        'Bearer tc_live_a6b58fe38de0_e3bf14d98e3ce636af2635d677bd03364167e8244d753a971b45db741360e838',
-      'content-type': 'application/json',
-    },
+    timeout_ms: 20000,
+    headers: { 'X-Tenant-API-Key': TENANT_API_KEY, 'content-type': 'application/json' },
     parameters: {
       type: 'object',
       required: ['customer', 'vehicle', 'serviceType', 'pickup'],

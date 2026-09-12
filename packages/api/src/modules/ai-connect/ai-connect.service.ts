@@ -8,6 +8,7 @@ import {
   dispatchRequests,
   dispatchMessages,
   etaCheckCalls,
+  inboundCallLogs,
   interactionLogs,
   routingRules,
   smartActions,
@@ -542,6 +543,167 @@ export class AiConnectService {
     };
   }
 
+  // ─── create tow job (US Tow Dispatch) ──────────────────────────────
+  /**
+   * Emily books a brand-new tow into US Tow Dispatch.
+   *
+   * Proxied here rather than Retell calling USTD's phone-intake route
+   * directly, because Retell wraps every custom-tool POST body as
+   * `{ call, name, args }` and USTD reads the flat body. 2026-09-12:
+   * every create_tow_job since the tool was built on 08-23 — four of
+   * four, one of them that same morning — came back HTTP 400 "Required"
+   * on customer / vehicle / serviceType / pickup. The fields were all
+   * there, one level down. Same bug as lookup_job_by_phone and
+   * take_dispatch_message (silent-integration incidents 1 and 2); this
+   * is incident 7. The route unwraps, forwards with the server-side USTD
+   * key (which no longer has to sit in the Retell tool config), stamps
+   * the job number onto the inbound call, and tells the office.
+   *
+   * Always resolves — never throws — because Retell turns a thrown error
+   * into an opaque "HTTP 500" string Emily cannot reason about. A
+   * `status: 'error'` result is what the prompt's "if create_tow_job
+   * fails, do NOT tell them they are booked" line keys on.
+   */
+  async createTowJob(
+    tenantId: string,
+    input: { args: Record<string, unknown>; providerCallId: string | null; fromNumber: string | null },
+  ): Promise<
+    | {
+        status: 'success';
+        job_number: string | null;
+        job_id: string | null;
+        price: string | null;
+        vin_required_at_pickup: boolean;
+        confirmation: string;
+      }
+    | { status: 'error'; http_status?: number; message: string; errors?: string[] }
+  > {
+    const apiKey = process.env.USTD_API_KEY;
+    if (!apiKey) {
+      this.logger.error('create_tow_job: USTD_API_KEY is not set — cannot book a tow');
+      return { status: 'error', message: 'Booking is not configured on this line.' };
+    }
+    const base = (process.env.USTD_API_BASE_URL ?? 'https://api.ustowdispatch.com').replace(/\/$/, '');
+
+    // Retell adds execution_message to args when speak_during_execution
+    // is on; USTD's schema does not know it. callReference is the
+    // idempotency key — fill it from the call context when the LLM forgot.
+    const { execution_message: _spoken, ...payload } = input.args as Record<string, unknown> & {
+      execution_message?: unknown;
+    };
+    if (!payload.callReference && input.providerCallId) payload.callReference = input.providerCallId;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    let res: Response;
+    let text = '';
+    try {
+      res = await fetch(`${base}/v1/jobs/phone-intake`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
+          ...(input.providerCallId ? { 'idempotency-key': input.providerCallId } : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      text = await res.text();
+    } catch (err) {
+      this.logger.error(`create_tow_job: US Tow Dispatch unreachable: ${(err as Error).message}`);
+      return { status: 'error', message: 'US Tow Dispatch did not answer.' };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = null;
+    }
+
+    if (!res.ok) {
+      const errors = describeUstdErrors(body);
+      this.logger.error(
+        `create_tow_job: USTD HTTP ${res.status} for call ${input.providerCallId ?? '?'}: ${
+          errors.length ? errors.join('; ') : text.slice(0, 400)
+        }`,
+      );
+      return {
+        status: 'error',
+        http_status: res.status,
+        message: 'US Tow Dispatch rejected the booking.',
+        ...(errors.length ? { errors } : {}),
+      };
+    }
+
+    const job = (body ?? {}) as Record<string, unknown>;
+    const jobNumber = job.jobNumber != null ? String(job.jobNumber) : null;
+    const jobId = typeof job.id === 'string' ? job.id : null;
+    const quote = (job.rateQuote ?? null) as { totalCents?: unknown } | null;
+    const price =
+      quote && typeof quote.totalCents === 'number' ? '$' + (quote.totalCents / 100).toFixed(2) : null;
+
+    this.logger.log(
+      `create_tow_job: booked USTD job ${jobNumber ?? jobId ?? '?'} for call ${input.providerCallId ?? '?'}`,
+    );
+
+    // Stamp the job number onto the call. The call_ended webhook has not
+    // fired yet (we are mid-call), so this is an upsert of a stub row that
+    // the webhook later fills in — its onConflict set clause does not
+    // touch ustd_job_number, so the stamp survives.
+    if (input.providerCallId && jobNumber) {
+      try {
+        await this.db
+          .insert(inboundCallLogs)
+          .values({
+            tenantId,
+            providerCallId: input.providerCallId,
+            branch: 'new_tow',
+            fromNumber: input.fromNumber,
+            ustdJobNumber: jobNumber,
+            startedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: inboundCallLogs.providerCallId,
+            set: { ustdJobNumber: jobNumber, updatedAt: new Date() },
+          });
+      } catch (err) {
+        this.logger.warn(`create_tow_job: could not stamp job on call log: ${(err as Error).message}`);
+      }
+    }
+
+    // Tell the office. A booked tow that nobody notices is a stranded
+    // caller — same push channel the urgent dispatch messages use.
+    try {
+      const customer = (payload.customer ?? {}) as { name?: string; phone?: string };
+      const vehicle = (payload.vehicle ?? {}) as { year?: number; make?: string; model?: string };
+      const pickup = (payload.pickup ?? {}) as { address?: string };
+      const car = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'vehicle';
+      await this.push.sendToTenantAdmins(tenantId, {
+        title: `New tow booked by Emily${jobNumber ? ` — #${jobNumber}` : ''}`,
+        body: `${car} at ${pickup.address ?? 'unknown location'} · ${customer.name || 'caller'} ${
+          customer.phone ?? ''
+        }`.slice(0, 140),
+        url: '/m/roadside',
+        tag: `new-tow:${jobId ?? jobNumber ?? input.providerCallId ?? Date.now()}`,
+      });
+    } catch (err) {
+      this.logger.warn(`create_tow_job: admin push failed: ${(err as Error).message}`);
+    }
+
+    return {
+      status: 'success',
+      job_number: jobNumber,
+      job_id: jobId,
+      price,
+      vin_required_at_pickup: job.vinRequiredAtPickup === true,
+      confirmation:
+        "You're all set — I've got you in the system. Dispatch will call you right back on this number with your driver and a time.",
+    };
+  }
+
   // ─── claim lookup (ClaimShield) ────────────────────────────────────
   /**
    * A motor club rep asking about a damage claim they opened against us.
@@ -926,4 +1088,45 @@ export class AiConnectService {
       .offset((page - 1) * limit);
     return { items, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
   }
+}
+
+/**
+ * USTD's error envelope arrives in a flattened, index-referenced form:
+ * `[{"title":"2","errors":"4",...}, ..., ["6","7"], ..., {"path":"10","message":"11"}, "customer", "Required"]`
+ * — every string in an object is an index into the outer array. Resolve it
+ * into "customer: Required" lines so the log (and Emily) can read it. Falls
+ * back to whatever `errors` / `message` a plain JSON body carries.
+ */
+export function describeUstdErrors(body: unknown): string[] {
+  const resolve = (node: unknown, table: unknown[], depth = 0): unknown => {
+    if (depth > 6) return node;
+    if (typeof node === 'string' && /^\d+$/.test(node) && Number(node) < table.length) {
+      return resolve(table[Number(node)], table, depth + 1);
+    }
+    if (Array.isArray(node)) return node.map((n) => resolve(n, table, depth + 1));
+    if (node && typeof node === 'object') {
+      return Object.fromEntries(
+        Object.entries(node as Record<string, unknown>).map(([k, v]) => [k, resolve(v, table, depth + 1)]),
+      );
+    }
+    return node;
+  };
+  let root: unknown = body;
+  if (Array.isArray(body) && body.length > 0 && body[0] && typeof body[0] === 'object') {
+    root = resolve(body[0], body);
+  }
+  if (!root || typeof root !== 'object') return [];
+  const r = root as { errors?: unknown; message?: unknown; title?: unknown };
+  const out: string[] = [];
+  if (Array.isArray(r.errors)) {
+    for (const e of r.errors) {
+      if (e && typeof e === 'object') {
+        const { path, message } = e as { path?: unknown; message?: unknown };
+        out.push([path, message].filter((x) => typeof x === 'string').join(': '));
+      } else if (typeof e === 'string') out.push(e);
+    }
+  }
+  if (!out.length && typeof r.message === 'string') out.push(r.message);
+  if (!out.length && typeof r.title === 'string') out.push(r.title);
+  return out.filter(Boolean);
 }

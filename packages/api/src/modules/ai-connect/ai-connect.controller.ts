@@ -63,6 +63,15 @@ class UnwrapRetellArgsPipe implements PipeTransform {
  * the phone they were calling from — the job was under their caller ID the
  * whole time. Emily then transferred. This is the fallback that catches it.
  */
+/** The Retell call id from the `{ call, name, args }` wrapper, if present. */
+function retellCallId(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const call = (raw as Record<string, unknown>).call;
+  if (!call || typeof call !== 'object') return null;
+  const id = (call as Record<string, unknown>).call_id;
+  return typeof id === 'string' ? id : null;
+}
+
 function retellInboundCallerId(raw: unknown): string | null {
   if (!raw || typeof raw !== 'object') return null;
   const call = (raw as Record<string, unknown>).call;
@@ -191,6 +200,27 @@ export class AiConnectController {
       callbackRequested: body.callback_requested ?? true,
       callbackWindow: body.callback_window ?? null,
       providerCallId: body.call_reference ?? null,
+    });
+  }
+
+  /**
+   * Emily books a new tow. Unwraps Retell's `{ call, name, args }` body and
+   * forwards it to US Tow Dispatch's phone-intake route — see
+   * AiConnectService.createTowJob for why this cannot be a direct call.
+   * Always 200: the result's `status` field is what Emily reads.
+   */
+  @Post('create-tow-job')
+  @HttpCode(200)
+  @UseGuards(TenantApiKeyGuard, RateLimitGuard)
+  async createTowJob(@Req() req: TenantAuthenticatedRequest, @Body() raw: unknown) {
+    const args = new UnwrapRetellArgsPipe().transform(raw);
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+      return { status: 'error', message: 'No job details were received.' };
+    }
+    return this.service.createTowJob(req.tenantId, {
+      args: args as Record<string, unknown>,
+      providerCallId: retellCallId(raw),
+      fromNumber: retellInboundCallerId(raw),
     });
   }
 
