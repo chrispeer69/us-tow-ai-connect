@@ -183,7 +183,7 @@ Publish: `node scripts/emily-inbound-publish.js --apply` after the API deploy
 daily review now reports "already closed" matches and counts an argument-less
 lookup as a `caller_id` key.
 
-## 2026-09-12 — create_tow_job had never worked (silent-integration incident 7)
+## 2026-09-12 — create_tow_job had never worked (silent-integration incident 7). API commit `0a1fa2a` deployed 13:58 ET; Retell inbound agent **v19** published 14:02 ET (v18 = rollback); draft v20 is a copy, ignore.
 
 Chris, reading the 09-11 daily review (85 calls, 47 transferred, 1 new tow
 attempted, 0 booked): "Emily is first and foremost a dispatcher — her first
