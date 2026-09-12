@@ -241,7 +241,7 @@ single `serviceType` enum error, not four `Required`s. Then the first live
 - 3 completed/cancelled jobs the caller disputed; 3 unintelligible; rest
   correct per WHEN TO TRANSFER (money, insurance, complaint).
 
-## 2026-09-12 (afternoon) — repeat callers auto-forward; motor-club availability stays a transfer
+## 2026-09-12 (afternoon) — repeat callers auto-forward; motor-club availability stays a transfer. API commit `82e0f7e` deployed 15:42 ET; Retell inbound agent **v20** published 15:47 ET (v19 = rollback; draft v21 is a copy).
 
 Chris, on the 47-transfer breakdown: "MC availability — we would need to
 build out a knowledge pack to answer those calls — for now, transfer. Add
