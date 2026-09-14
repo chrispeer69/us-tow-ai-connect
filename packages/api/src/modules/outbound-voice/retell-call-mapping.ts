@@ -50,6 +50,8 @@ export interface RetellAnalysisFields {
   // job, the GHL contact and the Towbook note can carry the real one.
   customer_first_name: string | null;
   customer_last_name: string | null;
+  // 3.14 — the email the customer gave on the call.
+  customer_email: string | null;
 }
 
 export function extractRetellAnalysis(
@@ -82,6 +84,7 @@ export function extractRetellAnalysis(
     new_destination: (pick('new_destination') as string) ?? null,
     customer_first_name: (pick('customer_first_name') as string) ?? null,
     customer_last_name: (pick('customer_last_name') as string) ?? null,
+    customer_email: (pick('customer_email') as string) ?? null,
   };
 }
 

@@ -56,6 +56,18 @@ const NEW_FIELDS = [
       'Never guess and never copy an unconfirmed name from the ticket.',
     examples: ['Smith', "O'Brien", 'de la Cruz'],
   },
+  // 3.14 (2026-09-14) — the email step that follows the name.
+  {
+    type: 'string',
+    name: 'customer_email',
+    description:
+      "The customer's EMAIL ADDRESS as given on this call, in the email step " +
+      '("what\'s the best email for you?"). Write it as a single address, lower-case, e.g. pat.smith@gmail.com — ' +
+      'convert spoken forms ("pat dot smith at gmail dot com") into the real address. Use the spelling the customer gave if they spelled it. ' +
+      'Leave EMPTY if the customer said they have no email, declined, the step was never reached, or the call went to voicemail or the wrong person. ' +
+      'Never guess and never invent an address.',
+    examples: ['pat.smith@gmail.com', 'dlopez77@yahoo.com'],
+  },
 ];
 
 async function call(method, p, body) {
@@ -81,8 +93,8 @@ async function call(method, p, body) {
 
   const updated = await call('PATCH', `/update-agent/${AGENT}?version=${v}`, {
     post_call_analysis_data: fields,
-    version_title: `v${v} confirmed customer name`,
-    version_description: '3.13: customer_first_name / customer_last_name post-call fields',
+    version_title: `v${v} confirmed name + email`,
+    version_description: '3.13/3.14: customer_first_name / customer_last_name / customer_email post-call fields',
   });
   const backupDir = path.join(__dirname, '..', '..', 'docs', 'backups');
   fs.mkdirSync(backupDir, { recursive: true });

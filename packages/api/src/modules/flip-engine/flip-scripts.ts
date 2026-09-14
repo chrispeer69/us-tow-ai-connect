@@ -149,7 +149,16 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.13';
+export const SCRIPT_VERSION = '3.14';
+// 3.14 (2026-09-14) — ASK FOR THE CUSTOMER'S EMAIL. Chris: "I want her to ask
+//   the customer what their email is — and add that to the AI notes inside
+//   Towbook and also inside US Tow Dispatch." New STEP 2c straight after the
+//   name on both A/B arms: one question, read back once for spelling, "no
+//   problem" if they decline. Post-call field customer_email (Retell agent
+//   v55, the same publish that adds the 3.13 name fields) ->
+//   outbound_call_logs.confirmed_email -> an EMAIL line on the Towbook AI
+//   note + the US Tow Dispatch customer record (POST /v1/customers/contact,
+//   upsert by phone, Roadside tenant only).
 // 3.13 (2026-09-10) — CONFIRM THE CUSTOMER'S FULL NAME. Chris: "ensure the
 //   customer name, first and last, are confirmed and completed on each job
 //   when we call and confirm details — and then that needs put in the first
@@ -860,6 +869,16 @@ ${ask}
   );
 }
 
+/** 3.14 — STEP 2c. One question for the email, read back once, never pressed. */
+function confirmEmailBlock(vars: Record<string, string>): string {
+  return interpolate(
+    `[STEP 2c — EMAIL]
+AI: "And what's the best email for you? We'll send the job confirmation and receipt there."
+[AGENT: This is one of the few things you DO read back — say the address back once, slowly, so the spelling is checked ("Thanks — pat dot smith at gmail dot com, got it"), then move on. If they spell it, take the spelling. If they say they do not have one, do not use email, or would rather not give it, say "No problem" and move straight on — never press, never guess, never invent one, and never read an email off the ticket. Record the address exactly as the customer gave it.]`,
+    vars,
+  );
+}
+
 function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
     rep_name: ctx.repName,
@@ -994,9 +1013,11 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   // 3.13 — the name comes first on both arms: it is the one detail every
   // downstream system keys on, and the customer has just confirmed who they are.
   const nameStep = confirmNameBlock(ctx, vars);
+  // 3.14 — the email follows the name on both arms, for the same reason.
+  const emailStep = confirmEmailBlock(vars);
 
   if (isReframe(ctx)) {
-    const blocks = [nameStep, ``, interpolate(pickup, vars)];
+    const blocks = [nameStep, ``, emailStep, ``, interpolate(pickup, vars)];
     if (includeDestination) blocks.push(``, destinationBlock);
     blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars), ``, intake);
     return blocks.join('\n');
@@ -1004,6 +1025,8 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
 
   const blocks = [
     nameStep,
+    ``,
+    emailStep,
     ``,
     interpolate(pickup, vars),
     ``,
@@ -1142,7 +1165,7 @@ function globalRules(ctx: ScriptContext): string {
     // a rule: never rush a customer who is upset, describing damage, or still
     // answering, and never skip a question to save time.
     `- NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM. It is annoying and it wastes the call. They said it; they know what they said. Acknowledge in one or two words — "Got it", "Thanks", "Perfect" — and go straight to the next question. Do not say "Got it, in a parking lot, nose out", do not say "so that's a 2015 white Kia", and never announce that you are noting something down, that the driver will have it, or that the mechanic will see it.`,
-    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, a shop name, or the customer's own name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
+    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, an email address, a shop name, or the customer's own name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
     `- PACE: aim to finish the whole call in about two minutes. Ask, listen, acknowledge in a word or two, ask the next thing. Do not spend words you do not need, and do not let the confirmation questions crowd out the offer and the close.`,
     `- PACE: this is a target, not a rule. Never cut a customer off, never hurry someone who is shaken or describing damage, and never drop a question to save time. If the call needs longer, take longer.`,
     `- Never read a raw latitude/longitude pair aloud. If a location is only coordinates, say "the location we have on file" and ask the customer to describe it.`,

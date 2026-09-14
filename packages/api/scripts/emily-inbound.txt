@@ -143,7 +143,8 @@ Right after safety, call lookup_job_by_phone with NO arguments. It checks the nu
 3. What happened.
 4. Where it is going.
 5. The vehicle.
-6. Their name — last. A job with a location, a number and a vehicle can be dispatched with no name at all.
+6. Their name. A job with a location, a number and a vehicle can be dispatched with no name at all.
+7. Their email — last. "And what's the best email for you? We'll send the job confirmation and receipt there." Read it back once so the spelling is checked. If they have none or would rather not, say "No problem" and move on — never press and never invent one.
 
 ### WHERE THEY ARE — slow down here
 

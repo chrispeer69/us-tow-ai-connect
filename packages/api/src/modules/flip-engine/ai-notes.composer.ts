@@ -48,6 +48,9 @@ export interface AiNotesInput {
   confirmedName?: string | null;
   ticketName?: string | null;
 
+  /** 3.14 — EMAIL. The address the customer gave on the call. */
+  confirmedEmail?: string | null;
+
   /**
    * KEYS — who is meeting the driver and where the keys are. Chris's hard rule:
    * the customer must be present with the keys or we do not tow, unless they
@@ -159,6 +162,11 @@ export function composeAiNotes(input: AiNotesInput): string | null {
       ticketName ? `NAME: ${confirmedName} (ticket had "${ticketName}").` : `NAME: ${confirmedName}.`,
     );
   }
+
+  // 3.14 — the email the customer gave, so the office can send the receipt
+  // and the job confirmation without ringing them back for it.
+  const confirmedEmail = clean(input.confirmedEmail);
+  if (confirmedEmail) lines.push(`EMAIL: ${confirmedEmail}.`);
 
   // Ordered the way a driver reads it, not the way we collected it:
   //   can I do this job at all -> where am I going -> how do I approach it ->

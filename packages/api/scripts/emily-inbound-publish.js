@@ -144,7 +144,7 @@ const TOOLS = [
           properties: {
             name: { type: 'string', description: "The caller's name. Use 'Unknown' if they would not give one." },
             phone: { type: 'string', description: 'Callback number. Digits are fine, e.g. 6145550101.' },
-            email: { type: 'string', description: 'Only if they volunteered it. Leave out otherwise.' },
+            email: { type: 'string', description: 'Ask for it near the end of the intake, after the name. Lower-case, a single address. Leave out if they have none or declined.' },
           },
         },
         vehicle: {

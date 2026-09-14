@@ -400,6 +400,13 @@
       "when": 1787710010000,
       "tag": "0058_confirmed_customer_name",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1787710011000,
+      "tag": "0059_confirmed_email",
+      "breakpoints": true
     }
   ]
 }

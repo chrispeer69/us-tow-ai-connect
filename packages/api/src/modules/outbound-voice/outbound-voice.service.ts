@@ -1047,6 +1047,52 @@ export class OutboundVoiceService {
     }
   }
 
+  /**
+   * 3.14 — carry the email the customer gave on the call into US Tow
+   * Dispatch's customer record (upsert by phone via the public API's
+   * POST /v1/customers/contact). Roadside only: the USTD key on this service
+   * is Roadside's. The Towbook side is handled by the AI-notes sweep, which
+   * reads confirmed_email off the call log.
+   *
+   * Only ever ADDS or CORRECTS an email; never blanks one.
+   */
+  private async propagateConfirmedEmail(
+    call: typeof outboundCalls.$inferSelect,
+    log: { customerPhone: string | null; customerName: string | null },
+    email: string,
+    name: { firstName: string | null; lastName: string | null },
+  ): Promise<void> {
+    const roadsideTenantId = process.env.ROADSIDE_TENANT_ID;
+    const apiKey = process.env.USTD_API_KEY;
+    if (!roadsideTenantId || call.tenantId !== roadsideTenantId || !apiKey) return;
+
+    const digits = (log.customerPhone ?? call.toPhone ?? '').replace(/\D/g, '');
+    const last10 = digits.length > 10 ? digits.slice(-10) : digits;
+    if (last10.length !== 10) return;
+    const phone = `+1${last10}`;
+    const fullName = [name.firstName, name.lastName].filter(Boolean).join(' ').trim() || log.customerName || call.toName || null;
+
+    const base = (process.env.USTD_API_BASE_URL ?? 'https://api.ustowdispatch.com').replace(/\/$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch(`${base}/v1/customers/contact`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ phone, email, ...(fullName ? { name: fullName } : {}), source: `outbound_call:${call.id}` }),
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        this.logger.warn(`[outbound-voice] USTD customer email HTTP ${res.status} call=${call.id}: ${text.slice(0, 300)}`);
+        return;
+      }
+      this.logger.log(`[outbound-voice] USTD customer email set for ${phone} (call ${call.id}): ${text.slice(0, 160)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async notifyManagersOfAttentionNeeded(
     call: typeof outboundCalls.$inferSelect,
     details: { status: string; error?: string | null },
@@ -1237,6 +1283,10 @@ export class OutboundVoiceService {
     const confirmedLast = cleanConfirmedName(analysis.customer_last_name);
     if (confirmedFirst) update.confirmedFirstName = confirmedFirst;
     if (confirmedLast) update.confirmedLastName = confirmedLast;
+    // 3.14 — the email the customer gave. Validated, lower-cased; a spoken
+    // "unknown" or "no" is null, never stored.
+    const confirmedEmail = cleanConfirmedEmail(analysis.customer_email);
+    if (confirmedEmail) update.confirmedEmail = confirmedEmail;
 
     if (accepted) update.managementNotified = true;
 
@@ -1250,6 +1300,17 @@ export class OutboundVoiceService {
         lastName: confirmedLast ?? cleanConfirmedName(log.confirmedLastName),
       }).catch((err) =>
         this.logger.warn(`[outbound-voice] confirmed-name propagation failed call=${call.id}: ${String(err)}`),
+      );
+    }
+
+    // 3.14 — push the email onto the US Tow Dispatch customer record. Best
+    // effort, same as the name: USTD being down must not fail this webhook.
+    if (confirmedEmail) {
+      await this.propagateConfirmedEmail(call, log, confirmedEmail, {
+        firstName: confirmedFirst ?? cleanConfirmedName(log.confirmedFirstName),
+        lastName: confirmedLast ?? cleanConfirmedName(log.confirmedLastName),
+      }).catch((err) =>
+        this.logger.warn(`[outbound-voice] confirmed-email propagation failed call=${call.id}: ${String(err)}`),
       );
     }
 
@@ -2072,6 +2133,22 @@ export function cleanConfirmedName(value: unknown): string | null {
   if (!/[a-z]/i.test(text)) return null;
   if (/^(unknown|n\/?a|null|undefined|none|no|not given|declined|refused|customer|caller|there|owner|driver)$/i.test(text)) return null;
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * 3.14 — an email the agent captured on the call, or null. Lower-cased, inner
+ * spaces removed (a spelled-out address often transcribes with them), and it
+ * has to look like an address; "unknown", "none", "no email" are null.
+ */
+export function cleanConfirmedEmail(value: unknown): string | null {
+  if (value == null) return null;
+  let text = String(value).replace(/["“”<>]/g, '').trim().toLowerCase();
+  if (!text || text.length > 254) return null;
+  if (/^(unknown|n\/?a|null|undefined|none|no|not given|declined|refused|no email|doesn'?t have one|n\/a)$/i.test(text)) return null;
+  // Spoken forms that survive transcription.
+  text = text.replace(/\s+at\s+/g, '@').replace(/\s+dot\s+/g, '.').replace(/\s+/g, '');
+  if (!/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(text)) return null;
+  return text;
 }
 
 function assignIfPresent<K extends keyof typeof outboundCallLogs.$inferInsert>(

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderCallBody } from './flip-scripts';
 import { composeAiNotes } from './ai-notes.composer';
 import { extractRetellAnalysis } from '../outbound-voice/retell-call-mapping';
-import { cleanConfirmedName } from '../outbound-voice/outbound-voice.service';
+import { cleanConfirmedEmail, cleanConfirmedName } from '../outbound-voice/outbound-voice.service';
 
 const base = {
   repName: 'Emily',
@@ -94,5 +94,46 @@ describe('3.13 — NAME line on the Towbook AI note', () => {
   it('renders without the ticket clause when the ticket had no name', () => {
     const block = composeAiNotes({ confirmedName: 'Pat Smith', ticketName: null });
     expect(block).toContain('NAME: Pat Smith.');
+  });
+});
+
+describe('script 3.14 — ask for the email', () => {
+  it('asks for the email right after the name on both arms, before the pickup', () => {
+    for (const scriptVariant of ['control', 'reframe'] as const) {
+      const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
+      const nameAt = body.indexOf('[STEP 2b — CONFIRM FULL NAME]');
+      const emailAt = body.indexOf('[STEP 2c — EMAIL]');
+      const pickupAt = body.indexOf('[STEP 3 — CONFIRM PICKUP LOCATION]');
+      expect(emailAt, scriptVariant).toBeGreaterThan(nameAt);
+      expect(pickupAt, scriptVariant).toBeGreaterThan(emailAt);
+      expect(body).toContain("And what's the best email for you?");
+      expect(body).toContain('Record the address exactly as the customer gave it');
+    }
+  });
+
+  it('lets the email be read back once under the no-repeat rule', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('a phone number, an email address, a shop name');
+  });
+
+  it('extracts customer_email from custom_analysis_data', () => {
+    const a = extractRetellAnalysis({ custom_analysis_data: { customer_email: 'Pat.Smith@Gmail.com' } });
+    expect(a.customer_email).toBe('Pat.Smith@Gmail.com');
+    expect(extractRetellAnalysis({}).customer_email).toBeNull();
+  });
+
+  it('cleans a spoken email and rejects non-emails', () => {
+    expect(cleanConfirmedEmail('Pat.Smith@Gmail.com')).toBe('pat.smith@gmail.com');
+    expect(cleanConfirmedEmail('pat dot smith at gmail dot com')).toBe('pat.smith@gmail.com');
+    expect(cleanConfirmedEmail(' d lopez77 @ yahoo.com ')).toBe('dlopez77@yahoo.com');
+    for (const junk of ['unknown', 'none', 'no email', 'N/A', 'declined', 'pat smith', 'gmail.com', '', null, undefined]) {
+      expect(cleanConfirmedEmail(junk), String(junk)).toBeNull();
+    }
+  });
+
+  it('renders an EMAIL line on the Towbook AI note', () => {
+    const block = composeAiNotes({ confirmedEmail: 'pat.smith@gmail.com', keysAndPresence: 'on scene with keys' });
+    expect(block).toContain('EMAIL: pat.smith@gmail.com.');
+    expect(composeAiNotes({ confirmedEmail: null, keysAndPresence: 'on scene with keys' })).not.toContain('EMAIL:');
   });
 });

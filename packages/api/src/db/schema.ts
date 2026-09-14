@@ -392,6 +392,9 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
   // Towbook AI note. Stored exactly as the customer gave them.
   confirmedFirstName: text('confirmed_first_name'),
   confirmedLastName: text('confirmed_last_name'),
+  // 3.14 (2026-09-14) — the email the customer gave on the call. Lower-cased,
+  // validated; null when they had none, declined, or the step was not reached.
+  confirmedEmail: text('confirmed_email'),
 });
 export type OutboundCallLogRow = typeof outboundCallLogs.$inferSelect;
 
