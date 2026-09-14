@@ -261,3 +261,11 @@ repeat caller escalation — those should auto forward to dispatch."
   thirty-minute line entirely for a repeat — by flag or by what the caller
   says — acknowledges it once and transfers. 09-11 had ~10 of these (PO
   114136078 ×3, 614-378-0387 ×4, 740-817-2235 ×3).
+
+## 2026-09-14 — new-tow intake asks for the email (agent v21, published 04:50 ET; v20 = rollback)
+
+Chris: "when a caller calls in to set up a new tow — the AI dispatcher should
+also ask the customer their email address." THE ORDER gains step 7 (email,
+last, read back once, "no problem" on decline). The `create_tow_job` tool's
+`customer.email` description changed from "only if volunteered" to "ask for
+it". USTD's phone-intake already accepted it and stores it on the customer.
