@@ -32,8 +32,15 @@ const DEFAULT_ETA_MINS = 45;
 // Emily may call the lookup more than once in a single conversation. Alerting
 // on each one teaches Chris to ignore the notification.
 const ALERT_QUIET_MINUTES = 15;
-/** A lookup this soon after the last one is the same conversation, not a repeat caller. */
-const REPEAT_CALL_GAP_MINUTES = 10;
+/**
+ * 2026-09-16 — a repeat caller is the SAME caller, about the SAME job, with
+ * the SAME board status, inside this window. The 09-12 version keyed on the
+ * job alone (eta_check_calls is per job + job-customer phone), so a motor
+ * club rep ringing about a job the customer had asked about 40 minutes
+ * earlier was told "you've already been told the update" and transferred —
+ * 5 of 15 found-then-transferred calls on 09-15 were exactly that.
+ */
+const REPEAT_CALL_WINDOW_HOURS = 3;
 // Pings older than this are ignored when picking "the nearest available
 // driver" — a stale ping from 2 hours ago is worse than no ping at all
 // because it makes the agent quote a confidently-wrong number.
@@ -71,19 +78,25 @@ export interface LookupByPhoneResult {
    * find it" and offered dispatch, which is the wrong answer to "did my car
    * get there?".
    */
-  jobState?: 'active' | 'completed' | 'canceled';
+  jobState?: 'active' | 'completed' | 'canceled' | 'closed';
   /** ISO timestamp of when the job left the live board (closed jobs only). */
   closedAt?: string;
   /**
-   * 2026-09-12 — true when somebody already rang about this job in an
-   * EARLIER conversation (an open eta_check_calls row whose last call was
-   * more than REPEAT_CALL_GAP_MINUTES ago). Chris: repeat callers who have
-   * already heard the thirty-minute line "should auto forward to dispatch".
-   * Two lookups inside one conversation do not count as a repeat.
+   * 2026-09-12 — Chris: repeat callers who have already heard the
+   * thirty-minute line "should auto forward to dispatch". 2026-09-16 — true
+   * only when THIS caller was already given THIS job's update and the board
+   * status has not moved since (see repeatByThisCaller). Two lookups inside
+   * one conversation do not count, and neither does a different caller.
    */
   repeatCall?: boolean;
   /** How many earlier calls that open row had recorded (0 when none). */
   priorCalls?: number;
+  /**
+   * 2026-09-16 — this caller asked about this job earlier and the board
+   * status has moved since. Not a repeat (there is news to give), but the
+   * prompt should lead with the new status rather than the thirty-minute line.
+   */
+  statusChanged?: boolean;
   job?: {
     jobId: string;
     customerName: string;
@@ -101,9 +114,23 @@ export interface LookupByPhoneResult {
   message?: string;
 }
 
-/** How far back the closed-job fallback looks. A day covers "it was picked up this morning". */
-const CLOSED_JOB_LOOKBACK_HOURS = 24;
-const CLOSED_JOB_SCAN_LIMIT = 300;
+/**
+ * How far back the closed-job fallback looks. Was a day; on 09-15 three
+ * separate club reps read the PO of a tow completed five days earlier and
+ * each was told the job did not exist. A week covers the paperwork calls.
+ */
+const CLOSED_JOB_LOOKBACK_HOURS = 24 * 7;
+
+/**
+ * Does the last board status we saw say the truck reached the drop-off?
+ * Towbook's own words: "Destination Arrival at 10:47 AM", "Towing at 5:15 PM"
+ * (loaded and moving), "Completed". Anything earlier in the life of a job —
+ * Waiting, Dispatched, Enroute to scene, On scene — is not proof of delivery.
+ */
+function looksDelivered(status: string | undefined): boolean {
+  return /destination arrival|arrived at destination|towing at|complete|delivered|dropped off/i.test(status || '');
+}
+const CLOSED_JOB_SCAN_LIMIT = 600;
 
 @Injectable()
 export class AiConnectService {
@@ -175,10 +202,19 @@ export class AiConnectService {
    */
   async lookupJob(
     tenantId: string,
-    keys: { phone?: string | null; jobNumber?: string | null; poNumber?: string | null; fallbackPhone?: string | null },
+    keys: {
+      phone?: string | null;
+      jobNumber?: string | null;
+      poNumber?: string | null;
+      fallbackPhone?: string | null;
+      /** Retell call id — two lookups in one conversation are never a repeat. */
+      callId?: string | null;
+    },
   ): Promise<LookupByPhoneResult> {
     const jobNumber = (keys.jobNumber ?? '').replace(/\D/g, '');
-    const poNumber = (keys.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    // A PO with no digit in it ("for", "the PO") is a mis-hear, not a key.
+    const poRaw = (keys.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const poNumber = /\d/.test(poRaw) ? poRaw : '';
     const phone = (keys.phone ?? '').replace(/\D/g, '');
     const fallback = (keys.fallbackPhone ?? '').replace(/\D/g, '');
 
@@ -209,6 +245,23 @@ export class AiConnectService {
         },
       });
     }
+    // 2026-09-16 — "the job that ends in four two two one". Callers quote the
+    // tail of a number, and they do not know whether it is our job number or
+    // the club's PO (on 09-15 it was the PO). Four or five digits against the
+    // end of either, live board only, and only when exactly one job matches —
+    // a short tail that fits two jobs is no match at all.
+    const tail = jobNumber.length >= 4 && jobNumber.length <= 5 ? jobNumber : poNumber.length >= 4 && poNumber.length <= 5 ? poNumber : '';
+    if (tail) {
+      const tailTest = (j: ActiveJob) => {
+        const call = (j.callNumber ?? '').replace(/\D/g, '');
+        const po = (j.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        return (call.length > tail.length && call.endsWith(tail)) || (po.length > tail.length && po.endsWith(tail));
+      };
+      const live = await this.liveJobs(tenantId);
+      if (live.filter(tailTest).length === 1) {
+        matchers.push({ by: jobNumber ? 'job_number' : 'po_number', test: tailTest });
+      }
+    }
     if (phone) {
       matchers.push({ by: 'given', test: (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(phone) });
     }
@@ -218,8 +271,11 @@ export class AiConnectService {
     if (matchers.length === 0) {
       return { found: false, message: 'phone is required' };
     }
+    // The caller is the caller ID only. A number they read out may be the
+    // customer's while the voice is a club rep's — not the same person.
+    const caller = last10(fallback);
     for (const m of matchers) {
-      const hit = await this.findActiveJob(tenantId, m.test);
+      const hit = await this.findActiveJob(tenantId, m.test, { callerPhone: caller, callId: keys.callId ?? null });
       if (hit.found) return { ...hit, matchedBy: m.by, jobState: 'active' };
     }
     const closed = await this.findRecentlyClosedJob(tenantId, matchers);
@@ -298,7 +354,15 @@ export class AiConnectService {
       for (const r of rows) {
         const job = asJob(r);
         if (!m.test(job)) continue;
-        const state: 'completed' | 'canceled' = r.status === 'canceled' ? 'canceled' : 'completed';
+        // 2026-09-16 — "completed" in unified_jobs only means the job left
+        // the Towbook active board (archiveMissingJobs); a job the club
+        // pulled back, or that went unsuccessful, is archived the same way.
+        // Emily told a motor club a job was "completed, arrived around
+        // 11:55" when its last board status was "Enroute to scene" and the
+        // club's own record said unsuccessful. Only call it completed when
+        // the last status we saw says the truck reached the destination.
+        const state: 'completed' | 'canceled' | 'closed' =
+          r.status === 'canceled' ? 'canceled' : looksDelivered(job.status) ? 'completed' : 'closed';
         return {
           found: true,
           source: 'TOWBOOK',
@@ -312,9 +376,24 @@ export class AiConnectService {
     return null;
   }
 
+  /** Every job on the live board, both sources, in source order. Never throws. */
+  private async liveJobs(tenantId: string): Promise<ActiveJob[]> {
+    const out: ActiveJob[] = [];
+    for (const key of [`jobs:towbook:${tenantId}`, `jobs:aaa_portal:${tenantId}`]) {
+      try {
+        const raw = await this.redis.get(key);
+        if (raw) out.push(...(JSON.parse(raw) as ActiveJob[]));
+      } catch {
+        /* a bad cache read is a miss, not an error */
+      }
+    }
+    return out;
+  }
+
   private async findActiveJob(
     tenantId: string,
     matches: (job: ActiveJob) => boolean,
+    who: { callerPhone: string; callId: string | null } = { callerPhone: '', callId: null },
   ): Promise<LookupByPhoneResult> {
     const sources: Array<{ key: string; source: 'TOWBOOK' | 'AAA_PORTAL' }> = [
       { key: `jobs:towbook:${tenantId}`, source: 'TOWBOOK' },
@@ -337,16 +416,68 @@ export class AiConnectService {
       }
       const hit = jobs.find(matches);
       if (hit) {
-        // Read the counter BEFORE recording this call, so "repeat" means an
-        // earlier conversation and not the lookup Emily ran ten seconds ago.
+        // Read the counter BEFORE recording this call, so the board's
+        // prior-call count means earlier conversations, not this lookup.
         const prior = await this.priorEtaChecks(tenantId, hit);
+        const repeat = await this.repeatByThisCaller(tenantId, hit, who);
         void this.recordEtaCheck(tenantId, source, hit).catch((err) =>
           this.logger.warn(`eta-check record failed: ${(err as Error).message}`),
         );
-        return { found: true, source, job: hit, repeatCall: prior.repeat, priorCalls: prior.calls };
+        return {
+          found: true,
+          source,
+          job: hit,
+          repeatCall: repeat.repeat,
+          statusChanged: repeat.statusChanged,
+          priorCalls: prior.calls,
+        };
       }
     }
     return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * 2026-09-16 — has THIS caller already been given THIS job's update, with
+   * the board saying the same thing it says now? Kept in Redis per
+   * (tenant, job, caller) for REPEAT_CALL_WINDOW_HOURS. A second lookup inside
+   * one conversation (same call id) is not a repeat; neither is a different
+   * caller, nor a caller whose job has moved since — that one gets the new
+   * status. Never throws.
+   */
+  private async repeatByThisCaller(
+    tenantId: string,
+    job: ActiveJob,
+    who: { callerPhone: string; callId: string | null },
+  ): Promise<{ repeat: boolean; statusChanged: boolean }> {
+    const none = { repeat: false, statusChanged: false };
+    if (!who.callerPhone) return none;
+    const key = `eta-served:${tenantId}:${job.jobId}:${who.callerPhone}`;
+    const status = (job.status || '').trim();
+    let result = none;
+    try {
+      const raw = await this.redis.get(key);
+      if (raw) {
+        const prev = JSON.parse(raw) as { callId?: string | null; status?: string };
+        const sameConversation = !!who.callId && prev.callId === who.callId;
+        if (!sameConversation) {
+          const moved = (prev.status || '').trim() !== status;
+          result = { repeat: !moved, statusChanged: moved };
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`eta-served read failed: ${(err as Error).message}`);
+    }
+    try {
+      await this.redis.set(
+        key,
+        JSON.stringify({ callId: who.callId, status, at: new Date().toISOString() }),
+        'EX',
+        REPEAT_CALL_WINDOW_HOURS * 3600,
+      );
+    } catch (err) {
+      this.logger.warn(`eta-served write failed: ${(err as Error).message}`);
+    }
+    return result;
   }
 
   /** @deprecated 2026-09-10 — kept for the two older call sites; use lookupJob. */
@@ -399,10 +530,10 @@ export class AiConnectService {
   private async priorEtaChecks(
     tenantId: string,
     job: ActiveJob,
-  ): Promise<{ repeat: boolean; calls: number }> {
+  ): Promise<{ calls: number }> {
     try {
       const [row] = await this.db
-        .select({ calls: etaCheckCalls.calls, lastCalledAt: etaCheckCalls.lastCalledAt })
+        .select({ calls: etaCheckCalls.calls })
         .from(etaCheckCalls)
         .where(
           and(
@@ -414,12 +545,10 @@ export class AiConnectService {
         )
         .orderBy(desc(etaCheckCalls.lastCalledAt))
         .limit(1);
-      if (!row) return { repeat: false, calls: 0 };
-      const gapMs = Date.now() - new Date(row.lastCalledAt).getTime();
-      return { repeat: gapMs > REPEAT_CALL_GAP_MINUTES * 60 * 1000, calls: row.calls };
+      return { calls: row?.calls ?? 0 };
     } catch (err) {
       this.logger.warn(`eta-check prior read failed: ${(err as Error).message}`);
-      return { repeat: false, calls: 0 };
+      return { calls: 0 };
     }
   }
 

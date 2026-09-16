@@ -68,7 +68,12 @@ function makeDb(initial: { agentConfig?: Record<string, unknown> | null } = {}) 
 
 function makeRedis(map: Record<string, string> = {}) {
   return {
+    map,
     get: vi.fn(async (k: string) => map[k] ?? null),
+    set: vi.fn(async (k: string, v: string) => {
+      map[k] = v;
+      return 'OK';
+    }),
   };
 }
 
@@ -122,57 +127,47 @@ describe('AiConnectService.lookupByPhone', () => {
     expect(r.job?.jobId).toBe('TB-1');
   });
 
-  it('flags a repeat caller when an earlier conversation already asked about this job', async () => {
-    const jobs = JSON.stringify([
-      { jobId: 'TB-1', customerName: 'A', customerPhone: '6141112222', vehicle: '', status: 'Dispatched', driverName: '', eta: '', destination: '', lastUpdated: '' },
-    ]);
-    const priorRow = (minutesAgo: number) => ({
-      calls: 2,
-      lastCalledAt: new Date(Date.now() - minutesAgo * 60 * 1000),
-    });
-    const dbWith = (rows: unknown[]) => {
-      const db = makeDb();
-      const chain: Record<string, unknown> = {};
-      chain.from = () => chain;
-      chain.where = () => chain;
-      chain.orderBy = () => chain;
-      chain.limit = () => Promise.resolve(rows);
-      (db as unknown as { select: unknown }).select = () => chain;
-      return db;
-    };
+  it('flags a repeat only for the same caller, same job, same status — not for the job alone (2026-09-16)', async () => {
+    const job = { jobId: 'TB-1', customerName: 'A', customerPhone: '6141112222', vehicle: '', status: 'Dispatched to Shawn as of 7:19 AM', driverName: '', eta: '', destination: '', lastUpdated: '' };
+    const redis = makeRedis({ [`jobs:towbook:${TENANT_ID}`]: JSON.stringify([job]) });
+    const svc = new AiConnectService(makeDb() as never, redis as never, NOTIFICATIONS as never, TWILIO as never);
 
-    // Earlier conversation, 40 minutes ago: repeat.
-    let svc = new AiConnectService(
-      dbWith([priorRow(40)]) as never,
-      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
-      NOTIFICATIONS as never,
-      TWILIO as never,
-    );
-    let r = await svc.lookupByPhone(TENANT_ID, '6141112222');
+    // First call from the customer: not a repeat, and it is now remembered.
+    let r = await svc.lookupJob(TENANT_ID, { fallbackPhone: '+16141112222', callId: 'call_1' });
     expect(r.found).toBe(true);
+    expect(r.repeatCall).toBe(false);
+    expect(r.statusChanged).toBe(false);
+
+    // Second lookup inside the same conversation: still not a repeat.
+    r = await svc.lookupJob(TENANT_ID, { phone: '6141112222', fallbackPhone: '+16141112222', callId: 'call_1' });
+    expect(r.repeatCall).toBe(false);
+
+    // A motor club rep ringing about the same job from a different number:
+    // NOT a repeat — they have not heard anything yet. (09-15: five callers
+    // were told "you've already been told the update" on their first call.)
+    r = await svc.lookupJob(TENANT_ID, { poNumber: 'x', phone: '6141112222', fallbackPhone: '+15207334626', callId: 'call_2' });
+    expect(r.repeatCall).toBe(false);
+
+    // The customer rings back later, board unchanged: a repeat.
+    r = await svc.lookupJob(TENANT_ID, { fallbackPhone: '+16141112222', callId: 'call_3' });
     expect(r.repeatCall).toBe(true);
-    expect(r.priorCalls).toBe(2);
+    expect(r.statusChanged).toBe(false);
 
-    // Same conversation (Emily's caller-ID lookup 2 minutes ago): NOT a repeat.
-    svc = new AiConnectService(
-      dbWith([priorRow(2)]) as never,
-      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
-      NOTIFICATIONS as never,
-      TWILIO as never,
-    );
-    r = await svc.lookupByPhone(TENANT_ID, '6141112222');
+    // The customer rings back and the job has moved: not a repeat, there is news.
+    redis.map[`jobs:towbook:${TENANT_ID}`] = JSON.stringify([{ ...job, status: 'Jerod Berry Enroute to scene 8:46 AM' }]);
+    r = await svc.lookupJob(TENANT_ID, { fallbackPhone: '+16141112222', callId: 'call_4' });
     expect(r.repeatCall).toBe(false);
+    expect(r.statusChanged).toBe(true);
 
-    // Nobody has rung before: NOT a repeat.
-    svc = new AiConnectService(
-      dbWith([]) as never,
-      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
-      NOTIFICATIONS as never,
-      TWILIO as never,
-    );
-    r = await svc.lookupByPhone(TENANT_ID, '6141112222');
+    // The memory is per caller for a few hours, not forever.
+    const setCall = redis.set.mock.calls[0];
+    expect(setCall[0]).toBe(`eta-served:${TENANT_ID}:TB-1:6141112222`);
+    expect(setCall[2]).toBe('EX');
+    expect(setCall[3]).toBe(3 * 3600);
+
+    // No caller ID at all (outbound or a test post): never a repeat.
+    r = await svc.lookupJob(TENANT_ID, { phone: '6141112222' });
     expect(r.repeatCall).toBe(false);
-    expect(r.priorCalls).toBe(0);
   });
 
   it('falls back to AAA when Towbook has no match', async () => {
@@ -330,6 +325,33 @@ describe('AiConnectService.lookupJob — job number and PO number (2026-09-10)',
     expect(r.jobState).toBe('active');
   });
 
+  it('finds a job by the last four digits of its PO or job number when exactly one fits (2026-09-16)', async () => {
+    // "the job ID that ends in four two two one" — it was the PO's tail.
+    let r = await make().lookupJob(TENANT_ID, { jobNumber: '1513' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283277202');
+    r = await make().lookupJob(TENANT_ID, { poNumber: '7729' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283304458');
+    // Fewer than four digits is not a key.
+    expect((await make().lookupJob(TENANT_ID, { jobNumber: '729' })).found).toBe(false);
+  });
+
+  it('a short tail that fits two jobs matches neither', async () => {
+    const twins = JSON.stringify([
+      { jobId: '1', callNumber: '127716', poNumber: '', customerPhone: '6140000001', status: 'Waiting', vehicle: '', customerName: '', driverName: '', eta: '', destination: '', lastUpdated: '' },
+      { jobId: '2', callNumber: '', poNumber: '114097716', customerPhone: '6140000002', status: 'Waiting', vehicle: '', customerName: '', driverName: '', eta: '', destination: '', lastUpdated: '' },
+    ]);
+    const svc = new AiConnectService(makeDb() as never, makeRedis({ [`jobs:towbook:${TENANT_ID}`]: twins }) as never, NOTIFICATIONS as never, TWILIO as never);
+    expect((await svc.lookupJob(TENANT_ID, { jobNumber: '7716' })).found).toBe(false);
+  });
+
+  it('a PO with no digits in it ("for") is not a key at all', async () => {
+    const r = await make().lookupJob(TENANT_ID, { poNumber: 'for' });
+    expect(r.found).toBe(false);
+    expect(r.message).toBe('phone is required');
+  });
+
   it('a suffix match needs the whole board number; a different number never matches', async () => {
     const r = await make().lookupJob(TENANT_ID, { jobNumber: '9127729' });
     // 5+ digit suffix match is allowed; this one matches because the board
@@ -378,6 +400,15 @@ describe('AiConnectService.lookupJob — closed jobs from unified_jobs (2026-09-
         destination: '7038 Northgate Way, Westerville, OH 43082',
         lastUpdated: '2026-09-10T15:09:02.281Z',
       },
+    },
+    {
+      sourceJobId: '283772659',
+      status: 'completed',
+      callerPhone: '6146495255',
+      callerName: 'Ashlee G.',
+      completedAt: new Date('2026-09-15T15:55:00Z'),
+      updatedAt: new Date('2026-09-15T15:55:00Z'),
+      sourcePayload: { jobId: '283772659', callNumber: '127909', poNumber: '114290758', customerPhone: '6146495255', status: 'David Jackson Enroute to scene 7:12 AM', driverName: 'David Jackson' },
     },
     {
       sourceJobId: '283300000',
@@ -436,6 +467,15 @@ describe('AiConnectService.lookupJob — closed jobs from unified_jobs (2026-09-
     const byCall = await make().lookupJob(TENANT_ID, { jobNumber: '127731' });
     expect(byCall.matchedBy).toBe('job_number');
     expect(byCall.jobState).toBe('completed');
+  });
+
+  it('a job that left the board before reaching the destination is "closed", not "completed" (2026-09-16)', async () => {
+    // 09-15: Emily told Agero this one was "completed, arrived around 11:55"
+    // — the club's own record said unsuccessful.
+    const r = await make().lookupJob(TENANT_ID, { poNumber: '114290758' });
+    expect(r.found).toBe(true);
+    expect(r.jobState).toBe('closed');
+    expect(r.job?.status).toBe('David Jackson Enroute to scene 7:12 AM');
   });
 
   it('reports a cancelled job as canceled, and by caller ID', async () => {

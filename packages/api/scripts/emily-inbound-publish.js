@@ -55,7 +55,7 @@ const TOOLS = [
     type: 'custom',
     name: 'lookup_job_by_phone',
     description:
-      "Look up the caller's tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number — or with NO arguments at all, which checks the number they are calling from. Call it with no arguments first the moment you know they are asking about an existing tow; only ask for a number if that misses. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number), matched_by, and job_state: 'active' for a live tow, 'completed' or 'canceled' (with closed_at) for one that finished in the last day. Also repeat_call: true when someone already rang about this job in an earlier call — they have heard the update before, so do not repeat it: acknowledge and transfer to dispatch.",
+      "Look up the caller's tow by ANY ONE of: the phone number on the job, the motor club's PO / reference number, or our own job number — or with NO arguments at all, which checks the number they are calling from. Call it with no arguments first the moment you know they are asking about an existing tow; only ask for a number if that misses. Returns customer name, vehicle, status, driver, ETA, pickup, destination, our job number (call_number), the PO (po_number), matched_by, and job_state: 'active' for a live tow; 'completed' (last status was the driver reaching the drop-off), 'canceled', or 'closed' (left our board before the drop-off — outcome unknown, never say completed) for one that finished in the last week, with closed_at. Also repeat_call: true when THIS caller, from this same number, already heard this job's update in an earlier call and the board has not moved — do not repeat the thirty-minute line, transfer. status_changed_since_their_last_call: true when this caller rang before but the job has moved since — lead with the new status. A different caller is never a repeat. Only the three fields below exist; there is no address or name search.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/lookup/by-phone',
     // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
     // arguments into query_params, only the request body. The old GET config
@@ -78,8 +78,8 @@ const TOOLS = [
       required: [],
       properties: {
         phone: { type: 'string', description: 'The phone number on the tow job, digits only, e.g. 6148818702. Leave out if they gave a PO or job number instead.' },
-        po_number: { type: 'string', description: "The motor club's PO, purchase order, reference, dispatch or club number, exactly as read out, e.g. 114071513." },
-        job_number: { type: 'string', description: 'Our own Roadside job / call / ticket number, digits only, e.g. 127716. Usually only an employee has this.' },
+        po_number: { type: 'string', description: "The motor club's PO, purchase order, reference, dispatch or club number, exactly as read out including any leading zeros, e.g. 114071513. Digits (or letters and digits) only — never a word you heard, and never a guess." },
+        job_number: { type: 'string', description: 'Our own Roadside job / call / ticket number, digits only, e.g. 127716. Usually only an employee has this. If they only know the last four or five digits ("ends in 4221"), pass just those — the server matches the tail of both the job number and the PO.' },
       },
     },
     // 2026-09-11 — silent. The lookup answers in ~200 ms, faster than Emily

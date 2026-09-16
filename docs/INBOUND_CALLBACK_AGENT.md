@@ -269,3 +269,68 @@ also ask the customer their email address." THE ORDER gains step 7 (email,
 last, read back once, "no problem" on decline). The `create_tow_job` tool's
 `customer.email` description changed from "only if volunteered" to "ask for
 it". USTD's phone-intake already accepted it and stores it on the customer.
+
+## 2026-09-16 — the 09-15 review: 51 of 78 calls transferred. Chris: "NO WAY — defeats the point of AI dispatching."
+
+Where the 51 actually came from (Retell transcripts + tool traces, 09-15 ET):
+
+| bucket | calls | cause |
+|---|---|---|
+| "Representative" / "live agent" as the caller's first words | ~14 | motor-club reps (Agero 332-230-xxxx, 855-281-xxxx, Allstate 520-733-xxxx) reading an IVR script; the v18 rule transferred on the first word with no offer to help |
+| motor-club availability / new job ("can you take a tow in Bellefontaine", HONK ×5, Allied, AAA, Allstate, Agero, TraxNOW) | ~10 | policy from 09-12: transfer until a knowledge pack exists |
+| lookup found the job, then transferred | 15 | 5 were the **repeat-caller bug** below; the rest were cancel / reschedule / change destination / "job came up unsuccessful" / ride after a flip — mostly correct |
+| lookup not found, then transferred | 10 | PO 114090178 ×3 = a tow completed 09-10 (lookback was 24 h); `po_number:"for"`; a `pickup` field the tool does not have; "ends in 4221" (the PO's tail); PO 0010321753 rang in before the job was on the board |
+| the rest | ~2 | correct (money, complaint) |
+
+Plus **30 failed transfer attempts across 9 calls** — the 740 cell did not
+pick up, Emily kept offering "try again or a message?", callers said "try
+again" and hung up. One message taken all day.
+
+### The repeat-caller bug (code, `82e0f7e` from 09-12)
+
+`repeat_call` was keyed on `eta_check_calls (tenant, job, job-customer
+phone)` — the JOB, not the caller. Any earlier lookup of the job by anyone
+(customer, club, Emily's silent caller-ID check on a new-tow call) made every
+later caller a "repeat", and the prompt then said *"You've already been told
+the update and you're still waiting — that's not good enough"* and
+transferred. On 09-15 that fired on an Allstate rep's first call, an Agero
+rep's first call, and two customers ringing for the first time from their
+own phone. The row is also only reset when dispatch marks it handled.
+
+Now (`AiConnectService.repeatByThisCaller`): Redis key
+`eta-served:{tenant}:{jobId}:{callerLast10}` written on every served lookup,
+3-hour TTL, value `{callId, status}`. `repeat_call` = same caller ID, same
+job, **same board status**, different Retell call id. A different caller is
+never a repeat; the same caller after the job moved gets
+`status_changed_since_their_last_call: true` and the prompt leads with the
+news. No caller ID (outbound, a test POST) → never a repeat.
+`prior_calls_about_this_job` still comes from `eta_check_calls` (the board).
+
+### Also in this change
+
+- **"Completed" was a guess.** `unified_jobs.status='completed'` is set by
+  `archiveMissingJobs` when a job simply leaves the Towbook board — a
+  cancelled or unsuccessful job looks identical. Emily told Agero a job was
+  "completed, arrived around 11:55 AM" whose last status was "Enroute to
+  scene" and whose club record said unsuccessful. Now `job_state: 'closed'`
+  unless the last status looked delivered (`looksDelivered`: Destination
+  Arrival / Towing at / Complete…); prompt never says a clock time for a
+  completed job (closed_at is when it left our board, not delivery).
+- Closed-job lookback 24 h → 7 days (paperwork calls about last week's PO).
+- Short-tail match: 4–5 digits against the end of the job number **or** the
+  PO, live board only, only when exactly one job fits.
+- A PO with no digit ("for") is ignored rather than searched.
+- Prompt: ASKING FOR A PERSON = one offer ("I can pull that up right now —
+  what's the PO number?"), transfer on the second ask (**reverses the v18
+  first-word rule — Chris's call on 09-16**). Transfer failure: message by
+  default after the first failure, one retry only if they insist, never a
+  third. Safety question only for someone with the vehicle. Lookup before
+  any non-money/complaint transfer when the caller named anything
+  searchable. Silence while digits are being read.
+
+Still a transfer by policy: motor-club availability (~10/day). Answering
+those needs Chris's answers on service area, services, and whether Emily may
+say "yes, send it".
+
+Rollback: Retell → previous published agent version; API → revert this
+commit (the Redis key is additive, nothing to migrate).

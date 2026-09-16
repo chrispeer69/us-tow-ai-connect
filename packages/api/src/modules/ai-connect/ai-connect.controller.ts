@@ -159,6 +159,7 @@ export class AiConnectController {
       jobNumber: args?.job_number ?? '',
       poNumber: args?.po_number ?? '',
       fallbackPhone: retellInboundCallerId(raw),
+      callId: retellCallId(raw),
     });
     if (!result.found) {
       return { status: 'not_found', message: result.message };
@@ -172,9 +173,12 @@ export class AiConnectController {
       matched_by: result.matchedBy,
       job_state: result.jobState ?? 'active',
       ...(result.closedAt ? { closed_at: result.closedAt } : {}),
-      // 2026-09-12 — somebody already rang about this job in an earlier
-      // conversation. The prompt skips the thirty-minute line and transfers.
+      // 2026-09-12 — this caller already heard this job's update in an
+      // earlier conversation and nothing has moved. The prompt skips the
+      // thirty-minute line and transfers. 2026-09-16 — keyed on the caller,
+      // not the job; status_changed means "same caller, but there is news".
       repeat_call: result.repeatCall === true,
+      status_changed_since_their_last_call: result.statusChanged === true,
       prior_calls_about_this_job: result.priorCalls ?? 0,
     };
   }
