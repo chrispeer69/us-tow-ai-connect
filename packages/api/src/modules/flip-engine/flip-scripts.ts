@@ -1850,7 +1850,7 @@ function scenarioC(ctx: ScriptContext): string {
 
   return [
     `[SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI) — internal label, never speak this]`,
-    `[AGENT: The destination is a residence or unknown. Confirm details and push the CONVINI app hard.]`,
+    `[AGENT: The destination is a residence or unknown. Confirm details${conditional ? ', follow the conditional-offer instructions above,' : ''} and push the CONVINI app hard.]`,
     // Session 74 — this scenario is where the orchestrator lands every job that
     // is NOT flip-eligible, including jobs with no partner shop and collision /
     // glass work. It is therefore where an agent with nothing to offer actually
