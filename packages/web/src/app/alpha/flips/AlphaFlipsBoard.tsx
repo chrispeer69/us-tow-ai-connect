@@ -420,8 +420,10 @@ function CallCard({
 
   return (
     <article
+      // Opaque fills on purpose: a translucent orange over a light surface
+      // turned this card pale pink with white text on it (2026-09-16).
       className={`rounded-xl border px-3 py-3 ${
-        positive ? 'border-orange-500 bg-orange-500/10' : 'border-stone-800 bg-stone-900/60'
+        positive ? 'border-orange-500 bg-[#322217]' : 'border-stone-800 bg-stone-900'
       }`}
     >
       <button onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left">
