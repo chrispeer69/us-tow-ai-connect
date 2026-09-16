@@ -332,5 +332,7 @@ Still a transfer by policy: motor-club availability (~10/day). Answering
 those needs Chris's answers on service area, services, and whether Emily may
 say "yes, send it".
 
-Rollback: Retell → previous published agent version; API → revert this
+Published as Retell inbound agent **v22** at 08:12 ET 09-16 (v21 = rollback). API commit `0dc80a0` deployed 08:05 ET.
+
+Rollback: Retell → v21; API → revert this
 commit (the Redis key is additive, nothing to migrate).
