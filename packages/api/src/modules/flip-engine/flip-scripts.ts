@@ -149,7 +149,20 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.14';
+export const SCRIPT_VERSION = '3.15';
+// 3.15 (2026-09-16) — "GOING HOME" IS NOT A REASON TO SKIP THE OFFER. Chris,
+//   09-16, on four no-offer calls in an hour: "WHY is the AI dispatcher NOT
+//   MAKING OFFERS". Pamela C., overheating Explorer pouring coolant, said the
+//   drop-off was her home; the agent said "Since your destination is home
+//   rather than a repair shop, I'll get this locked in" and closed. The code
+//   script already said to make the offer regardless of the customer's word
+//   for the destination, but Retell prompt rule 18 listed "is going home"
+//   next to fuel / jump / lockout as a no-pitch case, and the prompt wins.
+//   A car with a mechanical fault heading home has no shop yet — that is the
+//   best moment to offer, not a reason to stop. Rule 18 (agent v57) now
+//   excludes only jobs that need no repair; the conditional-offer block below
+//   treats "home" the same way. Skips on 09-14..16 for this reason: Pamela
+//   C., Melissa Richards, Antonio Muse ("per rule 18" said aloud).
 // 3.14 (2026-09-14) — ASK FOR THE CUSTOMER'S EMAIL. Chris: "I want her to ask
 //   the customer what their email is — and add that to the AI notes inside
 //   Towbook and also inside US Tow Dispatch." New STEP 2c straight after the
@@ -1825,7 +1838,8 @@ function scenarioC(ctx: ScriptContext): string {
         // unintelligible speech. A conditional offer is no less binding than a
         // scripted one.
         `[AGENT: Before you treat any reply to that offer as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Only log a destination change on an explicit yes.]`,
-        `[AGENT: If they say anything else — home, a body shop, a dealership they chose, a residence, or they are unsure — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
+        `[AGENT: If they say it is going HOME or to a residence and the vehicle has a mechanical problem — it will not start, overheats, a warning light, a noise, a leak, a flat — make the same offer, worded for it: "Before I confirm the drop-off — since it needs looking at anyway, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic plus up to 10 percent off parts and labor, and sort you a ride home from there. Would you like the driver to take it there instead of home?" A car going home with a fault has no shop yet; that is the best moment to offer, not a reason to skip. The same consent rule applies.]`,
+        `[AGENT: If they say a body shop, a dealership they chose, or they are unsure, or the job needs no repair at all (fuel, jump, lockout, a tire changed at the roadside) — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
         `[AGENT: Take a YES only if it is unambiguous. If the answer is unclear or arrives amid other speech, ask "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Never infer a destination change.]`,
         `[AGENT: If they decline, accept it and move to the CONVINI close. Do not make a second or third offer on this call.]`,
       ]
