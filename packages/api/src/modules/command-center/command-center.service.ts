@@ -478,9 +478,9 @@ export class CommandCenterService {
     const pickupChanged = !existing || existing.pickupAddress !== input.pickupAddress;
     const dropoffChanged = !existing || existing.dropoffAddress !== input.dropoffAddress;
 
-    let pickupLat = existing?.pickupLat ?? null;
-    let pickupLng = existing?.pickupLng ?? null;
-    if (pickupChanged && input.pickupAddress) {
+    let pickupLat = input.pickupLat ?? existing?.pickupLat ?? null;
+    let pickupLng = input.pickupLng ?? existing?.pickupLng ?? null;
+    if (pickupChanged && input.pickupAddress && !input.pickupLat && !input.pickupLng) {
       const r = await this.geocoder.geocode(input.pickupAddress);
       pickupLat = r ? String(r.lat) : null;
       pickupLng = r ? String(r.lng) : null;

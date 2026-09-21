@@ -25,6 +25,10 @@ export interface ActiveJob {
    */
   callNumber?: string;
   poNumber?: string;
+  /** Coordinates and work type supplied directly by the source system. */
+  latitude?: string;
+  longitude?: string;
+  serviceType?: string;
 }
 
 export interface AdapterConnectionTestResult {

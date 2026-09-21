@@ -16,6 +16,7 @@ import {
 const CHROMIUM_ARGS = ['--no-sandbox', '--disable-dev-shm-usage'];
 const SESSION_TTL_SECONDS = 3600;
 const JOBS_CACHE_TTL_SECONDS = 300;
+const AAA_ACTIVE_CALL_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 // Salesforce community pages keep WebSocket telemetry connections open
 // indefinitely, so `networkidle` never fires within the Playwright default
@@ -72,6 +73,39 @@ export interface AaaWorkOrderRow {
 // interpreted as completed (or otherwise trigger customer automation).
 const ACTIVE_AAA_STATUS = /^(en route|on location|tow loaded)$/i;
 const TERMINAL_AAA_STATUS = /^cleared$/i;
+const VERIFIED_COMPLETED_STATUS = 'Tow Complete';
+const VERIFIED_NOT_COMPLETED_STATUS = 'Closed Without Tow Complete';
+
+export interface AaaClearedOutcomeEvidence {
+  towCompleteTimestamp: string;
+  canceledTimestamp: string;
+}
+
+interface AaaWorkOrderDetails extends AaaClearedOutcomeEvidence {
+  customerName: string;
+  customerPhone: string;
+  vehicle: string;
+  pickup: string;
+  destination: string;
+  latitude: string;
+  longitude: string;
+  serviceType: string;
+}
+
+/**
+ * `Cleared` only means that AAA closed the call. Live portal records prove it
+ * is used for both completed tows and calls that never progressed. A customer
+ * completion is valid only when AAA supplies a Tow Complete timestamp and no
+ * cancellation timestamp.
+ */
+export function classifyAaaClearedOutcome(
+  evidence: AaaClearedOutcomeEvidence,
+): typeof VERIFIED_COMPLETED_STATUS | typeof VERIFIED_NOT_COMPLETED_STATUS {
+  if (evidence.canceledTimestamp.trim()) return VERIFIED_NOT_COMPLETED_STATUS;
+  return evidence.towCompleteTimestamp.trim()
+    ? VERIFIED_COMPLETED_STATUS
+    : VERIFIED_NOT_COMPLETED_STATUS;
+}
 
 export function isVerifiedAaaStatus(status: string): boolean {
   const value = status.trim();
@@ -566,6 +600,151 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       );
     }
 
-    return assembleAaaActiveJobs(rows);
+    const jobs = assembleAaaActiveJobs(rows);
+    const output: ActiveJob[] = [];
+
+    for (const job of jobs) {
+      const trackingKey = this.activeCallTrackingKey(tenantId, job.jobId);
+      if (!TERMINAL_AAA_STATUS.test(job.status.trim())) {
+        // Only calls genuinely observed in an active stage can later produce a
+        // terminal event. This prevents first connection from importing the
+        // portal's historical Cleared rows and firing customer automation.
+        await this.redis.set(trackingKey, '1', 'EX', AAA_ACTIVE_CALL_TTL_SECONDS);
+        const details = await this.readWorkOrderDetails(page, tenantId, job.jobId, true);
+        if (details) this.applyWorkOrderDetails(job, details);
+        output.push(job);
+        continue;
+      }
+
+      if (!(await this.redis.get(trackingKey))) {
+        this.logger.debug(
+          `AAA Portal: ignoring historical Cleared call ${job.jobId}; it was not observed active`,
+        );
+        continue;
+      }
+
+      const details = await this.readWorkOrderDetails(page, tenantId, job.jobId);
+      if (!details) {
+        // Fail closed and retain the marker so a later poll can retry.
+        this.logger.warn(
+          `AAA Portal: could not verify Cleared outcome for ${job.jobId}; withholding terminal automation`,
+        );
+        continue;
+      }
+
+      this.applyWorkOrderDetails(job, details);
+      job.status = classifyAaaClearedOutcome(details);
+      output.push(job);
+      await this.redis.del(trackingKey);
+    }
+
+    return output;
+  }
+
+  private activeCallTrackingKey(tenantId: string, jobId: string): string {
+    return `aaa:observed-active:${tenantId}:${jobId}`;
+  }
+
+  /** Open one transitioned Work Order read-only and collect terminal evidence. */
+  private async readWorkOrderDetails(
+    listPage: Page,
+    tenantId: string,
+    jobId: string,
+    allowCache = false,
+  ): Promise<AaaWorkOrderDetails | null> {
+    const cacheKey = `aaa:work-order-detail:${tenantId}:${jobId}`;
+    if (allowCache) {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        try {
+          return JSON.parse(cached) as AaaWorkOrderDetails;
+        } catch {
+          await this.redis.del(cacheKey);
+        }
+      }
+    }
+
+    const jobLink = listPage.getByRole('link', { name: jobId, exact: true }).first();
+    const href = await jobLink.getAttribute('href').catch(() => null);
+    if (!href) return null;
+
+    const detailPage = await listPage.context().newPage();
+    try {
+      await detailPage.goto(new URL(href, listPage.url()).href, {
+        waitUntil: 'domcontentloaded',
+        timeout: AAA_NAV_TIMEOUT_MS,
+      });
+      if (detailPage.url().includes('/login')) return null;
+
+      await detailPage
+        .getByText('Tow Complete Timestamp', { exact: true })
+        .first()
+        .waitFor({ timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS });
+
+      const details = {
+        towCompleteTimestamp: await this.readLightningField(
+          detailPage,
+          'Tow Complete Timestamp',
+        ),
+        canceledTimestamp: await this.readLightningField(detailPage, 'Canceled Timestamp'),
+        customerName: await this.readLightningField(detailPage, 'Contact'),
+        customerPhone: await this.readLightningField(detailPage, 'Phone Number'),
+        vehicle: await this.readLightningField(detailPage, 'Vehicle Profile'),
+        pickup: await this.readLightningField(detailPage, 'Breakdown Address'),
+        destination: await this.readLightningField(detailPage, 'Tow Address'),
+        latitude: await this.readLightningField(detailPage, 'Latitude'),
+        longitude: await this.readLightningField(detailPage, 'Longitude'),
+        serviceType: await this.readLightningField(detailPage, 'Work Type'),
+      };
+      this.logger.log(
+        `AAA Portal: read detail for ${jobId} outcome=${classifyAaaClearedOutcome(details)} ` +
+          `towComplete=${details.towCompleteTimestamp || 'blank'} canceled=${details.canceledTimestamp || 'blank'}`,
+      );
+      await this.redis.set(cacheKey, JSON.stringify(details), 'EX', JOBS_CACHE_TTL_SECONDS);
+      return details;
+    } catch (error) {
+      this.logger.warn(
+        `AAA Portal: terminal evidence read failed for ${jobId}: ${(error as Error).message}`,
+      );
+      return null;
+    } finally {
+      await detailPage.close().catch(() => undefined);
+    }
+  }
+
+  private applyWorkOrderDetails(job: ActiveJob, details: AaaWorkOrderDetails): void {
+    const phone = details.customerPhone.replace(/\D/g, '');
+    if (details.customerName) job.customerName = details.customerName;
+    if (phone) job.customerPhone = phone;
+    if (details.vehicle) job.vehicle = details.vehicle;
+    if (details.pickup) job.pickup = details.pickup;
+    if (details.destination) job.destination = details.destination;
+    if (details.latitude) job.latitude = details.latitude;
+    if (details.longitude) job.longitude = details.longitude;
+    if (details.serviceType) job.serviceType = details.serviceType;
+  }
+
+  /** Read one label/value pair from a Salesforce Lightning record layout. */
+  private async readLightningField(page: Page, labelText: string): Promise<string> {
+    const label = page.getByText(labelText, { exact: true }).first();
+    if ((await label.count()) === 0) return '';
+
+    return label.evaluate((node, expectedLabel) => {
+      let current: {
+        innerText?: string;
+        parentElement?: unknown;
+      } | null = node as unknown as { innerText?: string; parentElement?: unknown };
+      for (let depth = 0; current && depth < 8; depth += 1) {
+        const lines = String(current.innerText ?? '')
+          .split('\n')
+          .map((line: string) => line.trim())
+          .filter(Boolean);
+        if (lines[0] === expectedLabel && lines.length >= 2) {
+          return lines[1] ?? '';
+        }
+        current = current.parentElement as typeof current;
+      }
+      return '';
+    }, labelText);
   }
 }

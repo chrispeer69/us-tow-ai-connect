@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assembleAaaActiveJobs,
+  classifyAaaClearedOutcome,
   isVerifiedAaaStatus,
   parseAaaWorkOrderTable,
 } from '../aaa-portal.adapter';
@@ -148,6 +149,26 @@ describe('AAA Work Orders parsing', () => {
     ]);
 
     expect(jobs).toEqual([]);
+  });
+
+  it('requires a Tow Complete timestamp before treating Cleared as completed', () => {
+    expect(
+      classifyAaaClearedOutcome({
+        towCompleteTimestamp: '9/17/2026, 10:22 AM',
+        canceledTimestamp: '',
+      }),
+    ).toBe('Tow Complete');
+
+    expect(
+      classifyAaaClearedOutcome({ towCompleteTimestamp: '', canceledTimestamp: '' }),
+    ).toBe('Closed Without Tow Complete');
+
+    expect(
+      classifyAaaClearedOutcome({
+        towCompleteTimestamp: '9/17/2026, 10:22 AM',
+        canceledTimestamp: '9/17/2026, 10:20 AM',
+      }),
+    ).toBe('Closed Without Tow Complete');
   });
 
   it('fails closed when Salesforce removes a required semantic column', () => {

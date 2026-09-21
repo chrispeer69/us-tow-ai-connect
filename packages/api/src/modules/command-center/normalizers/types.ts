@@ -25,6 +25,8 @@ export interface UnifiedJobInput {
   vehicleModel: string | null;
   vehicleColor: string | null;
   pickupAddress: string | null;
+  pickupLat?: string | null;
+  pickupLng?: string | null;
   dropoffAddress: string | null;
   serviceType: string | null;
   priority: UnifiedJobPriority;
