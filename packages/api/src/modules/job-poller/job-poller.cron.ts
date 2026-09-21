@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { tenantCredentials, tenants } from '../../db/schema';
+import { tenantCredentials, tenants, unifiedJobs } from '../../db/schema';
 import { AdapterFactory } from '../adapters/adapter.factory';
 import type { ActiveJob } from '../adapters/adapter.interface';
 import { CommandCenterService } from '../command-center/command-center.service';
@@ -184,6 +184,24 @@ export class JobPollerCron {
           continue;
       }
 
+      // The AAA Work Orders view contains recently-cleared rows. Import a
+      // terminal observation only when we already know the call, otherwise a
+      // connector startup would backfill old jobs and trigger review flows.
+      if (
+        source === 'aaa_salesforce' &&
+        (input.status === 'completed' || input.status === 'canceled' || input.status === 'declined')
+      ) {
+        const existing = await this.db.query.unifiedJobs.findFirst({
+          where: and(
+            eq(unifiedJobs.tenantId, tenantId),
+            eq(unifiedJobs.source, source),
+            eq(unifiedJobs.sourceJobId, input.sourceJobId),
+          ),
+          columns: { id: true },
+        });
+        if (!existing) continue;
+      }
+
       activeSourceJobIds.push(input.sourceJobId);
 
       try {
@@ -218,6 +236,11 @@ export class JobPollerCron {
         );
       }
     }
+
+    // AAA exposes explicit terminal statuses such as Cleared and Cancelled.
+    // Never infer that a missing AAA row completed successfully: doing so
+    // would turn cancellations into completed jobs and send review requests.
+    if (source === 'aaa_salesforce') return;
 
     try {
       const archived = await this.commandCenter.archiveMissingJobs(tenantId, source, activeSourceJobIds);

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/utils';
 
 type Policy = 'AI_HANDLES' | 'TRANSFER' | 'NOT_OFFERED';
@@ -19,6 +20,21 @@ type OutboundCallMode = 'AUTO' | 'MANUAL_ONLY' | 'OFF';
 type Service = {
   enabled: boolean;
   classes: Record<string, Policy>;
+};
+
+type IntegrationVoiceConfig = {
+  softwareType: string;
+  sessionStatus: string;
+  automaticOutboundVoiceEnabled: boolean;
+  platformAllowed: boolean;
+};
+
+const INTEGRATION_LABELS: Record<string, string> = {
+  TOWBOOK: 'Towbook',
+  AAA_PORTAL: 'AAA Portal',
+  US_TOW_DISPATCH: 'US Tow Dispatch',
+  TOWLOGS: 'TowLogs',
+  OMADI: 'Omadi',
 };
 
 const SERVICES = [
@@ -47,6 +63,7 @@ interface AgentConfig {
   testModeEnabled?: boolean;
   testOverrideNumber?: string | null;
   serviceToggles: Record<string, Service>;
+  integrations?: IntegrationVoiceConfig[];
 }
 
 export default function AiAgentPage() {
@@ -58,6 +75,7 @@ export default function AiAgentPage() {
   const [testModeEnabled, setTestModeEnabled] = useState(false);
   const [testOverrideNumber, setTestOverrideNumber] = useState('');
   const [serviceToggles, setServiceToggles] = useState<Record<string, Service>>({});
+  const [integrations, setIntegrations] = useState<IntegrationVoiceConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -79,6 +97,7 @@ export default function AiAgentPage() {
       setTestModeEnabled(data.testModeEnabled === true);
       setTestOverrideNumber(data.testOverrideNumber ?? '');
       setServiceToggles(normalizeToggles(data.serviceToggles ?? {}));
+      setIntegrations(data.integrations ?? []);
       setHasChanges(false);
     } catch (err) {
       setError((err as Error).message);
@@ -106,6 +125,12 @@ export default function AiAgentPage() {
           outboundCallMode,
           testModeEnabled,
           testOverrideNumber: testOverrideNumber.trim() || null,
+          integrationOutboundCalls: Object.fromEntries(
+            integrations.map((integration) => [
+              integration.softwareType,
+              integration.automaticOutboundVoiceEnabled,
+            ]),
+          ),
           serviceToggles,
         },
       });
@@ -148,8 +173,14 @@ export default function AiAgentPage() {
           <Spinner /> Loading config...
         </div>
       ) : (
-        <>
-          <Card>
+        <Tabs defaultValue="general" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="adopters">Connected adopters</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="general" className="space-y-6">
+            <Card>
             <CardHeader>
               <CardTitle>Outbound AI Calls</CardTitle>
             </CardHeader>
@@ -244,9 +275,9 @@ export default function AiAgentPage() {
                 </div>
               </div>
             </CardContent>
-          </Card>
+            </Card>
 
-          <Card>
+            <Card>
             <CardHeader>
               <CardTitle>Services AI Handles</CardTitle>
             </CardHeader>
@@ -281,8 +312,83 @@ export default function AiAgentPage() {
                 );
               })}
             </CardContent>
-          </Card>
-        </>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="adopters">
+            <Card>
+              <CardHeader>
+                <CardTitle>Automatic calls by adopter</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-zinc-400">
+                  Choose which connected dispatch systems can start automatic AI customer calls.
+                  Jobs continue syncing to Command Center when calling is off.
+                </p>
+
+                {integrations.length === 0 ? (
+                  <div className="rounded-lg border border-zinc-800 p-5 text-sm text-zinc-400">
+                    No connected adopters found. Connect one from Integrations first.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-zinc-800 overflow-hidden rounded-lg border border-zinc-800">
+                    {integrations.map((integration) => {
+                      const enabled = integration.automaticOutboundVoiceEnabled;
+                      const platformBlocked = enabled && !integration.platformAllowed;
+                      return (
+                        <div
+                          key={integration.softwareType}
+                          className="flex items-center justify-between gap-6 bg-zinc-900/40 p-4"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">
+                                {INTEGRATION_LABELS[integration.softwareType] ??
+                                  integration.softwareType}
+                              </span>
+                              <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400">
+                                {integration.sessionStatus}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm text-zinc-500">
+                              {platformBlocked
+                                ? 'Enabled here, but currently held by the platform safety switch.'
+                                : enabled
+                                  ? 'New eligible jobs can start automatic AI calls.'
+                                  : 'Jobs sync normally, but automatic AI calls are disabled.'}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <span className="text-sm text-zinc-400">{enabled ? 'On' : 'Off'}</span>
+                            <Switch
+                              checked={enabled}
+                              aria-label={`Automatic calls for ${integration.softwareType}`}
+                              onCheckedChange={(value) =>
+                                mutate(
+                                  setIntegrations,
+                                  integrations.map((item) =>
+                                    item.softwareType === integration.softwareType
+                                      ? { ...item, automaticOutboundVoiceEnabled: value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-zinc-500">
+                  The account-wide mode under General still applies. Both the account and adopter
+                  must allow automatic calls.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

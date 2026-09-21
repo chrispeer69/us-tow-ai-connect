@@ -23,6 +23,13 @@ function splitName(name: string | null): { firstName?: string; lastName?: string
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') || undefined };
 }
 
+function sourceLabel(source: string): string {
+  if (source === 'aaa_salesforce') return 'AAA Portal';
+  if (source === 'us_tow_dispatch') return 'US Tow Dispatch';
+  if (source === 'towbook') return 'Towbook';
+  return source;
+}
+
 @Injectable()
 export class GhlRoadsideBridgeService {
   private readonly logger = new Logger(GhlRoadsideBridgeService.name);
@@ -110,7 +117,7 @@ export class GhlRoadsideBridgeService {
         name: contactName ?? undefined,
         phone: outboundPhone,
         locationId: this.locationId,
-        source: 'US Tow AI Connect / TowBook',
+        source: `US Tow AI Connect / ${sourceLabel(job.source)}`,
         customFields: populatedFields.map(([key, fieldValue]) => ({ key, fieldValue })),
       }),
     });
@@ -163,7 +170,7 @@ export class GhlRoadsideBridgeService {
         throw new Error(`GHL review link update failed: ${updateResponse.status} ${updateBody.slice(0, 300)}`);
       }
       this.logger.log(
-        `GHL review link update accepted for TowBook job ${job.sourceJobId} ` +
+        `GHL review link update accepted for ${sourceLabel(job.source)} job ${job.sourceJobId} ` +
         `(field ${reviewFieldKey}, contact ${contactId})`,
       );
     }
@@ -209,7 +216,9 @@ export class GhlRoadsideBridgeService {
       payload: { contactId, tag, reviewUrl, testMode },
       actor: 'ghl-roadside-bridge',
     });
-    this.logger.log(`Roadside ${stage} sent to GHL for TowBook job ${job.sourceJobId}`);
+    this.logger.log(
+      `Roadside ${stage} sent to GHL for ${sourceLabel(job.source)} job ${job.sourceJobId}`,
+    );
   }
 
   private async createBlueCollarTipsLink(

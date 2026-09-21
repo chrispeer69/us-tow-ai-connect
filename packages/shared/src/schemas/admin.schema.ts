@@ -84,6 +84,7 @@ export const AgentConfigUpdateSchema = z.object({
   outboundCallMode: OutboundCallMode.optional(),
   testModeEnabled: z.boolean().optional(),
   testOverrideNumber: z.string().max(20).optional().nullable(),
+  integrationOutboundCalls: z.record(z.boolean()).optional(),
   serviceToggles: z.record(
     z.object({
       enabled: z.boolean(),

@@ -1,7 +1,7 @@
 import type { UnifiedJobStatus } from './types';
 
 const TABLE: Array<[RegExp, UnifiedJobStatus]> = [
-  [/(complete|closed|done|finished)/i, 'completed'],
+  [/(clear|complete|closed|done|finished)/i, 'completed'],
   [/(cancel|gone on arrival|GOA|no show)/i, 'canceled'],
   [/(declin|reject)/i, 'declined'],
   [/(in tow|towing)/i, 'in_tow'],

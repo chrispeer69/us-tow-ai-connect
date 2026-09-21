@@ -44,6 +44,10 @@ import type {
 const DEFAULT_GREETING = 'Thank you for calling.';
 const AGENT_SETTINGS_KEY = '__settings';
 const DEFAULT_OUTBOUND_CALL_MODE = 'AUTO';
+
+function defaultIntegrationOutboundVoice(softwareType: string): boolean {
+  return softwareType !== 'AAA_PORTAL';
+}
 const DEFAULT_TENANT_FALLBACK = {
   companyName: 'Default Tenant',
   ownerEmail: 'owner@example.com',
@@ -892,7 +896,7 @@ export class AdminService {
 
   // ─── agent config ───────────────────────────────────────────────────
   async getAgentConfig(tenantId: string) {
-    const [existing, tenant] = await Promise.all([
+    const [existing, tenant, connectedIntegrations] = await Promise.all([
       this.db
         .select()
         .from(aiAgentConfigs)
@@ -908,7 +912,27 @@ export class AdminService {
         .where(eq(tenants.id, tenantId))
         .limit(1)
         .then((res) => res[0]),
+      this.db
+        .select({
+          softwareType: tenantCredentials.softwareType,
+          sessionStatus: tenantCredentials.sessionStatus,
+          automaticOutboundVoiceEnabled: tenantCredentials.automaticOutboundVoiceEnabled,
+        })
+        .from(tenantCredentials)
+        .where(eq(tenantCredentials.tenantId, tenantId))
+        .orderBy(asc(tenantCredentials.softwareType)),
     ]);
+
+    const integrations = connectedIntegrations.map((integration) => ({
+      softwareType: integration.softwareType,
+      sessionStatus: integration.sessionStatus,
+      automaticOutboundVoiceEnabled:
+        integration.automaticOutboundVoiceEnabled ??
+        defaultIntegrationOutboundVoice(integration.softwareType),
+      platformAllowed:
+        integration.softwareType !== 'AAA_PORTAL' ||
+        process.env.AAA_AUTOMATIC_OUTBOUND_VOICE_ENABLED?.trim().toLowerCase() === 'true',
+    }));
 
     const defaultMode = tenant?.outboundVoiceEnabled ? 'AUTO' : 'OFF';
 
@@ -923,6 +947,7 @@ export class AdminService {
         outboundCallMode: mode,
         testModeEnabled: readConfigBool(tenant?.outboundVoiceConfig, 'test_mode_enabled', false),
         testOverrideNumber: readConfigString(tenant?.outboundVoiceConfig, 'test_override_number', null),
+        integrations,
       };
     }
 
@@ -935,6 +960,7 @@ export class AdminService {
       outboundCallMode: defaultMode,
       testModeEnabled: readConfigBool(tenant?.outboundVoiceConfig, 'test_mode_enabled', false),
       testOverrideNumber: readConfigString(tenant?.outboundVoiceConfig, 'test_override_number', null),
+      integrations,
     };
   }
 
@@ -948,6 +974,22 @@ export class AdminService {
         .limit(1)
     )[0];
     const now = new Date();
+
+    if (body.integrationOutboundCalls) {
+      await Promise.all(
+        Object.entries(body.integrationOutboundCalls).map(([softwareType, enabled]) =>
+          this.db
+            .update(tenantCredentials)
+            .set({ automaticOutboundVoiceEnabled: enabled, updatedAt: now })
+            .where(
+              and(
+                eq(tenantCredentials.tenantId, tenantId),
+                eq(tenantCredentials.softwareType, softwareType),
+              ),
+            ),
+        ),
+      );
+    }
     const serviceToggles = withAgentSettings(body.serviceToggles, {
       outboundCallMode: body.outboundCallMode ?? readOutboundCallMode(existing?.serviceToggles),
     });

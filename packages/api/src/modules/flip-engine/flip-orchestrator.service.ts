@@ -3,9 +3,14 @@ import { haversineMiles, selectNearestShops, shopAtLocation } from './nearest-sh
 import { Cron } from '@nestjs/schedule';
 import { eq, and, gte } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { aiAgentConfigs, outboundCallLogs, tenants, outboundCalls, unifiedJobs } from '../../db/schema';
+import { aiAgentConfigs, outboundCallLogs, tenants, tenantCredentials, outboundCalls, unifiedJobs } from '../../db/schema';
 import type { UnifiedJobRow } from '../../db/schema';
 import { OutboundVoiceService } from '../outbound-voice/outbound-voice.service';
+import {
+  automaticOutboundVoiceAllowedForSource,
+  defaultAutomaticOutboundVoiceForSource,
+  integrationSoftwareTypeForSource,
+} from './outbound-source-policy';
 import {
   DestinationClassifierService,
   type ClassifyDestinationResult,
@@ -948,6 +953,33 @@ export class FlipOrchestratorService {
     const jobScriptVariant: ScriptVariant = pickScriptVariant(job.id ?? job.callerPhone);
     const seenKey = `welcome:${tenantId}:${job.id}`;
     if (automatic && this.seen.has(seenKey)) return;
+
+    // New connectors must prove ingestion and lifecycle syncing before they
+    // can place automatic customer calls. AAA is opt-in at the source level;
+    // Towbook and all established sources retain their existing behaviour.
+    // Manual operator-initiated calls are not affected by this rollout gate.
+    if (automatic) {
+      const softwareType = integrationSoftwareTypeForSource(job.source);
+      const integration = softwareType
+        ? await this.db.query.tenantCredentials.findFirst({
+            where: and(
+              eq(tenantCredentials.tenantId, tenantId),
+              eq(tenantCredentials.softwareType, softwareType),
+            ),
+            columns: { automaticOutboundVoiceEnabled: true },
+          })
+        : null;
+      const integrationEnabled =
+        integration?.automaticOutboundVoiceEnabled ??
+        defaultAutomaticOutboundVoiceForSource(job.source);
+
+      if (!automaticOutboundVoiceAllowedForSource(job.source, integrationEnabled)) {
+        this.logger.log(
+          `[flip-orchestrator] automatic outbound voice disabled for source=${job.source} job=${job.id}`,
+        );
+        return;
+      }
+    }
 
     // Skip if no phone number — nothing to call.
     if (!job.callerPhone) {

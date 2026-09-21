@@ -116,6 +116,9 @@ export const tenantCredentials = pgTable('tenant_credentials', {
   failureKind: varchar('failure_kind', { length: 40 }),
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lastFailureAt: timestamp('last_failure_at', { withTimezone: true }),
+  // Per-connection automatic-call switch. Null preserves source defaults:
+  // established connectors on, newly introduced AAA connections off.
+  automaticOutboundVoiceEnabled: boolean('automatic_outbound_voice_enabled'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   unqTenantSoftware: uniqueIndex('unq_tenant_software_idx').on(t.tenantId, t.softwareType),

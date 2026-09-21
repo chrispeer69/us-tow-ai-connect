@@ -1,6 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { chromium, type Browser, type Locator, type Page } from 'playwright';
-import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type Redis from 'ioredis';
@@ -24,7 +23,8 @@ const JOBS_CACHE_TTL_SECONDS = 300;
 // `domcontentloaded` plus an explicit wait for the work-order table fixes it.
 // Verified empirically: dom load completes in ~3s; table renders within ~8s.
 const AAA_NAV_TIMEOUT_MS = 60_000;
-const WORK_ORDERS_SELECTOR = 'table[role="grid"] tbody';
+const WORK_ORDERS_TABLE_SELECTOR = 'table[role="grid"]';
+const WORK_ORDERS_SELECTOR = `${WORK_ORDERS_TABLE_SELECTOR} tbody`;
 const WORK_ORDERS_SELECTOR_TIMEOUT_MS = 30_000;
 const SCRAPE_MAX_ATTEMPTS = 2;
 const SCRAPE_RETRY_BACKOFF_MS = 5_000;
@@ -54,6 +54,124 @@ const DECLINE_BUTTON_NAMES = ['Decline', 'Decline Call', 'Reject'];
 const CONFIRM_BUTTON_NAMES = ['Decline', 'Accept', 'Submit', 'Confirm', 'Save', 'OK', 'Yes'];
 const ACTION_NAV_TIMEOUT_MS = 60_000;
 const ACTION_BUTTON_TIMEOUT_MS = 15_000;
+
+/** A semantic Work Orders row, independent of Salesforce's generated DOM ids. */
+export interface AaaWorkOrderRow {
+  workOrderNumber: string;
+  callId: string;
+  callDate: string;
+  status: string;
+  serviceTerritory: string;
+  customerName: string;
+  memberNumber: string;
+  customerPhone: string;
+}
+
+const ACTIVE_AAA_STATUS =
+  /^(new|open|pending|received|in progress|accepted|assigned|scheduled|spotted|dispatched|en[ -]?route|on scene|arrived|in tow|towing|unscheduled)$/i;
+const TERMINAL_AAA_STATUS =
+  /^(cleared|complete|completed|closed|cancelled|canceled|declined|rejected|goa|gone on arrival|no show)$/i;
+
+function aaaStatusProgress(status: string): number {
+  if (/in tow|towing/i.test(status)) return 5;
+  if (/on scene|arrived/i.test(status)) return 4;
+  if (/en[ -]?route/i.test(status)) return 3;
+  if (/assigned|accepted|dispatched/i.test(status)) return 2;
+  return 1;
+}
+
+/**
+ * Convert the live Salesforce table into semantic rows by header name. The
+ * portal renders Work Order Number in a row-header `<th>` while every other
+ * value is a `<td>`, so fixed `td[n]` indexes silently lose the job id.
+ */
+export function parseAaaWorkOrderTable(
+  headers: string[],
+  rows: string[][],
+): AaaWorkOrderRow[] {
+  const findColumn = (label: string): number =>
+    headers.findIndex((header) =>
+      header.replace(/\s+/g, ' ').trim().toLowerCase().includes(label.toLowerCase()),
+    );
+
+  const columns = {
+    workOrderNumber: findColumn('Work Order Number'),
+    callId: findColumn('Call ID'),
+    callDate: findColumn('Call Date'),
+    status: findColumn('Status'),
+    serviceTerritory: findColumn('Service Territory'),
+    customerName: findColumn('Contact'),
+    memberNumber: findColumn('Member Number'),
+    customerPhone: findColumn('Phone Number'),
+  };
+
+  const missing = Object.entries(columns)
+    .filter(([, index]) => index < 0)
+    .map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(`AAA Work Orders table is missing required columns: ${missing.join(', ')}`);
+  }
+
+  const value = (row: string[], index: number): string => (row[index] ?? '').trim();
+  return rows.map((row) => ({
+    workOrderNumber: value(row, columns.workOrderNumber),
+    callId: value(row, columns.callId),
+    callDate: value(row, columns.callDate),
+    status: value(row, columns.status),
+    serviceTerritory: value(row, columns.serviceTerritory),
+    customerName: value(row, columns.customerName),
+    memberNumber: value(row, columns.memberNumber),
+    customerPhone: value(row, columns.customerPhone).replace(/\D/g, ''),
+  }));
+}
+
+/**
+ * AAA shows two Service Appointments (en-route and in-tow) for one call in
+ * Dispatch Console. Call ID is therefore the canonical job id; grouping here
+ * prevents either stage from ever becoming a duplicate job downstream.
+ */
+export function assembleAaaActiveJobs(
+  rows: AaaWorkOrderRow[],
+  nowIso = new Date().toISOString(),
+): ActiveJob[] {
+  const rowsByCallId = new Map<string, AaaWorkOrderRow[]>();
+
+  for (const row of rows) {
+    const jobId = row.callId || row.workOrderNumber;
+    if (!jobId || !row.customerPhone) continue;
+    if (!ACTIVE_AAA_STATUS.test(row.status.trim()) && !TERMINAL_AAA_STATUS.test(row.status.trim())) {
+      continue;
+    }
+
+    const existing = rowsByCallId.get(jobId) ?? [];
+    existing.push(row);
+    rowsByCallId.set(jobId, existing);
+  }
+
+  const jobs: ActiveJob[] = [];
+  for (const [jobId, callRows] of rowsByCallId) {
+    const activeRows = callRows.filter((row) => ACTIVE_AAA_STATUS.test(row.status.trim()));
+    const selected =
+      activeRows.sort((a, b) => aaaStatusProgress(b.status) - aaaStatusProgress(a.status))[0] ??
+      callRows.find((row) => /cancel|declin|reject|goa|gone on arrival|no show/i.test(row.status)) ??
+      callRows[0];
+
+    jobs.push({
+      jobId,
+      customerName: selected.customerName,
+      customerPhone: selected.customerPhone,
+      vehicle: '',
+      status: selected.status,
+      driverName: '',
+      eta: 'Unknown',
+      pickup: '',
+      destination: '',
+      lastUpdated: nowIso,
+    });
+  }
+
+  return jobs;
+}
 
 @Injectable()
 export class AaaPortalAdapter implements TowingSoftwareAdapter {
@@ -147,21 +265,18 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
         throw new SessionExpiredException(`Session bounced to login for tenant ${tenantId}`);
       }
 
-      // Explicit wait for the work-order table to render. We tolerate it not
-      // appearing within the timeout (account may legitimately have zero
-      // jobs) — the selector-count diagnostic below distinguishes "0 = no
-      // jobs" from "0 = wrong selector".
-      await page
-        .waitForSelector(WORK_ORDERS_SELECTOR, {
-          timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS,
-        })
-        .catch(() => undefined);
+      // A legitimate empty list still renders the table/tbody. If the table is
+      // absent, fail closed instead of caching [] and causing the cleanup rule
+      // to mark every known AAA job completed after a portal DOM change.
+      await page.waitForSelector(WORK_ORDERS_SELECTOR, {
+        timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS,
+      });
 
       await this.dumpDiagnostics(page, tenantId, attempt).catch((e) => {
         this.logger.warn(`[aaa-debug] diagnostic dump failed: ${(e as Error).message}`);
       });
 
-      const jobs: ActiveJob[] = await this.extractRows(page);
+      const jobs = await this.extractRows(page);
 
       await this.redis.set(
         `jobs:aaa_portal:${tenantId}`,
@@ -171,7 +286,7 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       );
 
       this.logger.log(
-        `AAA Portal: Scraped ${jobs.length} In Progress jobs for tenant ${tenantId} (attempt ${attempt})`,
+        `AAA Portal: Scraped ${jobs.length} active calls for tenant ${tenantId} (attempt ${attempt})`,
       );
       return jobs;
     } finally {
@@ -411,34 +526,32 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
 
   private async extractRows(page: Page): Promise<ActiveJob[]> {
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    return page.evaluate(() => {
+    const matrix = await page.evaluate((tableSelector) => {
       const doc: any = (globalThis as any).document;
-      const rows: any[] = Array.from(doc.querySelectorAll('table[role="grid"] tbody tr'));
-      const out: Array<Record<string, string>> = [];
-      rows.forEach((row: any) => {
-        const cells: any[] = Array.from(row.querySelectorAll('td'));
-        if (cells.length < 8) return;
-
-        const status = (cells[3]?.textContent ?? '').trim();
-        if (status !== 'In Progress') return;
-
-        const phone = (cells[7]?.textContent ?? '').trim().replace(/\D/g, '');
-        if (!phone) return;
-
-        out.push({
-          jobId: (cells[0]?.textContent ?? '').trim(),
-          customerName: (cells[5]?.textContent ?? '').trim(),
-          customerPhone: phone,
-          vehicle: '',
-          status,
-          driverName: '',
-          eta: 'Unknown',
-          destination: '',
-          lastUpdated: new Date().toISOString(),
-        });
+      const tables: any[] = Array.from(doc.querySelectorAll(tableSelector));
+      const table = tables.find((candidate: any) => {
+        const text = candidate.querySelector('thead')?.textContent ?? '';
+        return /Work Order Number/i.test(text) && /Call ID/i.test(text) && /Phone Number/i.test(text);
       });
-      return out as unknown as ActiveJob[];
-    });
+      if (!table) return null;
+
+      const headerRow = table.querySelector('thead tr:last-child');
+      const headers = Array.from(headerRow?.querySelectorAll('th') ?? []).map(
+        (cell: any) => cell.textContent?.trim() ?? '',
+      );
+      const rows = Array.from(table.querySelectorAll('tbody tr')).map((row: any) =>
+        Array.from(row.querySelectorAll(':scope > th, :scope > td')).map(
+          (cell: any) => cell.textContent?.trim() ?? '',
+        ),
+      );
+      return { headers, rows };
+    }, WORK_ORDERS_TABLE_SELECTOR);
     /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    if (!matrix) {
+      throw new Error('AAA Work Orders table rendered without the expected semantic headers');
+    }
+
+    return assembleAaaActiveJobs(parseAaaWorkOrderTable(matrix.headers, matrix.rows));
   }
 }
