@@ -414,6 +414,13 @@
       "when": 1790000000000,
       "tag": "0060_integration_outbound_voice",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1790010000000,
+      "tag": "0061_multiple_tenant_integrations",
+      "breakpoints": true
     }
   ]
 }
