@@ -1,7 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import type { ActiveJob } from '../../adapters/adapter.interface';
-import { mapAdapterStatus } from './status-map';
-import type { AdapterNormalizer, UnifiedJobInput } from './types';
+import type { AdapterNormalizer, UnifiedJobInput, UnifiedJobStatus } from './types';
+
+/** Exact AAA labels verified from Service Appointment Status History. */
+export function mapAaaStatus(raw: string | null | undefined): UnifiedJobStatus {
+  switch ((raw ?? '').trim().toLowerCase()) {
+    case 'en route':
+      return 'en_route';
+    case 'on location':
+      return 'on_scene';
+    case 'tow loaded':
+      return 'in_tow';
+    case 'cleared':
+      return 'completed';
+    default:
+      // Unknown AAA values fail closed. The adapter excludes and logs them;
+      // this fallback prevents direct callers from treating them as terminal.
+      return 'new';
+  }
+}
 
 @Injectable()
 export class AaaNormalizer implements AdapterNormalizer {
@@ -20,7 +37,7 @@ export class AaaNormalizer implements AdapterNormalizer {
         ...(job as unknown as Record<string, unknown>),
         status_raw: job.status,
       },
-      status: mapAdapterStatus(job.status),
+      status: mapAaaStatus(job.status),
       callerPhone: job.customerPhone || null,
       callerName: job.customerName || null,
       vehicleYear: null,

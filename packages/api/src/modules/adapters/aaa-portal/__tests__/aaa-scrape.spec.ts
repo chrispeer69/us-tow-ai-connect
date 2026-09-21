@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assembleAaaActiveJobs,
+  isVerifiedAaaStatus,
   parseAaaWorkOrderTable,
 } from '../aaa-portal.adapter';
 
@@ -48,7 +49,7 @@ describe('AAA Work Orders parsing', () => {
     ]);
   });
 
-  it('uses Call ID, preserves explicit terminal outcomes, and collapses duplicate stages', () => {
+  it('uses Call ID, preserves Cleared, and collapses the two verified AAA stages', () => {
     const now = '2026-09-21T00:00:00.000Z';
     const jobs = assembleAaaActiveJobs(
       [
@@ -66,7 +67,7 @@ describe('AAA Work Orders parsing', () => {
           workOrderNumber: 'WO-1-STAGE-2',
           callId: 'CALL-1',
           callDate: '2026-09-21',
-          status: 'In Tow',
+          status: 'Tow Loaded',
           serviceTerritory: 'OH744',
           customerName: 'Customer One',
           memberNumber: 'M-1',
@@ -89,7 +90,7 @@ describe('AAA Work Orders parsing', () => {
     expect(jobs).toHaveLength(2);
     expect(jobs[0]).toMatchObject({
       jobId: 'CALL-1',
-      status: 'In Tow',
+      status: 'Tow Loaded',
       customerPhone: '6145550101',
       lastUpdated: now,
     });
@@ -112,7 +113,7 @@ describe('AAA Work Orders parsing', () => {
         workOrderNumber: 'WO-1-B',
         callId: 'CALL-1',
         callDate: '2026-09-21',
-        status: 'In Tow',
+        status: 'Tow Loaded',
         serviceTerritory: 'OH744',
         customerName: 'Customer One',
         memberNumber: 'M-1',
@@ -121,7 +122,32 @@ describe('AAA Work Orders parsing', () => {
     ]);
 
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]).toMatchObject({ jobId: 'CALL-1', status: 'In Tow' });
+    expect(jobs[0]).toMatchObject({ jobId: 'CALL-1', status: 'Tow Loaded' });
+  });
+
+  it('fails closed for guessed or otherwise unverified AAA statuses', () => {
+    expect(isVerifiedAaaStatus('En Route')).toBe(true);
+    expect(isVerifiedAaaStatus('On Location')).toBe(true);
+    expect(isVerifiedAaaStatus('Tow Loaded')).toBe(true);
+    expect(isVerifiedAaaStatus('Cleared')).toBe(true);
+    expect(isVerifiedAaaStatus('In Tow')).toBe(false);
+    expect(isVerifiedAaaStatus('On Scene')).toBe(false);
+    expect(isVerifiedAaaStatus('Cancelled')).toBe(false);
+
+    const jobs = assembleAaaActiveJobs([
+      {
+        workOrderNumber: 'WO-UNKNOWN',
+        callId: 'CALL-UNKNOWN',
+        callDate: '2026-09-21',
+        status: 'Cancelled',
+        serviceTerritory: 'OH744',
+        customerName: 'Unknown Outcome',
+        memberNumber: 'M-3',
+        customerPhone: '6145550103',
+      },
+    ]);
+
+    expect(jobs).toEqual([]);
   });
 
   it('fails closed when Salesforce removes a required semantic column', () => {

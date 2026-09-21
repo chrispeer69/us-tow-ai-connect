@@ -237,9 +237,9 @@ export class JobPollerCron {
       }
     }
 
-    // AAA exposes explicit terminal statuses such as Cleared and Cancelled.
-    // Never infer that a missing AAA row completed successfully: doing so
-    // would turn cancellations into completed jobs and send review requests.
+    // AAA's verified successful terminal status is Cleared. Never infer that
+    // a missing or unverified AAA row completed successfully: doing so could
+    // turn a cancellation into a completed job and send a review request.
     if (source === 'aaa_salesforce') return;
 
     try {

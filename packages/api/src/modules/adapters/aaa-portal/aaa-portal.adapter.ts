@@ -67,17 +67,22 @@ export interface AaaWorkOrderRow {
   customerPhone: string;
 }
 
-const ACTIVE_AAA_STATUS =
-  /^(new|open|pending|received|in progress|accepted|assigned|scheduled|spotted|dispatched|en[ -]?route|on scene|arrived|in tow|towing|unscheduled)$/i;
-const TERMINAL_AAA_STATUS =
-  /^(cleared|complete|completed|closed|cancelled|canceled|declined|rejected|goa|gone on arrival|no show)$/i;
+// Verified from AAA Service Appointment Status History on 2026-09-21.
+// Keep this allowlist deliberately narrow: an unverified status must never be
+// interpreted as completed (or otherwise trigger customer automation).
+const ACTIVE_AAA_STATUS = /^(en route|on location|tow loaded)$/i;
+const TERMINAL_AAA_STATUS = /^cleared$/i;
+
+export function isVerifiedAaaStatus(status: string): boolean {
+  const value = status.trim();
+  return ACTIVE_AAA_STATUS.test(value) || TERMINAL_AAA_STATUS.test(value);
+}
 
 function aaaStatusProgress(status: string): number {
-  if (/in tow|towing/i.test(status)) return 5;
-  if (/on scene|arrived/i.test(status)) return 4;
-  if (/en[ -]?route/i.test(status)) return 3;
-  if (/assigned|accepted|dispatched/i.test(status)) return 2;
-  return 1;
+  if (/^tow loaded$/i.test(status.trim())) return 3;
+  if (/^on location$/i.test(status.trim())) return 2;
+  if (/^en route$/i.test(status.trim())) return 1;
+  return 0;
 }
 
 /**
@@ -139,9 +144,7 @@ export function assembleAaaActiveJobs(
   for (const row of rows) {
     const jobId = row.callId || row.workOrderNumber;
     if (!jobId || !row.customerPhone) continue;
-    if (!ACTIVE_AAA_STATUS.test(row.status.trim()) && !TERMINAL_AAA_STATUS.test(row.status.trim())) {
-      continue;
-    }
+    if (!isVerifiedAaaStatus(row.status)) continue;
 
     const existing = rowsByCallId.get(jobId) ?? [];
     existing.push(row);
@@ -153,7 +156,6 @@ export function assembleAaaActiveJobs(
     const activeRows = callRows.filter((row) => ACTIVE_AAA_STATUS.test(row.status.trim()));
     const selected =
       activeRows.sort((a, b) => aaaStatusProgress(b.status) - aaaStatusProgress(a.status))[0] ??
-      callRows.find((row) => /cancel|declin|reject|goa|gone on arrival|no show/i.test(row.status)) ??
       callRows[0];
 
     jobs.push({
@@ -276,7 +278,7 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
         this.logger.warn(`[aaa-debug] diagnostic dump failed: ${(e as Error).message}`);
       });
 
-      const jobs = await this.extractRows(page);
+      const jobs = await this.extractRows(page, tenantId);
 
       await this.redis.set(
         `jobs:aaa_portal:${tenantId}`,
@@ -524,7 +526,7 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
     this.logger.warn(`[aaa-portal] ${kind} failure screenshot: ${file}`);
   }
 
-  private async extractRows(page: Page): Promise<ActiveJob[]> {
+  private async extractRows(page: Page, tenantId: string): Promise<ActiveJob[]> {
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const matrix = await page.evaluate((tableSelector) => {
       const doc: any = (globalThis as any).document;
@@ -552,6 +554,18 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
       throw new Error('AAA Work Orders table rendered without the expected semantic headers');
     }
 
-    return assembleAaaActiveJobs(parseAaaWorkOrderTable(matrix.headers, matrix.rows));
+    const rows = parseAaaWorkOrderTable(matrix.headers, matrix.rows);
+    const unknownStatuses = [...new Set(
+      rows
+        .map((row) => row.status.trim())
+        .filter((status) => status && !isVerifiedAaaStatus(status)),
+    )].sort();
+    if (unknownStatuses.length > 0) {
+      this.logger.warn(
+        `[aaa-status-discovery] tenant=${tenantId} ignored unverified statuses: ${unknownStatuses.join(', ')}`,
+      );
+    }
+
+    return assembleAaaActiveJobs(rows);
   }
 }
