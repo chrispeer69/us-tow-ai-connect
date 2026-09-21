@@ -56,6 +56,40 @@ describe('splitContact', () => {
   });
 });
 
+describe('assembleActiveJob — job number and PO number (2026-09-10)', () => {
+  const opts = { pickupColumnIds: ['7'], dropoffColumnIds: ['8'], nowIso: NOW };
+
+  it('takes the board job number from data-call-number and the PO from column 18', () => {
+    const job = assembleActiveJob(
+      { ...row({ '2': '2020 LINC Aviator Red', '18': '114071513', '22': 'James H. (614) 657-2450' }, '283277202'), callNumber: '#127716' },
+      opts,
+    );
+    expect(job.jobId).toBe('283277202');
+    expect(job.callNumber).toBe('127716');
+    expect(job.poNumber).toBe('114071513');
+  });
+
+  it('falls back to the leading #nnnnnn of the row text and the "PO #" fragment of the full text', () => {
+    const job = assembleActiveJob(
+      row({
+        '2': '2014 Dodge Grand Caravan',
+        '22': 'Upreach (candy) (614) 338-5480',
+        _rawText: '#127729 2014 Dodge Grand Caravan 120YYF Dispatched to Jerod Berry',
+        _fullText: '#1277292014 Dodge Grand Caravan ... Balance$125.00PO #11451015657DispatcherNichole',
+      }),
+      opts,
+    );
+    expect(job.callNumber).toBe('127729');
+    expect(job.poNumber).toBe('11451015657');
+  });
+
+  it('leaves both empty when the board shows neither', () => {
+    const job = assembleActiveJob(row({ '2': 'x', '22': 'A (614) 000-0000' }), opts);
+    expect(job.callNumber).toBe('');
+    expect(job.poNumber).toBe('');
+  });
+});
+
 describe('assembleActiveJob', () => {
   const opts = { pickupColumnIds: ['7'], dropoffColumnIds: ['8'], nowIso: NOW };
 

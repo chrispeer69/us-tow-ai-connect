@@ -53,6 +53,34 @@ class UnwrapRetellArgsPipe implements PipeTransform {
   }
 }
 
+/**
+ * 2026-09-10 — the caller's own number, from the `call` context Retell wraps
+ * around every custom-tool POST (`{ call, name, args }`). Only trusted on an
+ * inbound call: on an outbound call `from_number` is OUR dialler.
+ *
+ * Ten days of inbound calls (09-01..09-10): 9 of 54 lookups came back
+ * not_found, and in 7 of those the caller had read out a number that was NOT
+ * the phone they were calling from — the job was under their caller ID the
+ * whole time. Emily then transferred. This is the fallback that catches it.
+ */
+/** The Retell call id from the `{ call, name, args }` wrapper, if present. */
+function retellCallId(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const call = (raw as Record<string, unknown>).call;
+  if (!call || typeof call !== 'object') return null;
+  const id = (call as Record<string, unknown>).call_id;
+  return typeof id === 'string' ? id : null;
+}
+
+function retellInboundCallerId(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const call = (raw as Record<string, unknown>).call;
+  if (!call || typeof call !== 'object') return null;
+  const c = call as Record<string, unknown>;
+  if (c.direction !== 'inbound') return null;
+  return typeof c.from_number === 'string' ? c.from_number : null;
+}
+
 const ClaimLookupSchema = z
   .object({
     claim_id: z.string().max(60).nullish(),
@@ -118,13 +146,41 @@ export class AiConnectController {
   @UseGuards(TenantApiKeyGuard, RateLimitGuard)
   async lookupByPhone(
     @Req() req: TenantAuthenticatedRequest,
-    @Body(new UnwrapRetellArgsPipe()) args: { phone?: string },
+    @Body() raw: unknown,
   ) {
-    const result = await this.service.lookupByPhone(req.tenantId, args?.phone ?? '');
+    const args = new UnwrapRetellArgsPipe().transform(raw) as
+      | { phone?: string; job_number?: string; po_number?: string }
+      | undefined;
+    // 2026-09-10 — three keys, not one: our job number, the motor-club PO,
+    // or the phone; caller ID as the last resort. Same route and tool name
+    // so a call already in progress on the old tool config keeps working.
+    const result = await this.service.lookupJob(req.tenantId, {
+      phone: args?.phone ?? '',
+      jobNumber: args?.job_number ?? '',
+      poNumber: args?.po_number ?? '',
+      fallbackPhone: retellInboundCallerId(raw),
+      callId: retellCallId(raw),
+    });
     if (!result.found) {
       return { status: 'not_found', message: result.message };
     }
-    return { status: 'success', source: result.source, data: result.job };
+    // 2026-09-11 — job_state tells Emily whether this is a live tow or one
+    // that already finished (see AiConnectService.findRecentlyClosedJob).
+    return {
+      status: 'success',
+      source: result.source,
+      data: result.job,
+      matched_by: result.matchedBy,
+      job_state: result.jobState ?? 'active',
+      ...(result.closedAt ? { closed_at: result.closedAt } : {}),
+      // 2026-09-12 — this caller already heard this job's update in an
+      // earlier conversation and nothing has moved. The prompt skips the
+      // thirty-minute line and transfers. 2026-09-16 — keyed on the caller,
+      // not the job; status_changed means "same caller, but there is news".
+      repeat_call: result.repeatCall === true,
+      status_changed_since_their_last_call: result.statusChanged === true,
+      prior_calls_about_this_job: result.priorCalls ?? 0,
+    };
   }
 
   /**
@@ -152,6 +208,27 @@ export class AiConnectController {
       callbackRequested: body.callback_requested ?? true,
       callbackWindow: body.callback_window ?? null,
       providerCallId: body.call_reference ?? null,
+    });
+  }
+
+  /**
+   * Emily books a new tow. Unwraps Retell's `{ call, name, args }` body and
+   * forwards it to US Tow Dispatch's phone-intake route — see
+   * AiConnectService.createTowJob for why this cannot be a direct call.
+   * Always 200: the result's `status` field is what Emily reads.
+   */
+  @Post('create-tow-job')
+  @HttpCode(200)
+  @UseGuards(TenantApiKeyGuard, RateLimitGuard)
+  async createTowJob(@Req() req: TenantAuthenticatedRequest, @Body() raw: unknown) {
+    const args = new UnwrapRetellArgsPipe().transform(raw);
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+      return { status: 'error', message: 'No job details were received.' };
+    }
+    return this.service.createTowJob(req.tenantId, {
+      args: args as Record<string, unknown>,
+      providerCallId: retellCallId(raw),
+      fromNumber: retellInboundCallerId(raw),
     });
   }
 

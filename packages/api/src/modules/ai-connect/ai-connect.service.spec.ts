@@ -68,7 +68,12 @@ function makeDb(initial: { agentConfig?: Record<string, unknown> | null } = {}) 
 
 function makeRedis(map: Record<string, string> = {}) {
   return {
+    map,
     get: vi.fn(async (k: string) => map[k] ?? null),
+    set: vi.fn(async (k: string, v: string) => {
+      map[k] = v;
+      return 'OK';
+    }),
   };
 }
 
@@ -122,6 +127,49 @@ describe('AiConnectService.lookupByPhone', () => {
     expect(r.job?.jobId).toBe('TB-1');
   });
 
+  it('flags a repeat only for the same caller, same job, same status — not for the job alone (2026-09-16)', async () => {
+    const job = { jobId: 'TB-1', customerName: 'A', customerPhone: '6141112222', vehicle: '', status: 'Dispatched to Shawn as of 7:19 AM', driverName: '', eta: '', destination: '', lastUpdated: '' };
+    const redis = makeRedis({ [`jobs:towbook:${TENANT_ID}`]: JSON.stringify([job]) });
+    const svc = new AiConnectService(makeDb() as never, redis as never, NOTIFICATIONS as never, TWILIO as never);
+
+    // First call from the customer: not a repeat, and it is now remembered.
+    let r = await svc.lookupJob(TENANT_ID, { fallbackPhone: '+16141112222', callId: 'call_1' });
+    expect(r.found).toBe(true);
+    expect(r.repeatCall).toBe(false);
+    expect(r.statusChanged).toBe(false);
+
+    // Second lookup inside the same conversation: still not a repeat.
+    r = await svc.lookupJob(TENANT_ID, { phone: '6141112222', fallbackPhone: '+16141112222', callId: 'call_1' });
+    expect(r.repeatCall).toBe(false);
+
+    // A motor club rep ringing about the same job from a different number:
+    // NOT a repeat — they have not heard anything yet. (09-15: five callers
+    // were told "you've already been told the update" on their first call.)
+    r = await svc.lookupJob(TENANT_ID, { poNumber: 'x', phone: '6141112222', fallbackPhone: '+15207334626', callId: 'call_2' });
+    expect(r.repeatCall).toBe(false);
+
+    // The customer rings back later, board unchanged: a repeat.
+    r = await svc.lookupJob(TENANT_ID, { fallbackPhone: '+16141112222', callId: 'call_3' });
+    expect(r.repeatCall).toBe(true);
+    expect(r.statusChanged).toBe(false);
+
+    // The customer rings back and the job has moved: not a repeat, there is news.
+    redis.map[`jobs:towbook:${TENANT_ID}`] = JSON.stringify([{ ...job, status: 'Jerod Berry Enroute to scene 8:46 AM' }]);
+    r = await svc.lookupJob(TENANT_ID, { fallbackPhone: '+16141112222', callId: 'call_4' });
+    expect(r.repeatCall).toBe(false);
+    expect(r.statusChanged).toBe(true);
+
+    // The memory is per caller for a few hours, not forever.
+    const setCall = redis.set.mock.calls[0];
+    expect(setCall[0]).toBe(`eta-served:${TENANT_ID}:TB-1:6141112222`);
+    expect(setCall[2]).toBe('EX');
+    expect(setCall[3]).toBe(3 * 3600);
+
+    // No caller ID at all (outbound or a test post): never a repeat.
+    r = await svc.lookupJob(TENANT_ID, { phone: '6141112222' });
+    expect(r.repeatCall).toBe(false);
+  });
+
   it('falls back to AAA when Towbook has no match', async () => {
     const aaa = JSON.stringify([
       {
@@ -148,6 +196,318 @@ describe('AiConnectService.lookupByPhone', () => {
     const r = await svc.lookupByPhone(TENANT_ID, '7409991234');
     expect(r.found).toBe(true);
     expect(r.source).toBe('AAA_PORTAL');
+  });
+});
+
+describe('AiConnectService.lookupByPhone — caller-ID fallback (2026-09-10)', () => {
+  const jobs = JSON.stringify([
+    {
+      jobId: 'TB-7',
+      customerName: 'C',
+      customerPhone: '(614) 948-9826',
+      vehicle: '',
+      status: 'Dispatched',
+      driverName: '',
+      eta: '30 min',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+  ]);
+  const make = () =>
+    new AiConnectService(
+      makeDb() as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+
+  it('finds the job under the caller ID when the number the caller gave is not on the ticket', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '6149489866', { fallbackPhone: '+16149489826' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('TB-7');
+    expect(r.matchedBy).toBe('caller_id');
+  });
+
+  it('reports a match on the given number as given', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '66149489826', { fallbackPhone: '+16140000000' });
+    expect(r.found).toBe(true);
+    expect(r.matchedBy).toBe('given');
+  });
+
+  it('still returns not_found when neither number is on a live job', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '6140000001', { fallbackPhone: '+16140000002' });
+    expect(r.found).toBe(false);
+    expect(r.message).toMatch(/No active job/);
+  });
+
+  it('uses the caller ID alone when no number was captured', async () => {
+    const r = await make().lookupByPhone(TENANT_ID, '', { fallbackPhone: '+16149489826' });
+    expect(r.found).toBe(true);
+    expect(r.matchedBy).toBe('caller_id');
+  });
+});
+
+describe('AiConnectService.lookupJob — job number and PO number (2026-09-10)', () => {
+  const jobs = JSON.stringify([
+    {
+      jobId: '283277202',
+      callNumber: '127716',
+      poNumber: '114071513',
+      customerName: 'James H.',
+      customerPhone: '6146572450',
+      vehicle: '2020 LINC Aviator Red',
+      status: 'On scene',
+      driverName: 'Alex Kordalis',
+      eta: '2:04 PM',
+      pickup: '',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+    {
+      jobId: '283304458',
+      callNumber: '127729',
+      poNumber: '',
+      customerName: 'Upreach',
+      customerPhone: '6143385480',
+      vehicle: '2014 Dodge Grand Caravan',
+      status: 'Dispatched',
+      driverName: 'Jerod Berry',
+      eta: 'Unknown',
+      pickup: '',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+  ]);
+  const make = () =>
+    new AiConnectService(
+      makeDb() as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: jobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+
+  it('finds a job by the number printed on the board', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '#127729' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283304458');
+    expect(r.matchedBy).toBe('job_number');
+  });
+
+  it('finds a job by the motor-club PO number', async () => {
+    const r = await make().lookupJob(TENANT_ID, { poNumber: '114071513' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283277202');
+    expect(r.matchedBy).toBe('po_number');
+  });
+
+  it('prefers the job number over a phone that points elsewhere', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '127716', phone: '6143385480' });
+    expect(r.job?.jobId).toBe('283277202');
+    expect(r.matchedBy).toBe('job_number');
+  });
+
+  it('falls through PO -> phone -> caller ID', async () => {
+    const r = await make().lookupJob(TENANT_ID, { poNumber: '999', phone: '6140000000', fallbackPhone: '+16143385480' });
+    expect(r.found).toBe(true);
+    expect(r.matchedBy).toBe('caller_id');
+  });
+
+  it('reports "phone is required" only when it was given nothing at all', async () => {
+    expect((await make().lookupJob(TENANT_ID, {})).message).toBe('phone is required');
+    expect((await make().lookupJob(TENANT_ID, { poNumber: '1' })).message).toMatch(/No active job/);
+  });
+
+  it('tolerates a stray leading digit on the job number (2026-09-11)', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '1127729' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283304458');
+    expect(r.matchedBy).toBe('job_number');
+    expect(r.jobState).toBe('active');
+  });
+
+  it('finds a job by the last four digits of its PO or job number when exactly one fits (2026-09-16)', async () => {
+    // "the job ID that ends in four two two one" — it was the PO's tail.
+    let r = await make().lookupJob(TENANT_ID, { jobNumber: '1513' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283277202');
+    r = await make().lookupJob(TENANT_ID, { poNumber: '7729' });
+    expect(r.found).toBe(true);
+    expect(r.job?.jobId).toBe('283304458');
+    // Fewer than four digits is not a key.
+    expect((await make().lookupJob(TENANT_ID, { jobNumber: '729' })).found).toBe(false);
+  });
+
+  it('a short tail that fits two jobs matches neither', async () => {
+    const twins = JSON.stringify([
+      { jobId: '1', callNumber: '127716', poNumber: '', customerPhone: '6140000001', status: 'Waiting', vehicle: '', customerName: '', driverName: '', eta: '', destination: '', lastUpdated: '' },
+      { jobId: '2', callNumber: '', poNumber: '114097716', customerPhone: '6140000002', status: 'Waiting', vehicle: '', customerName: '', driverName: '', eta: '', destination: '', lastUpdated: '' },
+    ]);
+    const svc = new AiConnectService(makeDb() as never, makeRedis({ [`jobs:towbook:${TENANT_ID}`]: twins }) as never, NOTIFICATIONS as never, TWILIO as never);
+    expect((await svc.lookupJob(TENANT_ID, { jobNumber: '7716' })).found).toBe(false);
+  });
+
+  it('a PO with no digits in it ("for") is not a key at all', async () => {
+    const r = await make().lookupJob(TENANT_ID, { poNumber: 'for' });
+    expect(r.found).toBe(false);
+    expect(r.message).toBe('phone is required');
+  });
+
+  it('a suffix match needs the whole board number; a different number never matches', async () => {
+    const r = await make().lookupJob(TENANT_ID, { jobNumber: '9127729' });
+    // 5+ digit suffix match is allowed; this one matches because the board
+    // number is a suffix. A genuinely different number must not.
+    expect(r.found).toBe(true);
+    expect((await make().lookupJob(TENANT_ID, { jobNumber: '127728' })).found).toBe(false);
+  });
+});
+
+describe('AiConnectService.lookupJob — closed jobs from unified_jobs (2026-09-11)', () => {
+  const liveJobs = JSON.stringify([
+    {
+      jobId: '283304458',
+      callNumber: '127729',
+      poNumber: '',
+      customerName: 'Upreach',
+      customerPhone: '6143385480',
+      vehicle: '2014 Dodge Grand Caravan',
+      status: 'Dispatched',
+      driverName: 'Jerod Berry',
+      eta: 'Unknown',
+      pickup: '',
+      destination: '',
+      lastUpdated: '2026-09-10T12:00:00Z',
+    },
+  ]);
+  const closedRows = [
+    {
+      sourceJobId: '283261433',
+      status: 'completed',
+      callerPhone: '6145622009',
+      callerName: 'Elmer N.',
+      completedAt: new Date('2026-09-10T15:10:00Z'),
+      updatedAt: new Date('2026-09-10T15:10:00Z'),
+      sourcePayload: {
+        jobId: '283261433',
+        callNumber: '127731',
+        poNumber: '114080001',
+        customerName: 'Elmer N.',
+        customerPhone: '6145622009',
+        vehicle: '2018 CADL XTS Black',
+        status: 'Destination Arrival at 11:02 AM',
+        driverName: 'Dustin DeLauder',
+        eta: '9:11 AM (1 hr 51 mins late)',
+        pickup: '8045 Bedford Ct, Westerville, OH 43082',
+        destination: '7038 Northgate Way, Westerville, OH 43082',
+        lastUpdated: '2026-09-10T15:09:02.281Z',
+      },
+    },
+    {
+      sourceJobId: '283772659',
+      status: 'completed',
+      callerPhone: '6146495255',
+      callerName: 'Ashlee G.',
+      completedAt: new Date('2026-09-15T15:55:00Z'),
+      updatedAt: new Date('2026-09-15T15:55:00Z'),
+      sourcePayload: { jobId: '283772659', callNumber: '127909', poNumber: '114290758', customerPhone: '6146495255', status: 'David Jackson Enroute to scene 7:12 AM', driverName: 'David Jackson' },
+    },
+    {
+      sourceJobId: '283300000',
+      status: 'canceled',
+      callerPhone: '4192969162',
+      callerName: 'Jazmyne Dye',
+      completedAt: null,
+      updatedAt: new Date('2026-09-10T21:31:03.672Z'),
+      sourcePayload: { jobId: '283300000', callNumber: '127750', poNumber: '1062047007', customerPhone: '4192969162', status: 'Cancelled by Motor Club' },
+    },
+  ];
+  function makeClosedDb(rows: unknown[]) {
+    const calls: unknown[] = [];
+    const chain: Record<string, unknown> = {};
+    chain.from = () => chain;
+    chain.where = (w: unknown) => {
+      calls.push(w);
+      return chain;
+    };
+    chain.orderBy = () => chain;
+    chain.limit = () => Promise.resolve(rows);
+    // The eta_check_calls prior-read (2026-09-12) is a select too; it is
+    // not a closed-job query, so it neither counts nor returns closed rows.
+    const quiet: Record<string, unknown> = {};
+    quiet.from = () => quiet;
+    quiet.where = () => quiet;
+    quiet.orderBy = () => quiet;
+    quiet.limit = () => Promise.resolve([]);
+    return {
+      calls,
+      select: (shape?: unknown) =>
+        shape && typeof shape === 'object' && 'calls' in (shape as object) ? quiet : chain,
+    };
+  }
+  const make = (db = makeClosedDb(closedRows)) =>
+    new AiConnectService(
+      db as never,
+      makeRedis({ [`jobs:towbook:${TENANT_ID}`]: liveJobs }) as never,
+      NOTIFICATIONS as never,
+      TWILIO as never,
+    );
+
+  it('finds a completed job by phone when the live board has no match', async () => {
+    const r = await make().lookupJob(TENANT_ID, { phone: '6145622009' });
+    expect(r.found).toBe(true);
+    expect(r.jobState).toBe('completed');
+    expect(r.matchedBy).toBe('given');
+    expect(r.closedAt).toBe('2026-09-10T15:10:00.000Z');
+    expect(r.job?.status).toBe('Destination Arrival at 11:02 AM');
+    expect(r.job?.driverName).toBe('Dustin DeLauder');
+    expect(r.job?.callNumber).toBe('127731');
+  });
+
+  it('finds a completed job by PO and by job number', async () => {
+    expect((await make().lookupJob(TENANT_ID, { poNumber: '114080001' })).matchedBy).toBe('po_number');
+    const byCall = await make().lookupJob(TENANT_ID, { jobNumber: '127731' });
+    expect(byCall.matchedBy).toBe('job_number');
+    expect(byCall.jobState).toBe('completed');
+  });
+
+  it('a job that left the board before reaching the destination is "closed", not "completed" (2026-09-16)', async () => {
+    // 09-15: Emily told Agero this one was "completed, arrived around 11:55"
+    // — the club's own record said unsuccessful.
+    const r = await make().lookupJob(TENANT_ID, { poNumber: '114290758' });
+    expect(r.found).toBe(true);
+    expect(r.jobState).toBe('closed');
+    expect(r.job?.status).toBe('David Jackson Enroute to scene 7:12 AM');
+  });
+
+  it('reports a cancelled job as canceled, and by caller ID', async () => {
+    const r = await make().lookupJob(TENANT_ID, { phone: '6140000000', fallbackPhone: '+14192969162' });
+    expect(r.found).toBe(true);
+    expect(r.jobState).toBe('canceled');
+    expect(r.matchedBy).toBe('caller_id');
+    expect(r.closedAt).toBe('2026-09-10T21:31:03.672Z');
+  });
+
+  it('never consults closed jobs when the live board matches', async () => {
+    const db = makeClosedDb(closedRows);
+    const r = await make(db).lookupJob(TENANT_ID, { phone: '6143385480' });
+    expect(r.jobState).toBe('active');
+    expect(r.job?.jobId).toBe('283304458');
+    expect(db.calls).toHaveLength(0);
+  });
+
+  it('still returns not_found when nothing closed matches either', async () => {
+    const r = await make().lookupJob(TENANT_ID, { phone: '6149999999' });
+    expect(r.found).toBe(false);
+    expect(r.message).toMatch(/No active job/);
+  });
+
+  it('survives a database error on the closed-job path', async () => {
+    const chain: Record<string, unknown> = {};
+    chain.from = () => chain;
+    chain.where = () => chain;
+    chain.orderBy = () => chain;
+    chain.limit = () => Promise.reject(new Error('boom'));
+    const r = await make({ calls: [], select: () => chain } as never).lookupJob(TENANT_ID, { phone: '6145622009' });
+    expect(r.found).toBe(false);
   });
 });
 

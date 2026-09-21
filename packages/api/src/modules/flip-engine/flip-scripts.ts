@@ -149,7 +149,62 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.11';
+export const SCRIPT_VERSION = '3.15';
+// 3.15 (2026-09-16) — "GOING HOME" IS NOT A REASON TO SKIP THE OFFER. Chris,
+//   09-16, on four no-offer calls in an hour: "WHY is the AI dispatcher NOT
+//   MAKING OFFERS". Pamela C., overheating Explorer pouring coolant, said the
+//   drop-off was her home; the agent said "Since your destination is home
+//   rather than a repair shop, I'll get this locked in" and closed. The code
+//   script already said to make the offer regardless of the customer's word
+//   for the destination, but Retell prompt rule 18 listed "is going home"
+//   next to fuel / jump / lockout as a no-pitch case, and the prompt wins.
+//   A car with a mechanical fault heading home has no shop yet — that is the
+//   best moment to offer, not a reason to stop. Rule 18 (agent v57) now
+//   excludes only jobs that need no repair; the conditional-offer block below
+//   treats "home" the same way. Skips on 09-14..16 for this reason: Pamela
+//   C., Melissa Richards, Antonio Muse ("per rule 18" said aloud).
+// 3.14 (2026-09-14) — ASK FOR THE CUSTOMER'S EMAIL. Chris: "I want her to ask
+//   the customer what their email is — and add that to the AI notes inside
+//   Towbook and also inside US Tow Dispatch." New STEP 2c straight after the
+//   name on both A/B arms: one question, read back once for spelling, "no
+//   problem" if they decline. Post-call field customer_email (Retell agent
+//   v55, the same publish that adds the 3.13 name fields) ->
+//   outbound_call_logs.confirmed_email -> an EMAIL line on the Towbook AI
+//   note + the US Tow Dispatch customer record (POST /v1/customers/contact,
+//   upsert by phone, Roadside tenant only).
+// 3.13 (2026-09-10) — CONFIRM THE CUSTOMER'S FULL NAME. Chris: "ensure the
+//   customer name, first and last, are confirmed and completed on each job
+//   when we call and confirm details — and then that needs put in the first
+//   name block and the last name block". New STEP 2b at the top of the
+//   confirm block, both A/B arms: with a full name on the ticket the agent
+//   confirms it; with a first name only it asks for the last; with no usable
+//   name it asks for both. The name is one of the few things that IS read back
+//   once. Two new post-call fields (customer_first_name / customer_last_name,
+//   Retell agent v55) -> outbound_call_logs.confirmed_first_name/last_name ->
+//   unified_jobs.caller_name + the Roadside GHL contact's first/last blocks
+//   (ghl-roadside-bridge syncConfirmedName) + a NAME line on the Towbook AI
+//   note when it differs from the ticket.
+// 3.12 (2026-09-09) — from the 09-08 daily review (80 calls, 33 pitched, 0
+//   wins). Two things, one of them a rule change:
+//   (1) DEALERSHIP DESTINATIONS GET ONE RUNG. Since 08-17: 142 pitches to
+//   dealership-bound tows, offer 1 won 5 (Dave Gill x2, Bob-Boyd, two dealer
+//   parts counters), offer 2 won 0 of 80. The review's HIGH item was to stop
+//   the whole ladder on dealerships; the data says keep offer 1 and drop the
+//   re-ask. `ctx.destinationIsDealer` (car_dealer place type or a brand /
+//   dealer-group name — see dealer-destination.ts) now swaps the "a bare no
+//   still gets offer 2" directive for a one-and-done exit and drops the offer
+//   2 block entirely. Expect offer-2 attempts to fall by roughly a third and
+//   offer-2 wins to be unchanged, because there were none to lose.
+//   (2) A rule against the invented speed claim: two 09-08 calls told the
+//   customer our partners "can often get to it faster". Not in this script,
+//   not in the Retell prompt, not in any tenant override — the model made it
+//   up. Now forbidden in the global rules next to the ride-along ban.
+//   NOT changed, flagged to Chris instead: offer 2 has won 0 of 102 since
+//   script 3.8 went live 09-01, against 7 of 165 on 3.7 (08-20..08-31). The
+//   either/or close is not the cause — it went live 08-28 and won 3 of its
+//   first 58. Nothing else in 3.8's offer-2 text is an obvious mechanism, so
+//   this is not rewritten a fourth time on a maybe; the revert criterion is
+//   written in the memory note.
 // 3.11 (2026-09-03, same afternoon) — the interrupted-offer exit in 3.10 was
 //   catching a "no" to the reframe ANNOUNCEMENT line. Call 071860fb: agent
 //   said "Now I would like to mention a few great offers from our in-network
@@ -558,6 +613,8 @@ export interface ScriptContext {
 
   // Customer + job
   customerFirstName: string;
+  /** 3.13 — the ticket's full name, so the confirm step can read it back. */
+  customerFullName?: string | null;
   vehicle: string; // "2019 Blue Honda Civic"
   pickupLocation: string;
   destination: string; // resolved destination address/name
@@ -574,6 +631,13 @@ export interface ScriptContext {
    * in alpha_shops the whole time — they were simply never passed in.
    */
   nearestShopAddress?: string | null;
+
+  /**
+   * 3.12 — the destination is a franchise dealership (Google `car_dealer`
+   * type or a brand / dealer-group name). Offer 1 is still made; the offer-2
+   * re-ask is not. See dealer-destination.ts for the numbers.
+   */
+  destinationIsDealer?: boolean | null;
 
   /**
    * Session 75 — the other partner shops, nearest-first, EXCLUDING the one
@@ -789,6 +853,45 @@ function isUnusableName(name: string | null | undefined): boolean {
   return /^(unknown|n\/?a|null|undefined|customer|caller|test|there|owner|driver|dipping|other)$/i.test(n);
 }
 
+/**
+ * 3.13 — the ticket's full name when it is a usable first name plus at least
+ * one more word; null otherwise. "Pat" alone or a business name is not a full
+ * name to read back.
+ */
+function usableFullName(ctx: ScriptContext): string | null {
+  if (isUnusableName(ctx.customerFirstName)) return null;
+  const full = (ctx.customerFullName ?? '').replace(/\s+/g, ' ').trim();
+  const parts = full.split(' ').filter(Boolean);
+  if (parts.length < 2) return null;
+  if (parts[0].toLowerCase() !== ctx.customerFirstName.trim().toLowerCase()) return null;
+  return full;
+}
+
+/** 3.13 — STEP 2b. Confirm a full name, complete a partial one, or ask for both. */
+function confirmNameBlock(ctx: ScriptContext, vars: Record<string, string>): string {
+  const ask = usableFullName(ctx)
+    ? `AI: "And so the driver has the right name, I have you down as {{customer_full_name}} — is that right?"`
+    : !isUnusableName(ctx.customerFirstName)
+      ? `AI: "And can I get your last name, so the driver has it right?"`
+      : `AI: "And can I get your first and last name for the driver?"`;
+  return interpolate(
+    `[STEP 2b — CONFIRM FULL NAME]
+${ask}
+[AGENT: We need a FIRST and a LAST name on every job. This is one of the few things you DO read back: if the customer gives or corrects a name, say it back once ("Thanks — Pat Smith, got it") so the spelling is checked, then move on. If they spell it, take the spelling. If they only give one name, ask once for the other. If they will not give a last name, say "No problem" and move on — never press, never guess, never invent one, and never read a name off the ticket that they did not confirm. Record the first and last name exactly as the customer gave them.]`,
+    vars,
+  );
+}
+
+/** 3.14 — STEP 2c. One question for the email, read back once, never pressed. */
+function confirmEmailBlock(vars: Record<string, string>): string {
+  return interpolate(
+    `[STEP 2c — EMAIL]
+AI: "And what's the best email for you? We'll send the job confirmation and receipt there."
+[AGENT: This is one of the few things you DO read back — say the address back once, slowly, so the spelling is checked ("Thanks — pat dot smith at gmail dot com, got it"), then move on. If they spell it, take the spelling. If they say they do not have one, do not use email, or would rather not give it, say "No problem" and move straight on — never press, never guess, never invent one, and never read an email off the ticket. Record the address exactly as the customer gave it.]`,
+    vars,
+  );
+}
+
 function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
     rep_name: ctx.repName,
@@ -809,6 +912,8 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
     customer_salutation: isUnusableName(ctx.customerFirstName)
       ? ''
       : `, ${ctx.customerFirstName}`,
+    // 3.13 — the whole name as the ticket has it, for the confirm-name step.
+    customer_full_name: usableFullName(ctx) ?? '',
     vehicle: ctx.vehicle,
     pickup_location: ctx.pickupLocation,
     destination: ctx.destination,
@@ -918,14 +1023,24 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   // it in one arm only would confound the comparison it is not part of.
   const intake = dispatchIntakeBlock();
 
+  // 3.13 — the name comes first on both arms: it is the one detail every
+  // downstream system keys on, and the customer has just confirmed who they are.
+  const nameStep = confirmNameBlock(ctx, vars);
+  // 3.14 — the email follows the name on both arms, for the same reason.
+  const emailStep = confirmEmailBlock(vars);
+
   if (isReframe(ctx)) {
-    const blocks = [interpolate(pickup, vars)];
+    const blocks = [nameStep, ``, emailStep, ``, interpolate(pickup, vars)];
     if (includeDestination) blocks.push(``, destinationBlock);
     blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars), ``, intake);
     return blocks.join('\n');
   }
 
   const blocks = [
+    nameStep,
+    ``,
+    emailStep,
+    ``,
     interpolate(pickup, vars),
     ``,
     interpolate(vehicle, vars),
@@ -1046,6 +1161,10 @@ function globalRules(ctx: ScriptContext): string {
     `- THE SCRIPT DECIDES WHETHER TO PITCH, NOT YOU. If this script contains a repair-shop offer, make it. If it does not, there is no offer to make — do not construct one because the job "sounds like" a flip, and do not skip a written offer because you judge the customer unlikely to accept.`,
     `- If no partner shop is named anywhere in this script, we have no shop for this job. Never refer to "a partner shop", "a shop nearby", or "a shop that specializes in that" without a name from this script.`,
     `- Never promise anything about the tow itself that is not written here — in particular never tell a customer they can ride in the tow truck.`,
+    // 3.12 — two 09-08 calls told the customer our partners "can often get to
+    // it faster". Nobody wrote that anywhere. We do not compete on speed and
+    // cannot stand behind it.
+    `- Never claim a partner shop is faster, can get to the vehicle sooner, has a shorter wait, or can "get it in" quicker than the customer's own shop. We do not compete on speed and this script makes no timing promise anywhere. If asked how long, say the shop will give them a time once they have looked at it.`,
     // Applies everywhere, not just Scenario A: money and coverage are the two
     // subjects where an invented answer becomes a commitment we have to honour.
     `- Never tell a customer whether their insurance or warranty covers something, what it will cost them, or who will pay. If they ask and this script has no written answer, say you'll have the office confirm and move on.`,
@@ -1059,7 +1178,7 @@ function globalRules(ctx: ScriptContext): string {
     // a rule: never rush a customer who is upset, describing damage, or still
     // answering, and never skip a question to save time.
     `- NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM. It is annoying and it wastes the call. They said it; they know what they said. Acknowledge in one or two words — "Got it", "Thanks", "Perfect" — and go straight to the next question. Do not say "Got it, in a parking lot, nose out", do not say "so that's a 2015 white Kia", and never announce that you are noting something down, that the driver will have it, or that the mechanic will see it.`,
-    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, or a shop name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
+    `- The ONLY time you read something back is to check an accuracy-critical detail you just heard wrong or that the customer corrected: a street address, a phone number, an email address, a shop name, or the customer's own name. Read those back once, get the yes, and move on. Nothing else gets read back — not the color, not the drivetrain, not where it is parked, not the tires, not the keys, not the problem with the car.`,
     `- PACE: aim to finish the whole call in about two minutes. Ask, listen, acknowledge in a word or two, ask the next thing. Do not spend words you do not need, and do not let the confirmation questions crowd out the offer and the close.`,
     `- PACE: this is a target, not a rule. Never cut a customer off, never hurry someone who is shaken or describing damage, and never drop a question to save time. If the call needs longer, take longer.`,
     `- Never read a raw latitude/longitude pair aloud. If a location is only coordinates, say "the location we have on file" and ask the customer to describe it.`,
@@ -1309,7 +1428,12 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         interpolate(consentGate, vars),
         interpolate(tooFarDirective, vars),
         `[AGENT: If they say YES -> acknowledge and tell them you'll update the destination. Skip the other offers and jump straight to the CONVINI close.]`,
-        `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
+        // 3.12 — a dealership destination is one rung. 0 of 80 offer-2 re-asks
+        // ever won there; the customer has usually just explained a warranty
+        // or a service plan and hears the same discount again.
+        ctx.destinationIsDealer
+          ? `[AGENT: DEALERSHIP DESTINATION — ONE OFFER ONLY. If they decline Offer 1 for any reason, or with no reason, that is the end of the offers: do NOT ask what is taking them to the dealership, do NOT re-ask, do NOT read any reassurance. Say "Understood. I'll keep your original destination and focus on getting the driver routed." and go straight to the CONVINI close.]`
+          : `[AGENT: A BARE "no" IS NOT A HARD DECLINE — it is the most common answer and it still gets Offer 2. On 2026-08-14, 0 of 13 declines ever reached Offer 2. Go to Offer 2 unless they gave a genuine CONSTRAINT (their insurer or motor club chose the shop, a warranty, a dealership obligation, or work already underway there) or an explicit stop such as "no offers", "just send the tow", "I am not changing", or "I already know where it is going". Only those end the ladder. "It's my regular shop" is a PREFERENCE, not a constraint — it still gets Offer 2.]`,
         // 3.10 — a "no" that arrives while the offer is still being read is
         // a different thing from a "no" to the question at the end of it.
         `[AGENT: EXCEPTION — INTERRUPTED OFFER. If the customer cuts you off with a refusal ("no thank you", "not interested", "no") WHILE you are reading Offer 1 — after "We work with..." has begun and before you reach the question at the end — stop mid-sentence and the ladder is over: do NOT ask Offer 2, do NOT ask what is taking them to their shop. Say "No problem." and go straight to the CONVINI close. They declined the terms as they heard them; asking them to justify it is what turns a polite no into a hostile one.` +
@@ -1319,7 +1443,10 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
           `]`,
       ] : [];
 
-  const offer2Block = offersAllowed ? [
+  // 3.12 — no second rung on a dealership destination (see the directive in
+  // the flip block above and dealer-destination.ts for the record).
+  const offer2Allowed = offersAllowed && !ctx.destinationIsDealer;
+  const offer2Block = offer2Allowed ? [
         ``,
         interpolate(ctx.scriptBlocks?.offer_2 ?? ctx.globalScriptBlocks?.offer_2 ?? defaultOffer2, vars),
         ``,
@@ -1711,7 +1838,8 @@ function scenarioC(ctx: ScriptContext): string {
         // unintelligible speech. A conditional offer is no less binding than a
         // scripted one.
         `[AGENT: Before you treat any reply to that offer as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Only log a destination change on an explicit yes.]`,
-        `[AGENT: If they say anything else — home, a body shop, a dealership they chose, a residence, or they are unsure — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
+        `[AGENT: If they say it is going HOME or to a residence and the vehicle has a mechanical problem — it will not start, overheats, a warning light, a noise, a leak, a flat — make the same offer, worded for it: "Before I confirm the drop-off — since it needs looking at anyway, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic plus up to 10 percent off parts and labor, and sort you a ride home from there. Would you like the driver to take it there instead of home?" A car going home with a fault has no shop yet; that is the best moment to offer, not a reason to skip. The same consent rule applies.]`,
+        `[AGENT: If they say a body shop, a dealership they chose, or they are unsure, or the job needs no repair at all (fuel, jump, lockout, a tire changed at the roadside) — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
         `[AGENT: Take a YES only if it is unambiguous. If the answer is unclear or arrives amid other speech, ask "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Never infer a destination change.]`,
         `[AGENT: If they decline, accept it and move to the CONVINI close. Do not make a second or third offer on this call.]`,
       ]
@@ -1722,7 +1850,7 @@ function scenarioC(ctx: ScriptContext): string {
 
   return [
     `[SCENARIO C — RESIDENCE / UNKNOWN (HARD CONVINI) — internal label, never speak this]`,
-    `[AGENT: The destination is a residence or unknown. Confirm details and push the CONVINI app hard.]`,
+    `[AGENT: The destination is a residence or unknown. Confirm details${conditional ? ', follow the conditional-offer instructions above,' : ''} and push the CONVINI app hard.]`,
     // Session 74 — this scenario is where the orchestrator lands every job that
     // is NOT flip-eligible, including jobs with no partner shop and collision /
     // glass work. It is therefore where an agent with nothing to offer actually

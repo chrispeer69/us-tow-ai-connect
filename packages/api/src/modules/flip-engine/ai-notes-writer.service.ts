@@ -126,6 +126,9 @@ export class AiNotesWriterService {
         vehicleDetails: c.vehicleDetails,
         issueDescription: c.issueDescription,
         confirmedDestination: c.confirmedDestination,
+        confirmedName: [c.confirmedFirstName, c.confirmedLastName].filter(Boolean).join(' ') || null,
+        ticketName: c.customerName,
+        confirmedEmail: c.confirmedEmail,
       });
 
       if (!block) {
@@ -242,6 +245,9 @@ export class AiNotesWriterService {
         vehicleDetails: outboundCallLogs.vehicleDetails,
         issueDescription: outboundCallLogs.issueDescription,
         confirmedDestination: outboundCallLogs.confirmedDestination,
+        confirmedFirstName: outboundCallLogs.confirmedFirstName,
+        confirmedLastName: outboundCallLogs.confirmedLastName,
+        confirmedEmail: outboundCallLogs.confirmedEmail,
         jobId: unifiedJobs.id,
         source: unifiedJobs.source,
         sourceJobId: unifiedJobs.sourceJobId,
@@ -292,7 +298,9 @@ export class AiNotesWriterService {
                OR COALESCE(${outboundCallLogs.vehicleCondition}, '') <> ''
                OR COALESCE(${outboundCallLogs.vehicleDetails}, '') <> ''
                OR COALESCE(${outboundCallLogs.issueDescription}, '') <> ''
-               OR COALESCE(${outboundCallLogs.confirmedDestination}, '') <> '')`,
+               OR COALESCE(${outboundCallLogs.confirmedDestination}, '') <> ''
+               OR COALESCE(${outboundCallLogs.confirmedFirstName}, '') <> ''
+               OR COALESCE(${outboundCallLogs.confirmedEmail}, '') <> '')`,
           // Never retry a job we already attempted and failed on in this window;
           // a broken selector would otherwise re-open a browser every 5 minutes
           // for every call, forever.
@@ -400,6 +408,9 @@ interface NoteCandidate {
   vehicleDetails: string | null;
   issueDescription: string | null;
   confirmedDestination: string | null;
+  confirmedFirstName: string | null;
+  confirmedLastName: string | null;
+  confirmedEmail: string | null;
 }
 
 function envFlag(name: string, defaultValue: boolean): boolean {

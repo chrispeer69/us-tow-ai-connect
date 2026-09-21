@@ -129,7 +129,7 @@ describe('flip-scripts — 2026-08-11 review fixes', () => {
     expect(body).toContain("NEVER REPEAT THE CUSTOMER'S ANSWER BACK TO THEM");
     expect(body).toContain('about two minutes');
     // An address or a shop name still gets checked — that is accuracy, not echo.
-    expect(body).toContain('a street address, a phone number, or a shop name');
+    expect(body).toContain("a street address, a phone number, an email address, a shop name, or the customer's own name");
     // ...and pace must never turn into rushing someone.
     expect(body).toContain('a target, not a rule');
   });
@@ -896,5 +896,51 @@ describe('flip-scripts', () => {
 
     expect(body).toContain('I do not have a separate tow destination listed');
     expect(body).not.toContain('vehicle being towed to 123 Main St.');
+  });
+});
+
+describe('flip-scripts — 3.12 dealership destinations get one rung', () => {
+  const base = {
+    repName: 'Emily',
+    companyName: 'Roadside Towing',
+    motorClub: '',
+    callbackNumber: '+15551234567',
+    conviniLink: 'https://convini.live',
+    customerFirstName: 'Pat',
+    vehicle: '2017 Ford Escape',
+    pickupLocation: 'I-70 near exit 101',
+    destination: 'Coughlin Chevrolet, Pataskala',
+    issue: 'a check engine light',
+    nearestShop: "Wayne's Westerville",
+    nearestShopDistanceMiles: 2,
+    rentalsAvailable: true,
+  };
+
+  it('still makes offer 1 on a dealership destination', () => {
+    const body = renderCallBody('competitor_repair', { ...base, destinationIsDealer: true });
+    expect(body).toContain("Wayne's Westerville");
+    expect(body).toMatch(/10 percent/i);
+  });
+
+  it('drops the offer-2 re-ask and the reassurance on a dealership destination', () => {
+    const body = renderCallBody('competitor_repair', { ...base, destinationIsDealer: true });
+    expect(body).toContain('DEALERSHIP DESTINATION — ONE OFFER ONLY');
+    expect(body).not.toContain('A BARE "no" IS NOT A HARD DECLINE');
+    expect(body).not.toMatch(/taking you to/i);
+    expect(body).not.toContain('still stand');
+    expect(body).not.toContain('REFUSAL — the customer answers the question');
+  });
+
+  it('keeps the full two-rung ladder when the destination is not a dealership', () => {
+    const body = renderCallBody('competitor_repair', { ...base, destinationIsDealer: false });
+    expect(body).toContain('A BARE "no" IS NOT A HARD DECLINE');
+    expect(body).toMatch(/taking you to/i);
+    expect(body).toContain('still stand');
+    expect(body).not.toContain('DEALERSHIP DESTINATION');
+  });
+
+  it('forbids the invented speed claim everywhere', () => {
+    const body = renderCallBody('competitor_repair', base);
+    expect(body).toContain('Never claim a partner shop is faster');
   });
 });

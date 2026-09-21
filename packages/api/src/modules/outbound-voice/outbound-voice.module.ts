@@ -3,6 +3,7 @@ import { GeocoderService } from '../command-center/geocoder.service';
 import { DbModule } from '../../db/db.module';
 import { OutboundSmsModule } from '../outbound-sms/outbound-sms.module';
 import { PushModule } from '../push/push.module';
+import { GhlRoadsideBridgeModule } from '../ghl-roadside-bridge/ghl-roadside-bridge.module';
 import { OutboundVoiceController } from './outbound-voice.controller';
 import { OutboundVoiceWebhookController } from './outbound-voice-webhook.controller';
 import { PublicDemoCallController } from './public-demo-call.controller';
@@ -28,7 +29,9 @@ import {
 @Module({
   // PushModule: a flip win buzzes every registered manager device (Session 77),
   // alongside the manager SMS that already fires from the same place.
-  imports: [DbModule, OutboundSmsModule, PushModule],
+  // GhlRoadsideBridgeModule (3.13): a name confirmed on the call is pushed to
+  // the Roadside GHL contact's first/last name blocks from the analysis path.
+  imports: [DbModule, OutboundSmsModule, PushModule, GhlRoadsideBridgeModule],
   controllers: [
     OutboundVoiceController,
     OutboundVoiceWebhookController,

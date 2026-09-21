@@ -61,7 +61,7 @@ const DEFAULT_NO_FLIP_CATEGORIES: IssueSubcategory[] = [
  * repair on a wrecked or glass-damaged car is wrong at any confidence, and the
  * cost of a rare missed flip is far below the cost of that conversation.
  */
-const ALWAYS_NO_FLIP_CATEGORIES: readonly string[] = [
+export const ALWAYS_NO_FLIP_CATEGORIES: readonly string[] = [
   'accident_minor',
   'accident_with_airbags',
   'glass_damage',

@@ -55,7 +55,7 @@ const TOOLS = [
     type: 'custom',
     name: 'lookup_job_by_phone',
     description:
-      "Look up the caller's active tow using the phone number on the job. Call this as soon as they give you a phone number. Returns customer name, vehicle, status, driver, ETA, pickup and destination.",
+      "Look up the caller's tow by ANY ONE of: the phone on the job, the motor club's PO / reference number, or our job number — or with NO arguments, which checks the number they are calling from. Call it with no arguments first the moment you know they are asking about an existing tow; ask for a number only if that misses. Returns vehicle, status, driver, ETA, pickup, destination, call_number, po_number, matched_by, and job_state: 'active'; 'completed' (driver reached the drop-off); 'canceled'; or 'closed' (left our board before the drop-off — outcome unknown, never say completed). repeat_call: true = THIS caller, same number, already heard this job's update and nothing has moved — do not repeat it, transfer. status_changed_since_their_last_call: true = they rang before but the job moved — lead with the new status. A different caller is never a repeat. Only the three fields below exist.",
     url: 'https://api.ustowaiconnect.com/v1/ai-connect/lookup/by-phone',
     // POST, not GET+query_params: Retell never fills LLM-supplied tool-call
     // arguments into query_params, only the request body. The old GET config
@@ -72,28 +72,39 @@ const TOOLS = [
     headers: { 'X-Tenant-API-Key': TENANT_API_KEY, 'content-type': 'application/json' },
     parameters: {
       type: 'object',
-      required: ['phone'],
+      // 2026-09-10 — none required: a caller gives whichever they have. The
+      // server tries job_number, then po_number, then phone, then the number
+      // they are calling from.
+      required: [],
       properties: {
-        phone: { type: 'string', description: 'The phone number on the tow job, digits only, e.g. 6148818702' },
+        phone: { type: 'string', description: 'The phone number on the tow job, digits only, e.g. 6148818702. Leave out if they gave a PO or job number instead.' },
+        po_number: { type: 'string', description: "The motor club's PO, purchase order, reference, dispatch or club number, exactly as read out including any leading zeros, e.g. 114071513. Digits (or letters and digits) only — never a word you heard, and never a guess." },
+        job_number: { type: 'string', description: 'Our own Roadside job / call / ticket number, digits only, e.g. 127716. Usually only an employee has this. If they only know the last four or five digits ("ends in 4221"), pass just those — the server matches the tail of both the job number and the PO.' },
       },
     },
-    speak_during_execution: true,
+    // 2026-09-11 — silent. The lookup answers in ~200 ms, faster than Emily
+    // can say "let me pull that up", so with speak_during_execution the
+    // filler was cut in half around the result on every single call:
+    // "Let / [result] / me pull that up for you now.Got it —". A beat of
+    // silence and then the answer is what a dispatcher sounds like.
+    speak_during_execution: false,
     speak_after_execution: true,
-    execution_message_description: 'Tell the caller you are pulling it up now, in a few words.',
   },
   {
     type: 'custom',
     name: 'create_tow_job',
     description:
-      'Create the tow job in US Tow Dispatch. Call this ONCE, after you have the callback number, the location, what happened and the vehicle. Returns the job number and the price.',
-    url: 'https://api.ustowdispatch.com/v1/jobs/phone-intake',
+      "Create the tow job in US Tow Dispatch. Call this ONCE, after you have the callback number, the location, what happened and the vehicle. Returns status 'success' with job_number, price and a confirmation line to say — or status 'error', which means the job was NOT booked: do not tell them they are booked, get them to dispatch.",
+    // 2026-09-12 — via our own API, not straight to USTD. Retell wraps every
+    // custom-tool POST as { call, name, args }; USTD's phone-intake reads
+    // the flat body, so every booking since 08-23 (4 of 4) was a 400
+    // "Required" on fields that were sitting one level down. The proxy
+    // unwraps, holds the USTD key server-side, stamps the job number on the
+    // call, and pushes "New tow booked" to the office.
+    url: 'https://api.ustowaiconnect.com/v1/ai-connect/create-tow-job',
     method: 'POST',
-    timeout_ms: 15000,
-    headers: {
-      authorization:
-        'Bearer tc_live_a6b58fe38de0_e3bf14d98e3ce636af2635d677bd03364167e8244d753a971b45db741360e838',
-      'content-type': 'application/json',
-    },
+    timeout_ms: 20000,
+    headers: { 'X-Tenant-API-Key': TENANT_API_KEY, 'content-type': 'application/json' },
     parameters: {
       type: 'object',
       required: ['customer', 'vehicle', 'serviceType', 'pickup'],
@@ -133,7 +144,7 @@ const TOOLS = [
           properties: {
             name: { type: 'string', description: "The caller's name. Use 'Unknown' if they would not give one." },
             phone: { type: 'string', description: 'Callback number. Digits are fine, e.g. 6145550101.' },
-            email: { type: 'string', description: 'Only if they volunteered it. Leave out otherwise.' },
+            email: { type: 'string', description: 'Ask for it near the end of the intake, after the name. Lower-case, a single address. Leave out if they have none or declined.' },
           },
         },
         vehicle: {
@@ -279,6 +290,25 @@ const MUST_CONTAIN = [
   "I'm an automated assistant",
 ];
 
+/**
+ * Agent-level delivery settings, published alongside the prompt (see --apply).
+ *
+ * 2026-09-11: interruption_sensitivity 0.9 -> 1. On 09-10 she finished the
+ * greeting and her sentences over the caller on most short calls ("A: Are you
+ * / U: Yeah. / A: checking on a / U: Better talk to a live person") — a "yeah"
+ * was being treated as a backchannel rather than the caller taking the turn.
+ * reminder_trigger_ms 10000 -> 20000: she was re-asking for the phone number
+ * ("Whenever you're ready…") while callers were still finding it, the exact
+ * opposite of the "leave room" rule.
+ */
+const AGENT_PACING = {
+  voice_speed: 0.92,
+  responsiveness: 0.6,
+  interruption_sensitivity: 1,
+  reminder_trigger_ms: 20000,
+  reminder_max_count: 1,
+};
+
 /** Remove the USTD toggle markers and normalise line endings. */
 function stripMarkers(raw) {
   return raw
@@ -329,6 +359,12 @@ async function main() {
   }
 
   const greeting = greetingFrom(next);
+  // 2026-09-10 — pacing. Chris: "talking a tad too fast and not giving others
+  // time to talk". voice_speed below 1 slows the delivery; responsiveness
+  // below 1 makes her wait longer after the caller stops before she answers.
+  // Interruption sensitivity stays high so a caller can always cut in.
+  await retell(`/update-agent/${AGENT}`, 'PATCH', AGENT_PACING);
+  console.log(`  agent pacing patched: ${JSON.stringify(AGENT_PACING)}`);
   await retell(`/update-retell-llm/${LLM}`, 'PATCH', {
     general_prompt: next,
     begin_message: greeting,

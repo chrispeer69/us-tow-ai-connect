@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { and, eq, asc, desc, sql } from 'drizzle-orm';
+import { and, eq, asc, desc, gt, inArray, sql } from 'drizzle-orm';
 import type Redis from 'ioredis';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
@@ -8,10 +8,12 @@ import {
   dispatchRequests,
   dispatchMessages,
   etaCheckCalls,
+  inboundCallLogs,
   interactionLogs,
   routingRules,
   smartActions,
   tenants,
+  unifiedJobs,
 } from '../../db/schema';
 import type {
   DispatchRequestCreate,
@@ -30,6 +32,15 @@ const DEFAULT_ETA_MINS = 45;
 // Emily may call the lookup more than once in a single conversation. Alerting
 // on each one teaches Chris to ignore the notification.
 const ALERT_QUIET_MINUTES = 15;
+/**
+ * 2026-09-16 — a repeat caller is the SAME caller, about the SAME job, with
+ * the SAME board status, inside this window. The 09-12 version keyed on the
+ * job alone (eta_check_calls is per job + job-customer phone), so a motor
+ * club rep ringing about a job the customer had asked about 40 minutes
+ * earlier was told "you've already been told the update" and transferred —
+ * 5 of 15 found-then-transferred calls on 09-15 were exactly that.
+ */
+const REPEAT_CALL_WINDOW_HOURS = 3;
 // Pings older than this are ignored when picking "the nearest available
 // driver" — a stale ping from 2 hours ago is worse than no ping at all
 // because it makes the agent quote a confidently-wrong number.
@@ -50,9 +61,42 @@ const DEFAULT_SERVICES = [
   { key: 'MOTOR_CLUB', label: 'Motor Club Work' },
 ];
 
+/** The last ten digits of a phone, so "+1 614..." and "614..." compare equal. */
+function last10(digits: string): string {
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
 export interface LookupByPhoneResult {
   found: boolean;
+  /** 2026-09-10 — what found the job: the phone the caller gave, their caller ID, our job number, or the motor-club PO. */
+  matchedBy?: 'given' | 'caller_id' | 'job_number' | 'po_number';
   source?: 'TOWBOOK' | 'AAA_PORTAL';
+  /**
+   * 2026-09-11 — 'active' is the live board. 'completed' / 'canceled' come
+   * from our own unified_jobs history when the board has no match: a customer
+   * ringing about a tow that finished that morning used to be told "I can't
+   * find it" and offered dispatch, which is the wrong answer to "did my car
+   * get there?".
+   */
+  jobState?: 'active' | 'completed' | 'canceled' | 'closed';
+  /** ISO timestamp of when the job left the live board (closed jobs only). */
+  closedAt?: string;
+  /**
+   * 2026-09-12 — Chris: repeat callers who have already heard the
+   * thirty-minute line "should auto forward to dispatch". 2026-09-16 — true
+   * only when THIS caller was already given THIS job's update and the board
+   * status has not moved since (see repeatByThisCaller). Two lookups inside
+   * one conversation do not count, and neither does a different caller.
+   */
+  repeatCall?: boolean;
+  /** How many earlier calls that open row had recorded (0 when none). */
+  priorCalls?: number;
+  /**
+   * 2026-09-16 — this caller asked about this job earlier and the board
+   * status has moved since. Not a repeat (there is news to give), but the
+   * prompt should lead with the new status rather than the thirty-minute line.
+   */
+  statusChanged?: boolean;
   job?: {
     jobId: string;
     customerName: string;
@@ -61,11 +105,32 @@ export interface LookupByPhoneResult {
     status: string;
     driverName: string;
     eta: string;
+    pickup?: string;
     destination: string;
     lastUpdated: string;
+    callNumber?: string;
+    poNumber?: string;
   };
   message?: string;
 }
+
+/**
+ * How far back the closed-job fallback looks. Was a day; on 09-15 three
+ * separate club reps read the PO of a tow completed five days earlier and
+ * each was told the job did not exist. A week covers the paperwork calls.
+ */
+const CLOSED_JOB_LOOKBACK_HOURS = 24 * 7;
+
+/**
+ * Does the last board status we saw say the truck reached the drop-off?
+ * Towbook's own words: "Destination Arrival at 10:47 AM", "Towing at 5:15 PM"
+ * (loaded and moving), "Completed". Anything earlier in the life of a job —
+ * Waiting, Dispatched, Enroute to scene, On scene — is not proof of delivery.
+ */
+function looksDelivered(status: string | undefined): boolean {
+  return /destination arrival|arrived at destination|towing at|complete|delivered|dropped off/i.test(status || '');
+}
+const CLOSED_JOB_SCAN_LIMIT = 600;
 
 @Injectable()
 export class AiConnectService {
@@ -113,7 +178,310 @@ export class AiConnectService {
   }
 
   // ─── lookup-by-phone ────────────────────────────────────────────────
-  async lookupByPhone(tenantId: string, phoneRaw: string): Promise<LookupByPhoneResult> {
+  /**
+   * Look a live job up by the number the caller gave, and — 2026-09-10 — by
+   * the number they are calling from when the given one finds nothing. Seven
+   * of nine not_found lookups in the first ten days of September were callers
+   * reading out a different number than the one on the ticket; every one of
+   * them ended in a transfer that the caller ID would have avoided.
+   */
+  async lookupByPhone(
+    tenantId: string,
+    phoneRaw: string,
+    options: { fallbackPhone?: string | null } = {},
+  ): Promise<LookupByPhoneResult> {
+    return this.lookupJob(tenantId, { phone: phoneRaw, fallbackPhone: options.fallbackPhone });
+  }
+
+  /**
+   * 2026-09-10 — one lookup, three keys. Chris, from the Towbook board: the
+   * job number is what our own people quote, the motor-club PO number is
+   * what the club (and many customers) quote, and the phone is how a
+   * customer is found. Tried in that order because a job or PO number is
+   * unambiguous where a phone can sit on two jobs; the caller ID is last.
+   */
+  async lookupJob(
+    tenantId: string,
+    keys: {
+      phone?: string | null;
+      jobNumber?: string | null;
+      poNumber?: string | null;
+      fallbackPhone?: string | null;
+      /** Retell call id — two lookups in one conversation are never a repeat. */
+      callId?: string | null;
+    },
+  ): Promise<LookupByPhoneResult> {
+    const jobNumber = (keys.jobNumber ?? '').replace(/\D/g, '');
+    // A PO with no digit in it ("for", "the PO") is a mis-hear, not a key.
+    const poRaw = (keys.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const poNumber = /\d/.test(poRaw) ? poRaw : '';
+    const phone = (keys.phone ?? '').replace(/\D/g, '');
+    const fallback = (keys.fallbackPhone ?? '').replace(/\D/g, '');
+
+    // The matchers, in priority order. Each is tried against the live board
+    // first; only when every one misses do we look at closed jobs, so a live
+    // job can never be shadowed by yesterday's.
+    const matchers: Array<{ by: NonNullable<LookupByPhoneResult['matchedBy']>; test: (j: ActiveJob) => boolean }> = [];
+    if (jobNumber) {
+      matchers.push({
+        by: 'job_number',
+        test: (j) => {
+          const call = (j.callNumber ?? '').replace(/\D/g, '');
+          // A stray leading digit ("one two seven seven four eight" heard as
+          // 1127748) must not miss — a Roadside call number is six digits.
+          return (
+            (call !== '' && (call === jobNumber || (call.length >= 5 && jobNumber.length > call.length && jobNumber.endsWith(call)))) ||
+            j.jobId === jobNumber
+          );
+        },
+      });
+    }
+    if (poNumber) {
+      matchers.push({
+        by: 'po_number',
+        test: (j) => {
+          const po = (j.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+          return po !== '' && (po === poNumber || (poNumber.length >= 6 && po.endsWith(poNumber)));
+        },
+      });
+    }
+    // 2026-09-16 — "the job that ends in four two two one". Callers quote the
+    // tail of a number, and they do not know whether it is our job number or
+    // the club's PO (on 09-15 it was the PO). Four or five digits against the
+    // end of either, live board only, and only when exactly one job matches —
+    // a short tail that fits two jobs is no match at all.
+    const tail = jobNumber.length >= 4 && jobNumber.length <= 5 ? jobNumber : poNumber.length >= 4 && poNumber.length <= 5 ? poNumber : '';
+    if (tail) {
+      const tailTest = (j: ActiveJob) => {
+        const call = (j.callNumber ?? '').replace(/\D/g, '');
+        const po = (j.poNumber ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        return (call.length > tail.length && call.endsWith(tail)) || (po.length > tail.length && po.endsWith(tail));
+      };
+      const live = await this.liveJobs(tenantId);
+      if (live.filter(tailTest).length === 1) {
+        matchers.push({ by: jobNumber ? 'job_number' : 'po_number', test: tailTest });
+      }
+    }
+    if (phone) {
+      matchers.push({ by: 'given', test: (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(phone) });
+    }
+    if (fallback && last10(fallback) !== last10(phone)) {
+      matchers.push({ by: 'caller_id', test: (j) => last10(j.customerPhone.replace(/\D/g, '')) === last10(fallback) });
+    }
+    if (matchers.length === 0) {
+      return { found: false, message: 'phone is required' };
+    }
+    // The caller is the caller ID only. A number they read out may be the
+    // customer's while the voice is a club rep's — not the same person.
+    const caller = last10(fallback);
+    for (const m of matchers) {
+      const hit = await this.findActiveJob(tenantId, m.test, { callerPhone: caller, callId: keys.callId ?? null });
+      if (hit.found) return { ...hit, matchedBy: m.by, jobState: 'active' };
+    }
+    const closed = await this.findRecentlyClosedJob(tenantId, matchers);
+    if (closed) return closed;
+    return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * 2026-09-11 — the live cache is active jobs only; a job that completed an
+   * hour ago is not findable by any key. Six not_found lookups in the first
+   * ten days of September were customers ringing about a tow that had
+   * already finished. The job-poller keeps every job it has ever seen in
+   * unified_jobs with the last board row in source_payload, so the same
+   * matchers run over the last day of closed rows. No eta-check row is
+   * recorded for these — nobody is waiting on a truck.
+   */
+  private async findRecentlyClosedJob(
+    tenantId: string,
+    matchers: Array<{ by: NonNullable<LookupByPhoneResult['matchedBy']>; test: (j: ActiveJob) => boolean }>,
+  ): Promise<LookupByPhoneResult | null> {
+    const since = new Date(Date.now() - CLOSED_JOB_LOOKBACK_HOURS * 60 * 60 * 1000);
+    let rows: Array<{
+      sourceJobId: string;
+      status: string;
+      callerPhone: string | null;
+      callerName: string | null;
+      sourcePayload: unknown;
+      completedAt: Date | null;
+      updatedAt: Date;
+    }>;
+    try {
+      rows = await this.db
+        .select({
+          sourceJobId: unifiedJobs.sourceJobId,
+          status: unifiedJobs.status,
+          callerPhone: unifiedJobs.callerPhone,
+          callerName: unifiedJobs.callerName,
+          sourcePayload: unifiedJobs.sourcePayload,
+          completedAt: unifiedJobs.completedAt,
+          updatedAt: unifiedJobs.updatedAt,
+        })
+        .from(unifiedJobs)
+        .where(
+          and(
+            eq(unifiedJobs.tenantId, tenantId),
+            inArray(unifiedJobs.status, ['completed', 'canceled']),
+            gt(unifiedJobs.updatedAt, since),
+          ),
+        )
+        .orderBy(desc(unifiedJobs.updatedAt))
+        .limit(CLOSED_JOB_SCAN_LIMIT);
+    } catch (err) {
+      this.logger.warn(`closed-job lookup failed: ${(err as Error).message}`);
+      return null;
+    }
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const asJob = (r: (typeof rows)[number]): ActiveJob => {
+      const p = (r.sourcePayload && typeof r.sourcePayload === 'object' ? r.sourcePayload : {}) as Partial<ActiveJob>;
+      return {
+        jobId: p.jobId || r.sourceJobId,
+        customerName: p.customerName || r.callerName || '',
+        customerPhone: (p.customerPhone || r.callerPhone || '').replace(/\D/g, ''),
+        vehicle: p.vehicle || '',
+        status: p.status || r.status,
+        driverName: p.driverName || '',
+        eta: p.eta || 'Unknown',
+        pickup: p.pickup || '',
+        destination: p.destination || '',
+        lastUpdated: p.lastUpdated || r.updatedAt.toISOString(),
+        callNumber: p.callNumber || '',
+        poNumber: p.poNumber || '',
+      };
+    };
+    for (const m of matchers) {
+      for (const r of rows) {
+        const job = asJob(r);
+        if (!m.test(job)) continue;
+        // 2026-09-16 — "completed" in unified_jobs only means the job left
+        // the Towbook active board (archiveMissingJobs); a job the club
+        // pulled back, or that went unsuccessful, is archived the same way.
+        // Emily told a motor club a job was "completed, arrived around
+        // 11:55" when its last board status was "Enroute to scene" and the
+        // club's own record said unsuccessful. Only call it completed when
+        // the last status we saw says the truck reached the destination.
+        const state: 'completed' | 'canceled' | 'closed' =
+          r.status === 'canceled' ? 'canceled' : looksDelivered(job.status) ? 'completed' : 'closed';
+        return {
+          found: true,
+          source: 'TOWBOOK',
+          matchedBy: m.by,
+          jobState: state,
+          closedAt: (r.completedAt ?? r.updatedAt).toISOString(),
+          job,
+        };
+      }
+    }
+    return null;
+  }
+
+  /** Every job on the live board, both sources, in source order. Never throws. */
+  private async liveJobs(tenantId: string): Promise<ActiveJob[]> {
+    const out: ActiveJob[] = [];
+    for (const key of [`jobs:towbook:${tenantId}`, `jobs:aaa_portal:${tenantId}`]) {
+      try {
+        const raw = await this.redis.get(key);
+        if (raw) out.push(...(JSON.parse(raw) as ActiveJob[]));
+      } catch {
+        /* a bad cache read is a miss, not an error */
+      }
+    }
+    return out;
+  }
+
+  private async findActiveJob(
+    tenantId: string,
+    matches: (job: ActiveJob) => boolean,
+    who: { callerPhone: string; callId: string | null } = { callerPhone: '', callId: null },
+  ): Promise<LookupByPhoneResult> {
+    const sources: Array<{ key: string; source: 'TOWBOOK' | 'AAA_PORTAL' }> = [
+      { key: `jobs:towbook:${tenantId}`, source: 'TOWBOOK' },
+      { key: `jobs:aaa_portal:${tenantId}`, source: 'AAA_PORTAL' },
+    ];
+    for (const { key, source } of sources) {
+      let raw: string | null = null;
+      try {
+        raw = await this.redis.get(key);
+      } catch (err) {
+        this.logger.warn(`Redis read failed for ${key}: ${(err as Error).message}`);
+        continue;
+      }
+      if (!raw) continue;
+      let jobs: ActiveJob[];
+      try {
+        jobs = JSON.parse(raw) as ActiveJob[];
+      } catch {
+        continue;
+      }
+      const hit = jobs.find(matches);
+      if (hit) {
+        // Read the counter BEFORE recording this call, so the board's
+        // prior-call count means earlier conversations, not this lookup.
+        const prior = await this.priorEtaChecks(tenantId, hit);
+        const repeat = await this.repeatByThisCaller(tenantId, hit, who);
+        void this.recordEtaCheck(tenantId, source, hit).catch((err) =>
+          this.logger.warn(`eta-check record failed: ${(err as Error).message}`),
+        );
+        return {
+          found: true,
+          source,
+          job: hit,
+          repeatCall: repeat.repeat,
+          statusChanged: repeat.statusChanged,
+          priorCalls: prior.calls,
+        };
+      }
+    }
+    return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * 2026-09-16 — has THIS caller already been given THIS job's update, with
+   * the board saying the same thing it says now? Kept in Redis per
+   * (tenant, job, caller) for REPEAT_CALL_WINDOW_HOURS. A second lookup inside
+   * one conversation (same call id) is not a repeat; neither is a different
+   * caller, nor a caller whose job has moved since — that one gets the new
+   * status. Never throws.
+   */
+  private async repeatByThisCaller(
+    tenantId: string,
+    job: ActiveJob,
+    who: { callerPhone: string; callId: string | null },
+  ): Promise<{ repeat: boolean; statusChanged: boolean }> {
+    const none = { repeat: false, statusChanged: false };
+    if (!who.callerPhone) return none;
+    const key = `eta-served:${tenantId}:${job.jobId}:${who.callerPhone}`;
+    const status = (job.status || '').trim();
+    let result = none;
+    try {
+      const raw = await this.redis.get(key);
+      if (raw) {
+        const prev = JSON.parse(raw) as { callId?: string | null; status?: string };
+        const sameConversation = !!who.callId && prev.callId === who.callId;
+        if (!sameConversation) {
+          const moved = (prev.status || '').trim() !== status;
+          result = { repeat: !moved, statusChanged: moved };
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`eta-served read failed: ${(err as Error).message}`);
+    }
+    try {
+      await this.redis.set(
+        key,
+        JSON.stringify({ callId: who.callId, status, at: new Date().toISOString() }),
+        'EX',
+        REPEAT_CALL_WINDOW_HOURS * 3600,
+      );
+    } catch (err) {
+      this.logger.warn(`eta-served write failed: ${(err as Error).message}`);
+    }
+    return result;
+  }
+
+  /** @deprecated 2026-09-10 — kept for the two older call sites; use lookupJob. */
+  private async findActiveJobByPhone(tenantId: string, phoneRaw: string): Promise<LookupByPhoneResult> {
     const phone = phoneRaw.replace(/\D/g, '');
     if (!phone) {
       return { found: false, message: 'phone is required' };
@@ -153,6 +521,35 @@ export class AiConnectService {
       }
     }
     return { found: false, message: 'No active job found for that phone number' };
+  }
+
+  /**
+   * Has anyone already rung about this job in an earlier conversation?
+   * Never throws — a counter read must not cost a stranded caller the answer.
+   */
+  private async priorEtaChecks(
+    tenantId: string,
+    job: ActiveJob,
+  ): Promise<{ calls: number }> {
+    try {
+      const [row] = await this.db
+        .select({ calls: etaCheckCalls.calls })
+        .from(etaCheckCalls)
+        .where(
+          and(
+            eq(etaCheckCalls.tenantId, tenantId),
+            eq(etaCheckCalls.jobId, job.jobId),
+            eq(etaCheckCalls.customerPhone, job.customerPhone),
+            sql`${etaCheckCalls.handledAt} is null`,
+          ),
+        )
+        .orderBy(desc(etaCheckCalls.lastCalledAt))
+        .limit(1);
+      return { calls: row?.calls ?? 0 };
+    } catch (err) {
+      this.logger.warn(`eta-check prior read failed: ${(err as Error).message}`);
+      return { calls: 0 };
+    }
   }
 
   /**
@@ -318,6 +715,167 @@ export class AiConnectService {
       status: 'success',
       messageId: row.id,
       confirmation: 'Your message is on the dispatch board now.',
+    };
+  }
+
+  // ─── create tow job (US Tow Dispatch) ──────────────────────────────
+  /**
+   * Emily books a brand-new tow into US Tow Dispatch.
+   *
+   * Proxied here rather than Retell calling USTD's phone-intake route
+   * directly, because Retell wraps every custom-tool POST body as
+   * `{ call, name, args }` and USTD reads the flat body. 2026-09-12:
+   * every create_tow_job since the tool was built on 08-23 — four of
+   * four, one of them that same morning — came back HTTP 400 "Required"
+   * on customer / vehicle / serviceType / pickup. The fields were all
+   * there, one level down. Same bug as lookup_job_by_phone and
+   * take_dispatch_message (silent-integration incidents 1 and 2); this
+   * is incident 7. The route unwraps, forwards with the server-side USTD
+   * key (which no longer has to sit in the Retell tool config), stamps
+   * the job number onto the inbound call, and tells the office.
+   *
+   * Always resolves — never throws — because Retell turns a thrown error
+   * into an opaque "HTTP 500" string Emily cannot reason about. A
+   * `status: 'error'` result is what the prompt's "if create_tow_job
+   * fails, do NOT tell them they are booked" line keys on.
+   */
+  async createTowJob(
+    tenantId: string,
+    input: { args: Record<string, unknown>; providerCallId: string | null; fromNumber: string | null },
+  ): Promise<
+    | {
+        status: 'success';
+        job_number: string | null;
+        job_id: string | null;
+        price: string | null;
+        vin_required_at_pickup: boolean;
+        confirmation: string;
+      }
+    | { status: 'error'; http_status?: number; message: string; errors?: string[] }
+  > {
+    const apiKey = process.env.USTD_API_KEY;
+    if (!apiKey) {
+      this.logger.error('create_tow_job: USTD_API_KEY is not set — cannot book a tow');
+      return { status: 'error', message: 'Booking is not configured on this line.' };
+    }
+    const base = (process.env.USTD_API_BASE_URL ?? 'https://api.ustowdispatch.com').replace(/\/$/, '');
+
+    // Retell adds execution_message to args when speak_during_execution
+    // is on; USTD's schema does not know it. callReference is the
+    // idempotency key — fill it from the call context when the LLM forgot.
+    const { execution_message: _spoken, ...payload } = input.args as Record<string, unknown> & {
+      execution_message?: unknown;
+    };
+    if (!payload.callReference && input.providerCallId) payload.callReference = input.providerCallId;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    let res: Response;
+    let text = '';
+    try {
+      res = await fetch(`${base}/v1/jobs/phone-intake`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
+          ...(input.providerCallId ? { 'idempotency-key': input.providerCallId } : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      text = await res.text();
+    } catch (err) {
+      this.logger.error(`create_tow_job: US Tow Dispatch unreachable: ${(err as Error).message}`);
+      return { status: 'error', message: 'US Tow Dispatch did not answer.' };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = null;
+    }
+
+    if (!res.ok) {
+      const errors = describeUstdErrors(body);
+      this.logger.error(
+        `create_tow_job: USTD HTTP ${res.status} for call ${input.providerCallId ?? '?'}: ${
+          errors.length ? errors.join('; ') : text.slice(0, 400)
+        }`,
+      );
+      return {
+        status: 'error',
+        http_status: res.status,
+        message: 'US Tow Dispatch rejected the booking.',
+        ...(errors.length ? { errors } : {}),
+      };
+    }
+
+    const job = (body ?? {}) as Record<string, unknown>;
+    const jobNumber = job.jobNumber != null ? String(job.jobNumber) : null;
+    const jobId = typeof job.id === 'string' ? job.id : null;
+    const quote = (job.rateQuote ?? null) as { totalCents?: unknown } | null;
+    const price =
+      quote && typeof quote.totalCents === 'number' ? '$' + (quote.totalCents / 100).toFixed(2) : null;
+
+    this.logger.log(
+      `create_tow_job: booked USTD job ${jobNumber ?? jobId ?? '?'} for call ${input.providerCallId ?? '?'}`,
+    );
+
+    // Stamp the job number onto the call. The call_ended webhook has not
+    // fired yet (we are mid-call), so this is an upsert of a stub row that
+    // the webhook later fills in — its onConflict set clause does not
+    // touch ustd_job_number, so the stamp survives.
+    if (input.providerCallId && jobNumber) {
+      try {
+        await this.db
+          .insert(inboundCallLogs)
+          .values({
+            tenantId,
+            providerCallId: input.providerCallId,
+            branch: 'new_tow',
+            fromNumber: input.fromNumber,
+            ustdJobNumber: jobNumber,
+            startedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: inboundCallLogs.providerCallId,
+            set: { ustdJobNumber: jobNumber, updatedAt: new Date() },
+          });
+      } catch (err) {
+        this.logger.warn(`create_tow_job: could not stamp job on call log: ${(err as Error).message}`);
+      }
+    }
+
+    // Tell the office. A booked tow that nobody notices is a stranded
+    // caller — same push channel the urgent dispatch messages use.
+    try {
+      const customer = (payload.customer ?? {}) as { name?: string; phone?: string };
+      const vehicle = (payload.vehicle ?? {}) as { year?: number; make?: string; model?: string };
+      const pickup = (payload.pickup ?? {}) as { address?: string };
+      const car = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || 'vehicle';
+      await this.push.sendToTenantAdmins(tenantId, {
+        title: `New tow booked by Emily${jobNumber ? ` — #${jobNumber}` : ''}`,
+        body: `${car} at ${pickup.address ?? 'unknown location'} · ${customer.name || 'caller'} ${
+          customer.phone ?? ''
+        }`.slice(0, 140),
+        url: '/m/roadside',
+        tag: `new-tow:${jobId ?? jobNumber ?? input.providerCallId ?? Date.now()}`,
+      });
+    } catch (err) {
+      this.logger.warn(`create_tow_job: admin push failed: ${(err as Error).message}`);
+    }
+
+    return {
+      status: 'success',
+      job_number: jobNumber,
+      job_id: jobId,
+      price,
+      vin_required_at_pickup: job.vinRequiredAtPickup === true,
+      confirmation:
+        "You're all set — I've got you in the system. Dispatch will call you right back on this number with your driver and a time.",
     };
   }
 
@@ -705,4 +1263,45 @@ export class AiConnectService {
       .offset((page - 1) * limit);
     return { items, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
   }
+}
+
+/**
+ * USTD's error envelope arrives in a flattened, index-referenced form:
+ * `[{"title":"2","errors":"4",...}, ..., ["6","7"], ..., {"path":"10","message":"11"}, "customer", "Required"]`
+ * — every string in an object is an index into the outer array. Resolve it
+ * into "customer: Required" lines so the log (and Emily) can read it. Falls
+ * back to whatever `errors` / `message` a plain JSON body carries.
+ */
+export function describeUstdErrors(body: unknown): string[] {
+  const resolve = (node: unknown, table: unknown[], depth = 0): unknown => {
+    if (depth > 6) return node;
+    if (typeof node === 'string' && /^\d+$/.test(node) && Number(node) < table.length) {
+      return resolve(table[Number(node)], table, depth + 1);
+    }
+    if (Array.isArray(node)) return node.map((n) => resolve(n, table, depth + 1));
+    if (node && typeof node === 'object') {
+      return Object.fromEntries(
+        Object.entries(node as Record<string, unknown>).map(([k, v]) => [k, resolve(v, table, depth + 1)]),
+      );
+    }
+    return node;
+  };
+  let root: unknown = body;
+  if (Array.isArray(body) && body.length > 0 && body[0] && typeof body[0] === 'object') {
+    root = resolve(body[0], body);
+  }
+  if (!root || typeof root !== 'object') return [];
+  const r = root as { errors?: unknown; message?: unknown; title?: unknown };
+  const out: string[] = [];
+  if (Array.isArray(r.errors)) {
+    for (const e of r.errors) {
+      if (e && typeof e === 'object') {
+        const { path, message } = e as { path?: unknown; message?: unknown };
+        out.push([path, message].filter((x) => typeof x === 'string').join(': '));
+      } else if (typeof e === 'string') out.push(e);
+    }
+  }
+  if (!out.length && typeof r.message === 'string') out.push(r.message);
+  if (!out.length && typeof r.title === 'string') out.push(r.title);
+  return out.filter(Boolean);
 }

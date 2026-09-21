@@ -272,3 +272,44 @@ Whichever route: pick the field whose label mentions *Cross Street / Coordinates
 - `AiNotesWriterService` — the sweep, composing first so a null block never opens
   a browser, and auditing every attempt.
 - `ai_note_writes` — the audit table behind `towbook_notes_updated`.
+
+## 2026-09-14 — EMAIL line (script 3.14)
+
+Chris: "I want her to ask the customer what their email is — and add that to
+the AI notes inside Towbook and also inside US Tow Dispatch." Both agents:
+
+**Outbound flip caller (script 3.14, commit `2fa13da`).** STEP 2c right
+after the confirm-name step on both A/B arms: "And what's the best email for
+you? We'll send the job confirmation and receipt there." Read back once (it
+joins the read-back allowlist), "no problem" on decline, never invented.
+Chain: Retell post-call field `customer_email` → `extractRetellAnalysis` →
+`cleanConfirmedEmail` (lower-case, spoken "at"/"dot" forms, must look like
+an address; "unknown"/"none" → null) → `outbound_call_logs.confirmed_email`
+(migration 0059) → `composeAiNotes` renders `EMAIL: pat.smith@gmail.com.`
+right after the NAME line → Towbook notes via the existing 5-minute sweep
+(the candidate gate includes the column). In the same webhook pass,
+`propagateConfirmedEmail` POSTs `{phone, email, name, source}` to US Tow
+Dispatch `POST /v1/customers/contact` (Roadside tenant only, best effort,
+warns on failure) — that upserts the USTD **customer** by phone, because
+Towbook-dispatched jobs do not exist in USTD.
+
+**Inbound Emily (agent v21).** New-tow intake asks for the email last
+(step 7); `create_tow_job` sends it as `customer.email`, and USTD's
+phone-intake stores it on the job's customer and skips the
+"No email captured" note.
+
+**Not live until Chris does three things** (each was refused to the
+automation as a permission/merge action):
+1. Retell OUTBOUND agent: `node scripts/retell/add-confirmed-name-fields.js`
+   (creates + publishes v55 with `customer_first_name`, `customer_last_name`,
+   `customer_email`), then `railway variables --service '@ustow/api' --set
+   RETELL_AGENT_VERSION=55` and `railway redeploy --service '@ustow/api'
+   --yes`. Until then the script asks the question (3.13 name + 3.14 email
+   are in the script body already) and the answers have no post-call field
+   to land in — the ai-notes-pipeline failure shape.
+2. US Tow Dispatch PR #279 (`ai/customer-contact-endpoint` → master) —
+   the endpoint. Railway `backend` deploys from master.
+3. Grant `customers:write` to the Emily key (`a6b58fe38de0`) — scopes
+   cannot be edited in the UI. SQL against the USTD Postgres:
+   `update api_keys set scopes = scopes || '["customers:write"]'::jsonb
+   where prefix = 'a6b58fe38de0' and not scopes ? 'customers:write';`

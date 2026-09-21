@@ -16,8 +16,9 @@ import {
   type ClassifyDestinationResult,
 } from './destination-classifier.service';
 import { FlipEngineService } from './flip-engine.service';
-import { decideFlip, type FlipDecision } from './flip-decision.engine';
+import { ALWAYS_NO_FLIP_CATEGORIES, decideFlip, type FlipDecision } from './flip-decision.engine';
 import { isTowCompany, looksLikeSharedBusinessPhone, type TowCompanyEntry } from './tow-company.matcher';
+import { isDealerDestination } from './dealer-destination';
 import {
   IssueClassifierService,
   type ClassifyIssueResult,
@@ -306,21 +307,27 @@ export class FlipOrchestratorService {
    * Session 74 — the conditional offer for calls whose destination the pre-call
    * map lookup could not resolve. See ScriptContext.conditionalShop.
    *
-   * Returns a shop ONLY for `unknown` destinations that are otherwise
-   * ineligible. Collision, glass, residence, our-shop and no-shop-in-range calls
-   * all return null and keep their hard no-offer script — the point is to
-   * recover the calls we simply did not know about, not to reopen a rule.
+   * Returns a shop for `unknown` destinations that are otherwise ineligible
+   * and — 3.15, Chris 2026-09-16: "if a person's car is going home, provide
+   * opportunity to choose and learn about our partner shops" — for
+   * `residence` destinations too. Collision, glass, our-shop and
+   * no-shop-in-range calls still return null and keep their hard no-offer
+   * script. The script decides in-call whether the customer's answer earns
+   * the offer (repair shop, or home with a mechanical fault).
    */
   private async resolveConditionalShop(args: {
     tenantId: string;
     destinationTag: string;
     flipEligible: boolean;
+    issueSubcategory: string;
     pickupLat: number | null | undefined;
     pickupLng: number | null | undefined;
     maxDistanceMiles: number;
   }): Promise<{ name: string | null; distanceMiles: number | null }> {
     const none = { name: null, distanceMiles: null };
-    if (args.flipEligible || args.destinationTag !== 'unknown') return none;
+    if (args.flipEligible) return none;
+    if (args.destinationTag !== 'unknown' && args.destinationTag !== 'residence') return none;
+    if (ALWAYS_NO_FLIP_CATEGORIES.includes(args.issueSubcategory)) return none;
     if (args.pickupLat == null || args.pickupLng == null) return none;
 
     const pick = await this.flipEngine.pickNearestShop({
@@ -501,6 +508,7 @@ export class FlipOrchestratorService {
       tenantId,
       destinationTag: destination.tag,
       flipEligible,
+      issueSubcategory: issue.subcategory,
       pickupLat: job.pickupLat,
       pickupLng: job.pickupLng,
       maxDistanceMiles: Number(
@@ -519,6 +527,7 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
       customerFirstName: firstNameOf(job.customerName),
+      customerFullName: job.customerName ?? null,
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
       destination:
@@ -531,6 +540,7 @@ export class FlipOrchestratorService {
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, job.destinationName, job.destinationAddress),
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
         : null,
@@ -706,6 +716,7 @@ export class FlipOrchestratorService {
       tenantId,
       destinationTag: destination.tag,
       flipEligible,
+      issueSubcategory: issue.subcategory,
       pickupLat: job.pickupLat,
       pickupLng: job.pickupLng,
       maxDistanceMiles: Number(
@@ -722,6 +733,7 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
       customerFirstName: firstNameOf(job.customerName),
+      customerFullName: job.customerName ?? null,
       vehicle: formatVehicleYear(job.vehicle),
       pickupLocation: job.pickupAddress ?? 'your location',
       destination:
@@ -734,6 +746,7 @@ export class FlipOrchestratorService {
       nearestShopDistanceMiles:
         flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, job.destinationName, job.destinationAddress),
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, job.pickupLat as unknown as number, job.pickupLng as unknown as number, nearestShopName)
         : null,
@@ -1164,6 +1177,7 @@ export class FlipOrchestratorService {
         tenantId,
         destinationTag: destination.tag,
         flipEligible,
+        issueSubcategory: issue.subcategory,
         pickupLat: job.pickupLat != null ? Number(job.pickupLat) : null,
         pickupLng: job.pickupLng != null ? Number(job.pickupLng) : null,
         maxDistanceMiles: Number(
@@ -1179,6 +1193,7 @@ export class FlipOrchestratorService {
         conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
         diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
         customerFirstName: firstNameOf(job.callerName),
+        customerFullName: job.callerName ?? null,
         // No colour. This path assembled the spoken vehicle from columns and
         // put the ticket colour second — "2015 Red Honda Civic" — where the
         // 08-28 trailing-colour fix never reached it, so the agent kept
@@ -1199,6 +1214,7 @@ export class FlipOrchestratorService {
         nearestShopDistanceMiles:
           flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
         nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+        destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, job.dropoffAddress),
         alternateShops: flipEligible
           ? alternateShopsFor(ourShops, Number(job.pickupLat), Number(job.pickupLng), nearestShopName)
           : null,
@@ -1451,6 +1467,7 @@ export class FlipOrchestratorService {
       tenantId,
       destinationTag: destination.tag,
       flipEligible,
+      issueSubcategory: issue.subcategory,
       pickupLat: geocoded?.lat ?? null,
       pickupLng: geocoded?.lng ?? null,
       maxDistanceMiles: Number(
@@ -1466,6 +1483,7 @@ export class FlipOrchestratorService {
       conviniLink: (cfg.convini_link as string) || (globalCfg.convini_link as string) || 'https://convini.live',
       diagnosticValue: Number(cfg.diagnostic_value ?? globalCfg.diagnostic_value ?? 179),
       customerFirstName: firstNameOf(input.customerName),
+      customerFullName: input.customerName ?? null,
       vehicle: input.vehicle || 'your vehicle',
       pickupLocation: input.pickupLocation || 'your location',
       destination:
@@ -1477,6 +1495,7 @@ export class FlipOrchestratorService {
       nearestShop: flipEligible ? nearestShopName : null,
       nearestShopDistanceMiles: flipEligible && distanceMilesSaved != null ? Math.round(distanceMilesSaved) : null,
       nearestShopAddress: flipEligible ? shopAddressFor(ourShops, nearestShopName) : null,
+      destinationIsDealer: isDealerDestination(destination.placeTypes, destination.resolvedName, input.destination),
       alternateShops: flipEligible
         ? alternateShopsFor(ourShops, geocoded?.lat ?? null, geocoded?.lng ?? null, nearestShopName)
         : null,
