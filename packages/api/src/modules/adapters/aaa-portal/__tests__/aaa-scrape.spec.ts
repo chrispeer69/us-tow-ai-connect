@@ -127,6 +127,7 @@ describe('AAA Work Orders parsing', () => {
   });
 
   it('fails closed for guessed or otherwise unverified AAA statuses', () => {
+    expect(isVerifiedAaaStatus('In Progress')).toBe(true);
     expect(isVerifiedAaaStatus('En Route')).toBe(true);
     expect(isVerifiedAaaStatus('On Location')).toBe(true);
     expect(isVerifiedAaaStatus('Tow Loaded')).toBe(true);

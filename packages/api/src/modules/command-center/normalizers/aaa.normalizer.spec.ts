@@ -55,6 +55,7 @@ describe('AaaNormalizer', () => {
       lastUpdated: '2026-09-21T00:00:00.000Z',
     };
 
+    expect(normalizer.normalize('tenant-1', { ...base, status: 'In Progress' }).status).toBe('new');
     expect(normalizer.normalize('tenant-1', { ...base, status: 'En Route' }).status).toBe('en_route');
     expect(normalizer.normalize('tenant-1', { ...base, status: 'On Location' }).status).toBe('on_scene');
     expect(normalizer.normalize('tenant-1', { ...base, status: 'Tow Loaded' }).status).toBe('in_tow');

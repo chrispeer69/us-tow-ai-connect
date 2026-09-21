@@ -8,6 +8,8 @@ import type { AdapterNormalizer, UnifiedJobInput, UnifiedJobStatus } from './typ
  */
 export function mapAaaStatus(raw: string | null | undefined): UnifiedJobStatus {
   switch ((raw ?? '').trim().toLowerCase()) {
+    case 'in progress':
+      return 'new';
     case 'en route':
       return 'en_route';
     case 'on location':

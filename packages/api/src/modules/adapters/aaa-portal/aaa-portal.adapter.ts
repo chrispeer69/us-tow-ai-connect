@@ -71,7 +71,11 @@ export interface AaaWorkOrderRow {
 // Verified from AAA Service Appointment Status History on 2026-09-21.
 // Keep this allowlist deliberately narrow: an unverified status must never be
 // interpreted as completed (or otherwise trigger customer automation).
-const ACTIVE_AAA_STATUS = /^(en route|on location|tow loaded)$/i;
+// The Work Orders list uses the parent-level `In Progress` status while the
+// Service Appointment detail/history exposes the later operational stages.
+// Treating In Progress as active lets a newly received AAA call enter the
+// unified queue before a driver advances it to En Route.
+const ACTIVE_AAA_STATUS = /^(in progress|en route|on location|tow loaded)$/i;
 const TERMINAL_AAA_STATUS = /^cleared$/i;
 const VERIFIED_COMPLETED_STATUS = 'Tow Complete';
 const VERIFIED_NOT_COMPLETED_STATUS = 'Closed Without Tow Complete';
