@@ -1263,7 +1263,7 @@ export class FlipOrchestratorService {
           toPhone: job.callerPhone,
           toName: job.callerName ?? '',
           scriptTemplate: 'custom',
-          scriptVariables: { body: fullBody },
+          scriptVariables: { body: fullBody, automaticSourceDispatch: automatic },
           relatedJobId: job.id,
         });
       } catch (err) {

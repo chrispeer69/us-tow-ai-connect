@@ -9,6 +9,7 @@ import {
   outboundCalls,
   platformSettings,
   tenantBilling,
+  tenantCredentials,
   tenants,
   unifiedJobs,
   type OutboundCallRow,
@@ -36,6 +37,11 @@ import {
 } from './script-templates';
 import { GeocoderService } from '../command-center/geocoder.service';
 import { GhlRoadsideBridgeService } from '../job-poller/ghl-roadside-bridge.service';
+import {
+  automaticOutboundVoiceAllowedForSource,
+  defaultAutomaticOutboundVoiceForSource,
+  integrationSoftwareTypeForSource,
+} from '../flip-engine/outbound-source-policy';
 import { selectNearestShop, selectNearestShops } from '../flip-engine/nearest-shop.selector';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
 import { RetellOutboundClient } from './retell-outbound.client';
@@ -296,6 +302,23 @@ export class OutboundVoiceService {
 
     const out: OutboundCallRow[] = [];
     for (const { call, tenant } of queued) {
+      if (!(await this.automaticSourceDispatchAllowed(call))) {
+        const [cancelled] = await this.db
+          .update(outboundCalls)
+          .set({
+            status: 'cancelled',
+            error: 'automatic_outbound_disabled_for_source',
+            endedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(outboundCalls.id, call.id))
+          .returning();
+        this.logger.warn(
+          `[outbound-voice] cancelled queued automatic call=${call.id}; source-level outbound voice is disabled`,
+        );
+        if (cancelled) out.push(cancelled);
+        continue;
+      }
       if (await this.freeTrialLimitReached(tenant)) {
         await this.db
           .update(outboundCalls)
@@ -312,6 +335,48 @@ export class OutboundVoiceService {
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     return out;
+  }
+
+  /**
+   * Re-check the adopter switch at the last possible moment before dialing.
+   * This closes the window where a call was queued while enabled and the
+   * integration was disabled before the 30-second dispatcher picked it up.
+   * Explicit operator calls carry `automaticSourceDispatch: false` and retain
+   * the existing Manual-only behaviour.
+   */
+  private async automaticSourceDispatchAllowed(call: OutboundCallRow): Promise<boolean> {
+    if (!call.relatedJobId) return true;
+    const variables = (call.scriptVariables ?? {}) as Record<string, unknown>;
+    if (variables.automaticSourceDispatch === false) return true;
+
+    const [job] = await this.db
+      .select({ source: unifiedJobs.source })
+      .from(unifiedJobs)
+      .where(
+        and(
+          eq(unifiedJobs.id, call.relatedJobId),
+          eq(unifiedJobs.tenantId, call.tenantId),
+        ),
+      )
+      .limit(1);
+    if (!job) return true;
+
+    const softwareType = integrationSoftwareTypeForSource(job.source);
+    if (!softwareType) return true;
+    const [integration] = await this.db
+      .select({ automaticOutboundVoiceEnabled: tenantCredentials.automaticOutboundVoiceEnabled })
+      .from(tenantCredentials)
+      .where(
+        and(
+          eq(tenantCredentials.tenantId, call.tenantId),
+          eq(tenantCredentials.softwareType, softwareType),
+        ),
+      )
+      .limit(1);
+    const integrationEnabled =
+      integration?.automaticOutboundVoiceEnabled ??
+      defaultAutomaticOutboundVoiceForSource(job.source);
+    return automaticOutboundVoiceAllowedForSource(job.source, integrationEnabled);
   }
 
   private async dispatchOne(

@@ -171,6 +171,48 @@ describe('OutboundVoiceService', () => {
     delete process.env.PUBLIC_BASE_URL;
   });
 
+  it('blocks a queued automatic AAA call when the adopter switch is off', async () => {
+    const selectResults = [
+      [{ source: 'aaa_salesforce' }],
+      [{ automaticOutboundVoiceEnabled: false }],
+    ];
+    const db = {
+      select: vi.fn(() => {
+        const result = selectResults.shift() ?? [];
+        const chain: any = {
+          from: () => chain,
+          where: () => chain,
+          limit: async () => result,
+        };
+        return chain;
+      }),
+    };
+    const svc = createSvc(db);
+    const allowed = await (svc as any).automaticSourceDispatchAllowed({
+      id: 'aaa-auto-1',
+      tenantId: TENANT_ID,
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      scriptVariables: { automaticSourceDispatch: true },
+    });
+
+    expect(allowed).toBe(false);
+    expect(db.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves an explicitly manual AAA call when automatic calling is off', async () => {
+    const db = { select: vi.fn() };
+    const svc = createSvc(db);
+    const allowed = await (svc as any).automaticSourceDispatchAllowed({
+      id: 'aaa-manual-1',
+      tenantId: TENANT_ID,
+      relatedJobId: '00000000-0000-0000-0000-000000000abc',
+      scriptVariables: { automaticSourceDispatch: false },
+    });
+
+    expect(allowed).toBe(true);
+    expect(db.select).not.toHaveBeenCalled();
+  });
+
   it('enqueueCall validates variables and inserts a queued row', async () => {
     const { db, calls } = makeFakeDb();
     const svc = createSvc(db);
