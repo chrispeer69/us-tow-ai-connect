@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allAaaServiceAppointmentsCleared,
   assembleAaaActiveJobs,
   classifyAaaClearedOutcome,
   isVerifiedAaaStatus,
+  mergeAaaWorkOrderDetails,
   parseAaaWorkOrderTable,
 } from '../aaa-portal.adapter';
 
@@ -168,6 +170,108 @@ describe('AAA Work Orders parsing', () => {
       classifyAaaClearedOutcome({
         towCompleteTimestamp: '9/17/2026, 10:22 AM',
         canceledTimestamp: '9/17/2026, 10:20 AM',
+      }),
+    ).toBe('Closed Without Tow Complete');
+  });
+
+  it('merges parent Work Order data with Breakdown and Tow appointments', () => {
+    const blank = {
+      towCompleteTimestamp: '',
+      canceledTimestamp: '',
+      customerName: '',
+      customerPhone: '',
+      vehicle: '',
+      pickup: '',
+      destination: '',
+      latitude: '',
+      longitude: '',
+      serviceType: '',
+      resolutionCode: '',
+      recordStatus: '',
+      serviceAppointmentCount: 0,
+      serviceAppointmentStatuses: [] as string[],
+    };
+
+    expect(
+      mergeAaaWorkOrderDetails([
+        {
+          ...blank,
+          customerName: 'AAA Customer',
+          customerPhone: '(614) 555-0101',
+        },
+        {
+          ...blank,
+          vehicle: 'White 2020 Ford F-150 - PS (Passenger Car/Truck)',
+          pickup: '100 Main St, Columbus, OH',
+          latitude: '39.9612',
+          longitude: '-82.9988',
+        },
+        {
+          ...blank,
+          destination: '200 Broad St, Columbus, OH',
+          serviceType: 'Passenger Car Tow',
+          towCompleteTimestamp: '9/23/2026, 10:22 AM',
+        },
+      ]),
+    ).toEqual({
+      towCompleteTimestamp: '9/23/2026, 10:22 AM',
+      canceledTimestamp: '',
+      customerName: 'AAA Customer',
+      customerPhone: '(614) 555-0101',
+      vehicle: 'White 2020 Ford F-150 - PS (Passenger Car/Truck)',
+      pickup: '100 Main St, Columbus, OH',
+      destination: '200 Broad St, Columbus, OH',
+      latitude: '39.9612',
+      longitude: '-82.9988',
+      serviceType: 'Passenger Car Tow',
+      resolutionCode: '',
+      recordStatus: '',
+      serviceAppointmentCount: 0,
+      serviceAppointmentStatuses: [],
+    });
+  });
+
+  it('closes a stale In Progress parent only after every linked appointment is Cleared', () => {
+    expect(
+      allAaaServiceAppointmentsCleared({
+        serviceAppointmentCount: 2,
+        serviceAppointmentStatuses: ['Cleared', 'Cleared'],
+      }),
+    ).toBe(true);
+    expect(
+      allAaaServiceAppointmentsCleared({
+        serviceAppointmentCount: 2,
+        serviceAppointmentStatuses: ['Cleared'],
+      }),
+    ).toBe(false);
+    expect(
+      allAaaServiceAppointmentsCleared({
+        serviceAppointmentCount: 2,
+        serviceAppointmentStatuses: ['Cleared', 'In Progress'],
+      }),
+    ).toBe(false);
+  });
+
+  it('uses PCC outcome evidence without treating every Cleared call as successful', () => {
+    expect(
+      classifyAaaClearedOutcome({
+        towCompleteTimestamp: '',
+        canceledTimestamp: '',
+        resolutionCode: 'G102 - Install Spare Tire',
+      }),
+    ).toBe('Tow Complete');
+    expect(
+      classifyAaaClearedOutcome({
+        towCompleteTimestamp: '',
+        canceledTimestamp: '',
+        resolutionCode: 'X002 - Cancel Call - Service En Route',
+      }),
+    ).toBe('Closed Without Tow Complete');
+    expect(
+      classifyAaaClearedOutcome({
+        towCompleteTimestamp: '',
+        canceledTimestamp: '',
+        resolutionCode: 'N590 - Other Problem',
       }),
     ).toBe('Closed Without Tow Complete');
   });

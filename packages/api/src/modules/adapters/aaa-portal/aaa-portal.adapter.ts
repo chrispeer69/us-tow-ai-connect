@@ -85,7 +85,7 @@ export interface AaaClearedOutcomeEvidence {
   canceledTimestamp: string;
 }
 
-interface AaaWorkOrderDetails extends AaaClearedOutcomeEvidence {
+export interface AaaWorkOrderDetails extends AaaClearedOutcomeEvidence {
   customerName: string;
   customerPhone: string;
   vehicle: string;
@@ -94,6 +94,69 @@ interface AaaWorkOrderDetails extends AaaClearedOutcomeEvidence {
   latitude: string;
   longitude: string;
   serviceType: string;
+  resolutionCode: string;
+  recordStatus: string;
+  serviceAppointmentCount: number;
+  serviceAppointmentStatuses: string[];
+}
+
+const EMPTY_AAA_WORK_ORDER_DETAILS: AaaWorkOrderDetails = {
+  towCompleteTimestamp: '',
+  canceledTimestamp: '',
+  customerName: '',
+  customerPhone: '',
+  vehicle: '',
+  pickup: '',
+  destination: '',
+  latitude: '',
+  longitude: '',
+  serviceType: '',
+  resolutionCode: '',
+  recordStatus: '',
+  serviceAppointmentCount: 0,
+  serviceAppointmentStatuses: [],
+};
+
+/**
+ * Parent Work Orders and their two Service Appointments expose different
+ * pieces of the same call. Keep the first non-empty value, except terminal
+ * evidence where any child appointment may provide the decisive timestamp.
+ */
+export function mergeAaaWorkOrderDetails(
+  records: AaaWorkOrderDetails[],
+): AaaWorkOrderDetails {
+  const first = (
+    key: Exclude<keyof AaaWorkOrderDetails, 'serviceAppointmentCount' | 'serviceAppointmentStatuses'>,
+  ): string => records.map((record) => record[key].trim()).find(Boolean) ?? '';
+
+  return {
+    towCompleteTimestamp: first('towCompleteTimestamp'),
+    canceledTimestamp: first('canceledTimestamp'),
+    customerName: first('customerName'),
+    customerPhone: first('customerPhone'),
+    vehicle: first('vehicle'),
+    pickup: first('pickup'),
+    destination: first('destination'),
+    latitude: first('latitude'),
+    longitude: first('longitude'),
+    serviceType: first('serviceType'),
+    resolutionCode: first('resolutionCode'),
+    recordStatus: first('recordStatus'),
+    serviceAppointmentCount: 0,
+    serviceAppointmentStatuses: [],
+  };
+}
+
+export function allAaaServiceAppointmentsCleared(
+  details: Pick<AaaWorkOrderDetails, 'serviceAppointmentCount' | 'serviceAppointmentStatuses'>,
+): boolean {
+  const expected = details.serviceAppointmentCount ?? 0;
+  const statuses = details.serviceAppointmentStatuses ?? [];
+  return (
+    expected > 0 &&
+    statuses.length === expected &&
+    statuses.every((status) => /^cleared$/i.test(status.trim()))
+  );
 }
 
 /**
@@ -103,12 +166,16 @@ interface AaaWorkOrderDetails extends AaaClearedOutcomeEvidence {
  * cancellation timestamp.
  */
 export function classifyAaaClearedOutcome(
-  evidence: AaaClearedOutcomeEvidence,
+  evidence: AaaClearedOutcomeEvidence & { resolutionCode?: string },
 ): typeof VERIFIED_COMPLETED_STATUS | typeof VERIFIED_NOT_COMPLETED_STATUS {
-  if (evidence.canceledTimestamp.trim()) return VERIFIED_NOT_COMPLETED_STATUS;
-  return evidence.towCompleteTimestamp.trim()
-    ? VERIFIED_COMPLETED_STATUS
-    : VERIFIED_NOT_COMPLETED_STATUS;
+  const resolutionCode = (evidence.resolutionCode ?? '').trim().toUpperCase();
+  if (evidence.canceledTimestamp.trim() || /^[XR]\d{3}\b/.test(resolutionCode)) {
+    return VERIFIED_NOT_COMPLETED_STATUS;
+  }
+  if (evidence.towCompleteTimestamp.trim() || /^G\d{3}\b/.test(resolutionCode)) {
+    return VERIFIED_COMPLETED_STATUS;
+  }
+  return VERIFIED_NOT_COMPLETED_STATUS;
 }
 
 export function isVerifiedAaaStatus(status: string): boolean {
@@ -615,7 +682,23 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
         // portal's historical Cleared rows and firing customer automation.
         await this.redis.set(trackingKey, '1', 'EX', AAA_ACTIVE_CALL_TTL_SECONDS);
         const details = await this.readWorkOrderDetails(page, tenantId, job.jobId, true);
-        if (details) this.applyWorkOrderDetails(job, details);
+        if (details) {
+          this.applyWorkOrderDetails(job, details);
+          // AAA may leave the parent Work Order at In Progress after both
+          // child Service Appointments have cleared. Treat the children as
+          // the terminal source of truth only when every linked appointment
+          // was read successfully and is explicitly Cleared.
+          if (allAaaServiceAppointmentsCleared(details)) {
+            job.status = classifyAaaClearedOutcome(details);
+            this.logger.log(
+              `AAA Portal: child appointments closed ${job.jobId}; outcome=${job.status} ` +
+                `resolution=${details.resolutionCode || 'blank'}`,
+            );
+            output.push(job);
+            await this.redis.del(trackingKey);
+            continue;
+          }
+        }
         output.push(job);
         continue;
       }
@@ -649,7 +732,12 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
     return `aaa:observed-active:${tenantId}:${jobId}`;
   }
 
-  /** Open one transitioned Work Order read-only and collect terminal evidence. */
+  /**
+   * Open one Work Order read-only and merge it with its linked Breakdown and
+   * Tow Service Appointments. AAA keeps contact data on the parent while the
+   * vehicle, addresses, and lifecycle timestamps commonly live on the child
+   * SA records.
+   */
   private async readWorkOrderDetails(
     listPage: Page,
     tenantId: string,
@@ -670,38 +758,97 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
 
     const jobLink = listPage.getByRole('link', { name: jobId, exact: true }).first();
     const href = await jobLink.getAttribute('href').catch(() => null);
-    if (!href) return null;
+    if ((await jobLink.count()) === 0) return null;
 
     const detailPage = await listPage.context().newPage();
     try {
-      await detailPage.goto(new URL(href, listPage.url()).href, {
-        waitUntil: 'domcontentloaded',
-        timeout: AAA_NAV_TIMEOUT_MS,
-      });
+      if (href && !/^javascript:/i.test(href)) {
+        await detailPage.goto(new URL(href, listPage.url()).href, {
+          waitUntil: 'domcontentloaded',
+          timeout: AAA_NAV_TIMEOUT_MS,
+        });
+      } else {
+        // Salesforce renders Work Order links as javascript:void(0) in this
+        // list. Open an isolated copy of the list and click only the record
+        // link; this is read-only and keeps the poller's source page intact.
+        await detailPage.goto(listPage.url(), {
+          waitUntil: 'domcontentloaded',
+          timeout: AAA_NAV_TIMEOUT_MS,
+        });
+        await detailPage.waitForSelector(WORK_ORDERS_SELECTOR, {
+          timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS,
+        });
+        const detailJobLink = detailPage
+          .getByRole('link', { name: jobId, exact: true })
+          .first();
+        if ((await detailJobLink.count()) === 0) return null;
+        await detailJobLink.click({ timeout: ACTION_BUTTON_TIMEOUT_MS });
+        await detailPage.waitForTimeout(2_000);
+      }
       if (detailPage.url().includes('/login')) return null;
 
-      await detailPage
-        .getByText('Tow Complete Timestamp', { exact: true })
-        .first()
-        .waitFor({ timeout: WORK_ORDERS_SELECTOR_TIMEOUT_MS });
+      await detailPage.waitForTimeout(1_500);
 
-      const details = {
-        towCompleteTimestamp: await this.readLightningField(
-          detailPage,
-          'Tow Complete Timestamp',
-        ),
-        canceledTimestamp: await this.readLightningField(detailPage, 'Canceled Timestamp'),
-        customerName: await this.readLightningField(detailPage, 'Contact'),
-        customerPhone: await this.readLightningField(detailPage, 'Phone Number'),
-        vehicle: await this.readLightningField(detailPage, 'Vehicle Profile'),
-        pickup: await this.readLightningField(detailPage, 'Breakdown Address'),
-        destination: await this.readLightningField(detailPage, 'Tow Address'),
-        latitude: await this.readLightningField(detailPage, 'Latitude'),
-        longitude: await this.readLightningField(detailPage, 'Longitude'),
-        serviceType: await this.readLightningField(detailPage, 'Work Type'),
-      };
+      const records: AaaWorkOrderDetails[] = [await this.readAaaRecordDetails(detailPage)];
+      const serviceAppointments = await detailPage.locator('a').evaluateAll((links) => {
+        const byHref = new Map<string, { href: string; status: string }>();
+        for (const link of links) {
+          const text = (link.textContent ?? '').trim();
+          const href = (link as unknown as { href?: string }).href ?? '';
+          if (!/^SA-\d+$/i.test(text) || !href) continue;
+
+          let current: { innerText?: string; parentElement?: unknown } | null =
+            link as unknown as { innerText?: string; parentElement?: unknown };
+          let status = '';
+          for (let depth = 0; current && depth < 7; depth += 1) {
+            const match = String(current.innerText ?? '').match(/(?:^|\n)Status:\s*([^\n]+)/i);
+            if (match?.[1]) {
+              status = match[1].trim();
+              break;
+            }
+            current = current.parentElement as typeof current;
+          }
+          byHref.set(href, { href, status });
+        }
+        return [...byHref.values()];
+      });
+
+      const serviceAppointmentRecords: AaaWorkOrderDetails[] = [];
+      for (const serviceAppointment of serviceAppointments) {
+        const parsed = new URL(serviceAppointment.href, detailPage.url());
+        if (parsed.origin !== new URL(detailPage.url()).origin) continue;
+
+        const serviceAppointmentPage = await listPage.context().newPage();
+        try {
+          await serviceAppointmentPage.goto(parsed.href, {
+            waitUntil: 'domcontentloaded',
+            timeout: AAA_NAV_TIMEOUT_MS,
+          });
+          if (serviceAppointmentPage.url().includes('/login')) continue;
+          await serviceAppointmentPage.waitForTimeout(1_500);
+          const record = await this.readAaaRecordDetails(serviceAppointmentPage);
+          if (!record.recordStatus) record.recordStatus = serviceAppointment.status;
+          records.push(record);
+          serviceAppointmentRecords.push(record);
+        } catch (error) {
+          this.logger.warn(
+            `AAA Portal: service appointment detail read failed for ${jobId}: ${(error as Error).message}`,
+          );
+        } finally {
+          await serviceAppointmentPage.close().catch(() => undefined);
+        }
+      }
+
+      const details = mergeAaaWorkOrderDetails(records);
+      details.serviceAppointmentCount = serviceAppointments.length;
+      details.serviceAppointmentStatuses = serviceAppointmentRecords
+        .map((record) => record.recordStatus.trim())
+        .filter(Boolean);
       this.logger.log(
         `AAA Portal: read detail for ${jobId} outcome=${classifyAaaClearedOutcome(details)} ` +
+          `appointments=${serviceAppointments.length} vehicle=${details.vehicle || 'blank'} ` +
+          `statuses=${details.serviceAppointmentStatuses.join('|') || 'blank'} ` +
+          `resolution=${details.resolutionCode || 'blank'} ` +
           `towComplete=${details.towCompleteTimestamp || 'blank'} canceled=${details.canceledTimestamp || 'blank'}`,
       );
       await this.redis.set(cacheKey, JSON.stringify(details), 'EX', JOBS_CACHE_TTL_SECONDS);
@@ -728,27 +875,66 @@ export class AaaPortalAdapter implements TowingSoftwareAdapter {
     if (details.serviceType) job.serviceType = details.serviceType;
   }
 
+  private async readAaaRecordDetails(page: Page): Promise<AaaWorkOrderDetails> {
+    const read = (...labels: string[]) => this.readFirstLightningField(page, labels);
+    return {
+      ...EMPTY_AAA_WORK_ORDER_DETAILS,
+      towCompleteTimestamp: await read('Tow Complete Timestamp', 'Tow Completed Timestamp'),
+      canceledTimestamp: await read(
+        'Canceled Timestamp',
+        'Cancelled Timestamp',
+        'Cancellation Timestamp',
+      ),
+      customerName: await read('Contact', 'Member Name', 'Customer Name'),
+      customerPhone: await read('Phone Number', 'Phone'),
+      vehicle: await read('Vehicle Profile', 'Vehicle'),
+      pickup: await read(
+        'Breakdown Address',
+        'Breakdown Location',
+        'Pickup Address',
+        'Service Location',
+      ),
+      destination: await read('Tow Address', 'Tow Destination', 'Destination Address'),
+      latitude: await read('Latitude', 'Breakdown Latitude'),
+      longitude: await read('Longitude', 'Breakdown Longitude'),
+      serviceType: await read('Work Type', 'Service Type'),
+      resolutionCode: await read('Resolution Code'),
+      recordStatus: await read('Status'),
+    };
+  }
+
+  private async readFirstLightningField(page: Page, labels: string[]): Promise<string> {
+    for (const label of labels) {
+      const value = await this.readLightningField(page, label);
+      if (value) return value;
+    }
+    return '';
+  }
+
   /** Read one label/value pair from a Salesforce Lightning record layout. */
   private async readLightningField(page: Page, labelText: string): Promise<string> {
-    const label = page.getByText(labelText, { exact: true }).first();
-    if ((await label.count()) === 0) return '';
-
-    return label.evaluate((node, expectedLabel) => {
-      let current: {
-        innerText?: string;
-        parentElement?: unknown;
-      } | null = node as unknown as { innerText?: string; parentElement?: unknown };
-      for (let depth = 0; current && depth < 8; depth += 1) {
-        const lines = String(current.innerText ?? '')
-          .split('\n')
-          .map((line: string) => line.trim())
-          .filter(Boolean);
-        if (lines[0] === expectedLabel && lines.length >= 2) {
-          return lines[1] ?? '';
+    const labels = page.getByText(labelText, { exact: true });
+    const count = await labels.count();
+    for (let index = 0; index < count; index += 1) {
+      const value = await labels.nth(index).evaluate((node, expectedLabel) => {
+        let current: {
+          innerText?: string;
+          parentElement?: unknown;
+        } | null = node as unknown as { innerText?: string; parentElement?: unknown };
+        for (let depth = 0; current && depth < 8; depth += 1) {
+          const lines = String(current.innerText ?? '')
+            .split('\n')
+            .map((line: string) => line.trim())
+            .filter(Boolean);
+          if (lines[0] === expectedLabel && lines.length >= 2) {
+            return lines[1] ?? '';
+          }
+          current = current.parentElement as typeof current;
         }
-        current = current.parentElement as typeof current;
-      }
-      return '';
-    }, labelText);
+        return '';
+      }, labelText);
+      if (value) return value;
+    }
+    return '';
   }
 }
