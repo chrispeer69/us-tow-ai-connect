@@ -61,6 +61,29 @@ describe('DestinationClassifierService', () => {
     expect(result.reason).toBe('regex_address_no_business_name');
   });
 
+  it('logs an error when Google refuses the lookup with HTTP 200 (billing off, 2026-09-30)', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({
+        status: 'REQUEST_DENIED',
+        error_message: 'You must enable Billing on the Google Cloud Project',
+        results: [],
+      }),
+    );
+    const service = new DestinationClassifierService();
+    const errorSpy = vi
+      .spyOn((service as unknown as { logger: { error: (m: string) => void } }).logger, 'error')
+      .mockImplementation(() => undefined);
+
+    const result = await service.classify({
+      source: 'TOWBOOK',
+      destinationAddress: "Boyd's Tire & Service E Schrock Rd Westerville",
+    });
+
+    expect(result.tag).toBe('unknown');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('PLACES REFUSED: REQUEST_DENIED'));
+  });
+
   it('still detects our own shop before map lookup', async () => {
     const result = await new DestinationClassifierService().classify({
       source: 'TOWBOOK',

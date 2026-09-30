@@ -143,6 +143,15 @@ export class DestinationClassifierService {
         return null;
       }
       const json = (await res.json()) as PlacesResponse;
+      // Google answers a refused request (billing off, key revoked, quota) with
+      // HTTP 200 and an empty result list. On 2026-09-30 billing lapsed and every
+      // destination silently became 'unknown' — zero offers, nothing in the logs.
+      if (isPlacesRefusal(json)) {
+        this.logger.error(
+          `[flip-engine] PLACES REFUSED: ${json.status} — ${json.error_message ?? ''} (every destination will classify unknown)`,
+        );
+        return null;
+      }
       const top = (json.results ?? [])[0];
       if (!top) return null;
 
@@ -226,6 +235,12 @@ export class DestinationClassifierService {
       }
 
       const json = (await res.json()) as PlacesResponse;
+      if (isPlacesRefusal(json)) {
+        this.logger.error(
+          `[flip-engine] PLACES REFUSED (nearby): ${json.status} — ${json.error_message ?? ''}`,
+        );
+        return null;
+      }
       const candidates = (json.results ?? [])
         .filter((place) => isRepairLikePlace(place))
         .filter((place) => {
@@ -390,6 +405,13 @@ const NEARBY_REPAIR_RADIUS_METERS = 300;
 
 interface PlacesResponse {
   results?: PlaceResult[];
+  status?: string;
+  error_message?: string;
+}
+
+/** OK and ZERO_RESULTS are real answers; anything else means Google refused. */
+export function isPlacesRefusal(json: PlacesResponse): boolean {
+  return !!json.status && json.status !== 'OK' && json.status !== 'ZERO_RESULTS';
 }
 
 interface PlaceResult {
