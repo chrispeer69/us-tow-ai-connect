@@ -25,8 +25,7 @@ const workSans = Work_Sans({
 });
 
 const SITE_URL = "https://www.ustowaiconnect.com";
-const OG_IMAGE =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/hero-tow-truck-macBb8UmfLLz7b6LWEeMd3.webp";
+const OG_IMAGE = "/hero-tow-truck-night.jpg";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

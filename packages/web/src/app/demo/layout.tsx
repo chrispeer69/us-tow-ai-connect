@@ -8,8 +8,7 @@ import type { Metadata } from "next";
 // them, so omitting `images` would leave the shared /demo link previewing
 // without a card image on LinkedIn, X and most email clients.
 const SITE_URL = "https://www.ustowaiconnect.com";
-const OG_IMAGE =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/hero-tow-truck-macBb8UmfLLz7b6LWEeMd3.webp";
+const OG_IMAGE = "/hero-tow-truck-night.jpg";
 
 const TITLE = "Interactive Demo · US Tow AI-Connect";
 const DESCRIPTION =

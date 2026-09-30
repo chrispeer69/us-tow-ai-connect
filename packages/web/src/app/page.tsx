@@ -43,7 +43,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-const HERO_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/hero-tow-truck-macBb8UmfLLz7b6LWEeMd3.webp";
+const HERO_IMAGE = "/hero-tow-truck-night.jpg";
 const NETWORK_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/abstract-network-oA2VngdyJYwNm5mFK5keYA.webp";
 const DASHBOARD_IMAGE = "https://d2xsxph8kpxj0f.cloudfront.net/310519663488671835/dJzLf9wtAEeniEd3UAXpws/dashboard-mockup-ELDckAk4NofknNGiKepd2n.webp";
 
@@ -56,7 +56,7 @@ const LOCAL_BUSINESS_SCHEMA = {
   url: "https://www.ustowaiconnect.com",
   description:
     "AI dispatcher for towing companies. AI-Connect answers every inbound call 24/7 and makes outbound sales calls that confirm jobs, refer repair shops, and grow revenue.",
-  image: HERO_IMAGE,
+  image: `https://www.ustowaiconnect.com${HERO_IMAGE}`,
   logo: "https://www.ustowaiconnect.com/favicon.svg",
   telephone: "+1-614-633-7935",
   email: "chris@bluecollarai.online",
