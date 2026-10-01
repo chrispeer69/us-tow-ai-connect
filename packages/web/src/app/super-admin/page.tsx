@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/utils';
 import { ArrowRight, Activity, Users, PhoneCall, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -170,6 +171,18 @@ export default function SuperAdminPage() {
         </Button>
       </div>
 
+      <Tabs defaultValue="overview" className="space-y-6">
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="h-11 min-w-max border border-zinc-800 bg-zinc-900 p-1">
+            <TabsTrigger value="overview" className="px-4">Overview</TabsTrigger>
+            <TabsTrigger value="daily-costs" className="px-4">Daily Costs</TabsTrigger>
+            <TabsTrigger value="call-usage" className="px-4">Call Usage</TabsTrigger>
+            <TabsTrigger value="clients" className="px-4">Clients</TabsTrigger>
+            <TabsTrigger value="support" className="px-4">Support</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="overview" className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="bg-zinc-900 border-zinc-800">
           <CardContent className="p-6">
@@ -231,7 +244,9 @@ export default function SuperAdminPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="daily-costs">
       <Card className="bg-zinc-900 border-zinc-800">
         <div className="border-b border-zinc-800 p-6">
           <h2 className="text-lg font-semibold text-white">Emily Daily Comparison</h2>
@@ -297,7 +312,9 @@ export default function SuperAdminPage() {
           </Table>
         </div>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="call-usage">
       <Card className="bg-zinc-900 border-zinc-800">
         <div className="flex flex-col gap-3 border-b border-zinc-800 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -420,7 +437,9 @@ export default function SuperAdminPage() {
           </Table>
         </div>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="clients">
       <Card className="bg-zinc-900 border-zinc-800">
         <div className="flex items-center justify-between p-6 border-b border-zinc-800">
           <h2 className="text-lg font-semibold text-white">Client Directory</h2>
@@ -593,7 +612,9 @@ export default function SuperAdminPage() {
         </Table>
         </div>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="support">
       <Card className="bg-zinc-900 border-zinc-800">
         <div className="flex items-center justify-between p-6 border-b border-zinc-800">
           <h2 className="text-lg font-semibold text-white">Support Tickets</h2>
@@ -655,8 +676,8 @@ export default function SuperAdminPage() {
           </TableBody>
         </Table>
       </Card>
-
-      
+        </TabsContent>
+      </Tabs>
     </div>
   );
 
