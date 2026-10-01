@@ -55,7 +55,6 @@ export interface AaaBrandedCheckResult {
  * Standalone "AAA" as a whole word, case-insensitive. Word-boundary anchored so
  * "AA Tires" and "A&A Auto" do not match.
  */
-const AAA_STANDALONE_WORD = /\bAAA\b/i;
 
 export function isAaaBrandedShop(input: AaaBrandedCheckInput): AaaBrandedCheckResult {
   const name = (input.destinationName ?? '').trim();
@@ -63,21 +62,9 @@ export function isAaaBrandedShop(input: AaaBrandedCheckInput): AaaBrandedCheckRe
   const phoneDigits = digitsOnly(input.destinationPhone ?? '');
   const blocklist = (input.blocklist ?? []).filter((b) => b.active);
 
-  // Rule 1a: the hard-coded standalone "AAA" word. Session 75 — this is what
-  // the header has always described as surviving an empty or unreachable
-  // database, but it did not exist: rule 1 only ever iterated blocklist rows.
-  // Production carries four rows, all NAME_PATTERN and none STANDALONE_WORD, so
-  // this branch had never fired on a live call. The only protection in place was
-  // a substring match on four exact brand strings — "AAA Approved Auto Repair"
-  // or "AAA Columbus Automotive" would have been cleared to receive a flip
-  // offer. Per CLAW.md that is a fireable-offense rule, so it is hard-coded
-  // here and cannot be switched off by data.
-  //
-  // Deliberately over-blocks. A false positive costs exactly one flip; a false
-  // negative is a motor-club contract breach.
-  if (name && AAA_STANDALONE_WORD.test(name)) {
-    return { matched: true, rule: 'standalone_aaa_word', matchedValue: 'AAA' };
-  }
+  // Rule 1a (the hard-coded standalone "AAA" word) was removed 2026-10-01:
+  // Roadside ended its AAA contract, so AAA-branded shops are ordinary flip
+  // destinations now. Only operator-managed blocklist rows below still block.
 
   // Rule 1b: operator-managed STANDALONE_WORD entries (case-insensitive word
   // boundary), for brands other than AAA itself.

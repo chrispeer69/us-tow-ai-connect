@@ -1189,11 +1189,6 @@ function globalRules(ctx: ScriptContext): string {
     `- Never mention Google reviews, review incentives, or gift cards during the call.`,
     `- If the customer is hostile, in danger, or asks you to stop: end the call politely and immediately.`,
   ];
-  if (ctx.motorClub.toUpperCase() === 'AAA') {
-    lines.push(
-      `- AAA HARD RULE: never flip a AAA call whose destination is a AAA-branded facility — confirm details and go straight to the CONVINI close.`,
-    );
-  }
   if (ctx.customAgentRules) {
     lines.push(``, `=== TENANT CUSTOM RULES ===`, ctx.customAgentRules);
   }

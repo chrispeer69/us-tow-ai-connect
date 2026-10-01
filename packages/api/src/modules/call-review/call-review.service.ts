@@ -436,8 +436,7 @@ export class CallReviewService {
       '',
       'CONSTRAINTS YOU MUST RESPECT. Never propose wording that makes a promise about price,',
       'timing, or insurance coverage. Never propose removing the opt-out language. Calls placed',
-      'on behalf of a motor club are subject to that club\'s rules — AAA jobs must never receive',
-      'a flip offer at all.',
+      'on behalf of a motor club are subject to that club\'s rules.',
     ].join('\n');
   }
 

@@ -2,16 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { isAaaBrandedShop, type BlocklistEntry } from './aaa-branded.matcher';
 
 describe('isAaaBrandedShop — hard guardrail', () => {
-  it('blocks "AAA Car Care Plus - Columbus" via standalone AAA word', () => {
-    const r = isAaaBrandedShop({ destinationName: 'AAA Car Care Plus - Columbus' });
-    expect(r.matched).toBe(true);
-    expect(r.rule).toBe('standalone_aaa_word');
+  it('no longer blocks AAA-branded shops on their name alone (AAA contract ended 2026-10-01)', () => {
+    expect(isAaaBrandedShop({ destinationName: 'AAA Car Care Plus - Columbus' }).matched).toBe(false);
   });
 
-  it('blocks "AAA Auto Repair" lowercase via standalone AAA word', () => {
-    const r = isAaaBrandedShop({ destinationName: 'aaa auto repair' });
-    expect(r.matched).toBe(true);
-    expect(r.rule).toBe('standalone_aaa_word');
+  it('no longer blocks "aaa auto repair" with an empty blocklist', () => {
+    expect(isAaaBrandedShop({ destinationName: 'aaa auto repair' }).matched).toBe(false);
   });
 
   it('does NOT block "Maaco Collision" (substring AAA inside another word)', () => {
@@ -104,9 +100,9 @@ describe('isAaaBrandedShop — hard guardrail', () => {
     expect(r.rule).toBeNull();
   });
 
-  it('regex check is case-insensitive and survives empty blocklist', () => {
-    expect(isAaaBrandedShop({ destinationName: 'AAA Tire & Auto' }).matched).toBe(true);
-    expect(isAaaBrandedShop({ destinationName: 'Aaa Service Center' }).matched).toBe(true);
+  it('with an empty blocklist nothing AAA-named is blocked', () => {
+    expect(isAaaBrandedShop({ destinationName: 'AAA Tire & Auto' }).matched).toBe(false);
+    expect(isAaaBrandedShop({ destinationName: 'Aaa Service Center' }).matched).toBe(false);
   });
 
   it('regex is anchored to a word boundary so single A or AA do not match', () => {
