@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { encodeAgentVersion, resolveRetellTenantConfig } from './retell-tenant-config';
+import { encodeAgentVersion, pickAbVersion, resolveRetellTenantConfig } from './retell-tenant-config';
 
 describe('resolveRetellTenantConfig', () => {
   const originalEnv = { ...process.env };
@@ -96,5 +96,34 @@ describe('encodeAgentVersion', () => {
   it('sends numeric versions as numbers and tags as strings', () => {
     expect(encodeAgentVersion('31')).toBe(31);
     expect(encodeAgentVersion('latest_published')).toBe('latest_published');
+  });
+});
+
+describe('pickAbVersion', () => {
+  const ids = Array.from({ length: 2000 }, (_, i) => `call-${i}-${(i * 7919) % 1000}`);
+
+  it('is off unless a B version and a 1-99 share are both set', () => {
+    expect(pickAbVersion({}, '57', 'x')).toEqual({ version: '57', arm: 'A' });
+    expect(pickAbVersion({ retell_agent_version_b: 60 }, '57', 'x')).toEqual({ version: '57', arm: 'A' });
+    expect(pickAbVersion({ retell_agent_version_b: 60, retell_ab_percent_b: 0 }, '57', 'x').arm).toBe('A');
+    expect(pickAbVersion({ retell_agent_version_b: 60, retell_ab_percent_b: 100 }, '57', 'x').arm).toBe('A');
+    expect(pickAbVersion({ retell_agent_version_b: 60, retell_ab_percent_b: 'abc' }, '57', 'x').arm).toBe('A');
+  });
+
+  it('never sends a B version when there is no A version to pair it with', () => {
+    expect(pickAbVersion({ retell_agent_version_b: 60, retell_ab_percent_b: 50 }, null, 'x')).toEqual({ version: null, arm: 'A' });
+  });
+
+  it('is deterministic per call id, so a retry lands on the same arm', () => {
+    const cfg = { retell_agent_version_b: '60', retell_ab_percent_b: 30 };
+    for (const id of ids.slice(0, 50)) expect(pickAbVersion(cfg, '57', id)).toEqual(pickAbVersion(cfg, '57', id));
+  });
+
+  it('sends roughly the configured share to B', () => {
+    const cfg = { retell_agent_version_b: 60, retell_ab_percent_b: 30 };
+    const b = ids.filter((id) => pickAbVersion(cfg, '57', id).arm === 'B');
+    expect(b.length / ids.length).toBeGreaterThan(0.25);
+    expect(b.length / ids.length).toBeLessThan(0.35);
+    expect(pickAbVersion(cfg, '57', b[0]).version).toBe('60');
   });
 });

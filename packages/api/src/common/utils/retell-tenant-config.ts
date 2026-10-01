@@ -108,6 +108,40 @@ export function resolveRetellTenantConfig(
 }
 
 /**
+ * Live A/B between two published versions of the SAME agent.
+ *
+ *   outbound_voice_config: {
+ *     retell_agent_version_b?: string|number, // challenger version
+ *     retell_ab_percent_b?: number            // 0-100 share of calls sent to B
+ *   }
+ *
+ * Exists for cost work: a cheaper model is only safe once it matches the
+ * current one on win rate, and that can only be measured on real calls. The
+ * split is by a hash of the call id, so a retry of the same call always lands
+ * on the same version. Retell records the version on every call, so the two
+ * arms are compared straight from Retell — nothing extra is stored here.
+ *
+ * Returns the A version unchanged when no B is configured, the share is not
+ * 1-99, or the tenant runs its own agent without an A version (B must be a
+ * version of the same agent A is pinned on).
+ */
+export function pickAbVersion(
+  config: Record<string, unknown> | null | undefined,
+  versionA: string | null,
+  callId: string,
+): { version: string | null; arm: 'A' | 'B' } {
+  const versionB = readConfigValue(config, 'retell_agent_version_b');
+  const pctRaw = config?.['retell_ab_percent_b'];
+  const pct = typeof pctRaw === 'number' ? pctRaw : Number(pctRaw);
+  if (!versionB || !versionA || !Number.isFinite(pct) || pct <= 0 || pct >= 100) {
+    return { version: versionA, arm: 'A' };
+  }
+  let h = 0;
+  for (let i = 0; i < callId.length; i++) h = (h * 31 + callId.charCodeAt(i)) >>> 0;
+  return h % 100 < pct ? { version: versionB, arm: 'B' } : { version: versionA, arm: 'A' };
+}
+
+/**
  * Retell accepts either a version number or an environment tag
  * ("prod", "latest_published"). Numbers must go over the wire as numbers.
  */

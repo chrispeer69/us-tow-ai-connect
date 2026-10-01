@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nest
 import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
-import { resolveRetellTenantConfig } from '../../common/utils/retell-tenant-config';
+import { pickAbVersion, resolveRetellTenantConfig } from '../../common/utils/retell-tenant-config';
 import {
   alphaShops,
   outboundCallLogs,
@@ -445,6 +445,18 @@ export class OutboundVoiceService {
       return updated[0];
     }
 
+    // Optional live A/B between two published versions — see pickAbVersion.
+    const ab = retell
+      ? pickAbVersion(
+          tenant.outboundVoiceConfig as Record<string, unknown> | null,
+          retell.agentVersion,
+          call.id,
+        )
+      : null;
+    if (ab?.arm === 'B') {
+      this.logger.log(`[outbound-voice] call ${call.id} on A/B arm B (agent version ${ab.version})`);
+    }
+
     const result = await this.provider.placeCall({
       toPhone: call.toPhone,
       toName: call.toName,
@@ -454,7 +466,7 @@ export class OutboundVoiceService {
       callId: call.id,
       tenantId: call.tenantId,
       agentId,
-      agentVersion: retell?.agentVersion ?? undefined,
+      agentVersion: ab?.version ?? retell?.agentVersion ?? undefined,
       fromNumber: retell?.fromNumber ?? undefined,
       callbackUrl,
       testModeEnabled: tenantTestModeEnabled,
