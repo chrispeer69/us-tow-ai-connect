@@ -16,7 +16,17 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/utils';
-import { ArrowRight, Activity, Users, PhoneCall, UserCheck } from 'lucide-react';
+import {
+  Activity,
+  BarChart3,
+  Building2,
+  Headphones,
+  LayoutDashboard,
+  LifeBuoy,
+  PhoneCall,
+  UserCheck,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
@@ -160,28 +170,68 @@ export default function SuperAdminPage() {
         </div>
       )}
 
-      <div className="flex justify-end">
-        <Button 
-          variant="outline" 
-          onClick={() => { window.location.href = '/admin/command-center'; }}
-          className="bg-zinc-950 border-zinc-800 text-zinc-300 hover:bg-zinc-900 hover:text-white"
-        >
-          <ArrowRight className="w-4 h-4 mr-2 rotate-180" />
-          Exit Super Admin
-        </Button>
-      </div>
+      <Tabs
+        defaultValue="overview"
+        orientation="vertical"
+        className="grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)]"
+      >
+        <aside className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 lg:sticky lg:top-6">
+          <div className="border-b border-zinc-800 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">
+                AI
+              </div>
+              <div className="min-w-0">
+                <div className="truncate font-semibold text-white">US Tow AI-Connect</div>
+                <div className="text-xs text-zinc-500">Platform workspace</div>
+              </div>
+            </div>
+          </div>
+          <nav className="p-3" aria-label="Platform monitor sections">
+            <TabsList className="flex h-auto w-full flex-col items-stretch justify-start gap-1 bg-transparent p-0">
+              <span className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                Monitor
+              </span>
+              <TabsTrigger value="overview" className="w-full flex-none justify-start gap-3 px-3 py-2.5">
+                <LayoutDashboard className="size-4" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="daily-costs" className="w-full flex-none justify-start gap-3 px-3 py-2.5">
+                <BarChart3 className="size-4" />
+                Daily Costs
+              </TabsTrigger>
+              <TabsTrigger value="call-usage" className="w-full flex-none justify-start gap-3 px-3 py-2.5">
+                <Headphones className="size-4" />
+                Call Usage
+              </TabsTrigger>
+              <span className="px-3 pb-1 pt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                Manage
+              </span>
+              <TabsTrigger value="clients" className="w-full flex-none justify-start gap-3 px-3 py-2.5">
+                <Building2 className="size-4" />
+                Clients
+              </TabsTrigger>
+              <span className="px-3 pb-1 pt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                Help
+              </span>
+              <TabsTrigger value="support" className="w-full flex-none justify-start gap-3 px-3 py-2.5">
+                <LifeBuoy className="size-4" />
+                Support
+              </TabsTrigger>
+            </TabsList>
+          </nav>
+          <div className="border-t border-zinc-800 p-3">
+            <a
+              href="/admin/command-center"
+              className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+            >
+              <Activity className="size-4" />
+              Command Center
+            </a>
+          </div>
+        </aside>
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="h-11 min-w-max border border-zinc-800 bg-zinc-900 p-1">
-            <TabsTrigger value="overview" className="px-4">Overview</TabsTrigger>
-            <TabsTrigger value="daily-costs" className="px-4">Daily Costs</TabsTrigger>
-            <TabsTrigger value="call-usage" className="px-4">Call Usage</TabsTrigger>
-            <TabsTrigger value="clients" className="px-4">Clients</TabsTrigger>
-            <TabsTrigger value="support" className="px-4">Support</TabsTrigger>
-          </TabsList>
-        </div>
-
+        <div className="min-w-0">
         <TabsContent value="overview" className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="bg-zinc-900 border-zinc-800">
@@ -677,6 +727,7 @@ export default function SuperAdminPage() {
         </Table>
       </Card>
         </TabsContent>
+        </div>
       </Tabs>
     </div>
   );

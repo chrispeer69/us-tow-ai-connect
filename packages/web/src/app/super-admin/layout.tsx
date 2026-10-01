@@ -30,7 +30,7 @@ export default function SuperAdminLayout({
           </div>
         </header>
         <main className="flex-1 p-6 sm:p-8">
-          <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-[1800px]">
             {children}
           </div>
         </main>
