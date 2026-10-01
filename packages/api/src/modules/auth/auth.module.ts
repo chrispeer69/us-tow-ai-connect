@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { LocalStrategy } from './local.strategy';
 import { GoogleStrategy } from './google.strategy';
 import { RoadsideOidcService } from './roadside-oidc.service';
+import { GhlAccountSyncModule } from '../ghl-account-sync/ghl-account-sync.module';
 
 function resolveJwtSecret(): string {
   const secret = process.env.ENCRYPTION_KEY;
@@ -27,6 +28,7 @@ function resolveJwtSecret(): string {
 @Module({
   imports: [
     PassportModule,
+    GhlAccountSyncModule,
     JwtModule.register({
       secret: resolveJwtSecret(),
       signOptions: { expiresIn: '7d' },

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, Inject, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Inject, Logger, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
@@ -6,6 +6,7 @@ import { and, eq, inArray, or, desc, sql } from 'drizzle-orm';
 import { users, tenantMembers, tenants, passwordResetOtps, UserRow } from '../../db/schema';
 import { DB_CLIENT, DbClient } from '../../db/db.module';
 import { AuthEmailService } from './auth-email.service';
+import { GhlAccountSyncService } from '../ghl-account-sync/ghl-account-sync.service';
 
 export interface JwtPayload {
   userId: string;
@@ -31,6 +32,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @Inject(DB_CLIENT) private readonly db: DbClient,
     private readonly emailService: AuthEmailService,
+    @Optional() private readonly ghlAccountSync?: GhlAccountSyncService,
   ) {}
 
   async validateUser(email: string, pass: string): Promise<UserRow | null> {
@@ -232,6 +234,14 @@ export class AuthService {
     });
 
     if (!newUser) throw new Error('User creation failed');
+    await this.ghlAccountSync?.syncAccount({
+      email,
+      firstName,
+      lastName,
+      name: `${firstName} ${lastName}`.trim(),
+      companyName,
+      source: 'US Tow AI-Connect / Email Signup',
+    });
     return this.login(newUser);
   }
 
@@ -241,6 +251,7 @@ export class AuthService {
 
     let [user] = await this.db.select().from(users).where(or(eq(users.googleId, profile.id), eq(users.email, email))).limit(1);
 
+    const isNewUser = !user;
     if (!user) {
       // Create user from Google Profile
       const [u] = await this.db.insert(users).values({
@@ -264,6 +275,16 @@ export class AuthService {
       await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, email));
     }
 
+    if (isNewUser) {
+      await this.ghlAccountSync?.syncAccount({
+        email,
+        firstName: profile.name?.givenName,
+        lastName: profile.name?.familyName,
+        name: user.name,
+        source: 'US Tow AI-Connect / Google Signup',
+      });
+    }
+
     return user;
   }
 
@@ -277,6 +298,7 @@ export class AuthService {
     if (!email) throw new BadRequestException('Roadside account lacks email');
 
     let [user] = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
+    const isNewUser = !user;
     if (!user) {
       const [u] = await this.db.insert(users).values({ email, name: name || null }).returning();
       user = u;
@@ -285,6 +307,13 @@ export class AuthService {
     }
     await this.db.update(tenantMembers).set({ userId: user.id }).where(eq(tenantMembers.email, email));
     await this.db.update(tenants).set({ ownerId: user.id }).where(eq(tenants.ownerEmail, email));
+    if (isNewUser) {
+      await this.ghlAccountSync?.syncAccount({
+        email,
+        name,
+        source: 'US Tow AI-Connect / Roadside SSO Signup',
+      });
+    }
     return user;
   }
 

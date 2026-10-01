@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { and, eq, gt } from 'drizzle-orm';
@@ -29,6 +30,7 @@ import { AdapterFactory } from '../adapters/adapter.factory';
 import { NotificationService } from '../notifications/notification.service';
 import { CaptchaService } from './captcha.service';
 import { recordAudit } from './audit-log.helper';
+import { GhlAccountSyncService } from '../ghl-account-sync/ghl-account-sync.service';
 import type {
   OnboardingCompleteBody,
   OnboardingFormData,
@@ -54,6 +56,7 @@ export class TenantOnboardingService {
     private readonly notifications: NotificationService,
     private readonly captcha: CaptchaService,
     private readonly jwtService: JwtService,
+    @Optional() private readonly ghlAccountSync?: GhlAccountSyncService,
   ) {}
 
   async startDraft(body: OnboardingStartBody, clientIp: string) {
@@ -403,6 +406,14 @@ export class TenantOnboardingService {
       companyName: form.step1.companyName,
       tenantId,
       apiKeyPlaintext,
+    });
+
+    await this.ghlAccountSync?.syncAccount({
+      email: form.step2.adminEmail,
+      phone: form.step2.adminPhone,
+      name: form.step1.companyName,
+      companyName: form.step1.companyName,
+      source: 'US Tow AI-Connect / Company Onboarding',
     });
 
     // Fetch the user to get their ID for the JWT
