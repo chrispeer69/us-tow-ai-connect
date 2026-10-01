@@ -126,6 +126,15 @@ export class RetellWebhookController {
       transcript: body.call.transcript ?? null,
       recordingUrl: body.call.recording_url ?? null,
       analysisData,
+      tenantIdHint: readMetadataString(body.call.metadata, 'tenant_id'),
+      outboundCallIdHint: readMetadataString(body.call.metadata, 'ustow_call_id'),
+      agentId: body.call.agent_id ?? null,
+      agentVersion: body.call.agent_version != null ? String(body.call.agent_version) : null,
+      callCost: body.call.call_cost ?? null,
+      llmTokenUsage: body.call.llm_token_usage ?? null,
+      providerStartedAtIso: body.call.start_timestamp
+        ? new Date(body.call.start_timestamp).toISOString()
+        : null,
       error: body.call.disconnection_reason ?? null,
       timestampIso: body.call.end_timestamp
         ? new Date(body.call.end_timestamp).toISOString()
@@ -145,6 +154,8 @@ interface RetellWebhookBody {
   event: 'call_started' | 'call_ended' | 'call_analyzed';
   call: {
     call_id: string;
+    agent_id?: string;
+    agent_version?: number | string;
     call_status?: 'ongoing' | 'ended' | 'error' | 'registered';
     disconnection_reason?: string;
     duration_ms?: number;
@@ -169,5 +180,29 @@ interface RetellWebhookBody {
       [key: string]: unknown;
     };
     metadata?: Record<string, unknown>;
+    call_cost?: {
+      product_costs?: Array<{
+        product: string;
+        unit_price?: number;
+        cost: number;
+        is_transfer_leg_cost?: boolean;
+      }>;
+      total_duration_seconds?: number;
+      total_duration_unit_price?: number;
+      combined_cost?: number;
+    };
+    llm_token_usage?: {
+      values?: number[];
+      average?: number;
+      num_requests?: number;
+    };
   };
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }

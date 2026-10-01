@@ -31,6 +31,30 @@ export class SuperAdminController {
     return this.service.listTenants();
   }
 
+  @Get('retell-call-usage')
+  listRetellCallUsage(
+    @Query('tenantId') tenantId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.service.listRetellCallUsage({
+      tenantId: tenantId?.trim() || undefined,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
+  }
+
+  @Get('retell-daily-usage')
+  listRetellDailyUsage(
+    @Query('tenantId') tenantId?: string,
+    @Query('days') days?: string,
+  ) {
+    return this.service.listRetellDailyUsage({
+      tenantId: tenantId?.trim() || undefined,
+      days: days ? Number(days) : undefined,
+    });
+  }
+
   @Get('demo-call-settings')
   getDemoCallSettings() {
     return this.service.getDemoCallSettings();

@@ -12,6 +12,15 @@ const FIXTURE: DigestMetrics = {
     avgDurationSec: 116,
     byType: { inbound: 17, outbound: 25 },
   },
+  emilyOutbound: {
+    calls: 25,
+    totalMinutes: 34.5,
+    measuredCostCalls: 24,
+    combinedCostCents: 725,
+    averageCostCents: 30.21,
+    averageLlmTokens: 2100,
+    llmRequests: 96,
+  },
   jobsCreated: {
     total: 24,
     bySource: { towbook: 14, aaa_salesforce: 9, ai_dispatch: 1 },
@@ -54,6 +63,9 @@ describe('renderDigestHtml', () => {
     expect(html).toContain('Calls handled by AI');
     expect(html).toContain('Inbound AI calls');
     expect(html).toContain('Outbound AI calls');
+    expect(html).toContain('Emily outbound voice usage');
+    expect(html).toContain('$7.25');
+    expect(html).toContain('24 of 25 calls');
     expect(html).toContain('42'); // calls
     expect(html).toContain('Total: <strong style="color:#111827;">24</strong>'); // jobs total
     expect(html).toContain('towbook');

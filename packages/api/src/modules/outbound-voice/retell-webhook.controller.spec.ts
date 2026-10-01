@@ -55,6 +55,38 @@ describe('RetellWebhookController', () => {
     );
   });
 
+  it('passes Retell cost, token usage, and agent metadata to usage tracking', async () => {
+    const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
+    const body = {
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call_cost_123',
+        call_status: 'ended',
+        agent_id: 'agent_emily',
+        agent_version: 59,
+        metadata: { tenant_id: 'tenant-1', ustow_call_id: 'outbound-1' },
+        call_cost: { combined_cost: 42, product_costs: [] },
+        llm_token_usage: { values: [1800, 2200], average: 2000, num_requests: 2 },
+      },
+    } as const;
+    const rawBody = Buffer.from(JSON.stringify(body));
+
+    await controller.handleEvent(requestWithRawBody(rawBody), hmacHex(WEBHOOK_SECRET, rawBody), body);
+
+    expect(outboundVoice.handleProviderWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'retell',
+        callId: 'call_cost_123',
+        tenantIdHint: 'tenant-1',
+        outboundCallIdHint: 'outbound-1',
+        agentId: 'agent_emily',
+        agentVersion: '59',
+        callCost: expect.objectContaining({ combined_cost: 42 }),
+        llmTokenUsage: expect.objectContaining({ average: 2000, num_requests: 2 }),
+      }),
+    );
+  });
+
   it('accepts a base64 signature with a sha256 prefix', async () => {
     const controller = new RetellWebhookController(outboundVoice as OutboundVoiceService);
     const rawBody = Buffer.from(JSON.stringify(sampleBody));

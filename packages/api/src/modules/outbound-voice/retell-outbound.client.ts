@@ -35,6 +35,8 @@ import type {
  */
 export interface RetellCallSnapshot {
   call_id: string;
+  agent_id?: string;
+  agent_version?: number | string;
   call_status?: 'ongoing' | 'ended' | 'error' | 'registered';
   disconnection_reason?: string;
   duration_ms?: number;
@@ -44,6 +46,26 @@ export interface RetellCallSnapshot {
   end_timestamp?: number;
   call_analysis?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  call_cost?: RetellCallCost;
+  llm_token_usage?: RetellLlmTokenUsage;
+}
+
+export interface RetellCallCost {
+  product_costs?: Array<{
+    product: string;
+    unit_price?: number;
+    cost: number;
+    is_transfer_leg_cost?: boolean;
+  }>;
+  total_duration_seconds?: number;
+  total_duration_unit_price?: number;
+  combined_cost?: number;
+}
+
+export interface RetellLlmTokenUsage {
+  values?: number[];
+  average?: number;
+  num_requests?: number;
 }
 
 @Injectable()

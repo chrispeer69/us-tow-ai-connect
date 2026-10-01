@@ -421,6 +421,13 @@
       "when": 1790010000000,
       "tag": "0061_multiple_tenant_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "6",
+      "when": 1790839000000,
+      "tag": "0062_retell_call_usage",
+      "breakpoints": true
     }
   ]
 }

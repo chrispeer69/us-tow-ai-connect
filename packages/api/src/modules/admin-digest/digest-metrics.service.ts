@@ -9,6 +9,7 @@ import {
   driverPings,
   driverJobEvents,
   outboundCalls,
+  retellCallUsage,
   smsMessages,
   unifiedJobs,
 } from '../../db/schema';
@@ -24,6 +25,15 @@ export interface DigestMetrics {
     totalMinutes: number;
     avgDurationSec: number;
     byType: { inbound: number; outbound: number };
+  };
+  emilyOutbound: {
+    calls: number;
+    totalMinutes: number;
+    measuredCostCalls: number;
+    combinedCostCents: number;
+    averageCostCents: number;
+    averageLlmTokens: number;
+    llmRequests: number;
   };
   jobsCreated: { total: number; bySource: Record<string, number> };
   jobsCompleted: number;
@@ -62,6 +72,7 @@ export class DigestMetricsService {
 
     const [
       callsHandled,
+      emilyOutbound,
       jobsCreated,
       jobsCompleted,
       topDeclineReasons,
@@ -70,6 +81,7 @@ export class DigestMetricsService {
       failures,
     ] = await Promise.all([
       this.collectCalls(tenantId, windowStart, windowEnd),
+      this.collectEmilyOutbound(tenantId, windowStart, windowEnd),
       this.collectJobsCreated(tenantId, windowStart, windowEnd),
       this.collectJobsCompleted(tenantId, windowStart, windowEnd),
       this.collectDeclineReasons(tenantId, windowStart, windowEnd),
@@ -86,6 +98,7 @@ export class DigestMetricsService {
       windowStart,
       windowEnd,
       callsHandled,
+      emilyOutbound,
       jobsCreated,
       jobsCompleted,
       conversionRate,
@@ -94,6 +107,70 @@ export class DigestMetricsService {
       topCallers,
       failures,
     };
+  }
+
+  private async collectEmilyOutbound(tenantId: string, from: Date, to: Date) {
+    try {
+      const rows = await this.db
+        .select({
+          calls: sql<number>`count(*)::int`,
+          totalSeconds: sql<number>`coalesce(sum(${retellCallUsage.durationSeconds}), 0)::int`,
+          measuredCostCalls: sql<number>`count(${retellCallUsage.combinedCostCents})::int`,
+          combinedCostCents: sql<number>`coalesce(sum(${retellCallUsage.combinedCostCents}), 0)::double precision`,
+          averageLlmTokens: sql<number>`coalesce(
+            case
+              when sum(coalesce(${retellCallUsage.llmRequestCount}, 0)) > 0
+                then sum(coalesce(${retellCallUsage.llmAverageTokens}, 0)::numeric * ${retellCallUsage.llmRequestCount})
+                  / sum(${retellCallUsage.llmRequestCount})
+              else avg(${retellCallUsage.llmAverageTokens})
+            end,
+            0
+          )::double precision`,
+          llmRequests: sql<number>`coalesce(sum(${retellCallUsage.llmRequestCount}), 0)::int`,
+        })
+        .from(retellCallUsage)
+        .where(
+          and(
+            eq(retellCallUsage.tenantId, tenantId),
+            gte(retellCallUsage.createdAt, from),
+            lt(retellCallUsage.createdAt, to),
+          ),
+        );
+      const row = rows[0] ?? {
+        calls: 0,
+        totalSeconds: 0,
+        measuredCostCalls: 0,
+        combinedCostCents: 0,
+        averageLlmTokens: 0,
+        llmRequests: 0,
+      };
+      const combinedCostCents = Number(row.combinedCostCents ?? 0);
+      const measuredCostCalls = Number(row.measuredCostCalls ?? 0);
+      return {
+        calls: Number(row.calls ?? 0),
+        totalMinutes: Math.round((Number(row.totalSeconds ?? 0) / 60) * 10) / 10,
+        measuredCostCalls,
+        combinedCostCents: Math.round(combinedCostCents * 100) / 100,
+        averageCostCents:
+          measuredCostCalls > 0
+            ? Math.round((combinedCostCents / measuredCostCalls) * 100) / 100
+            : 0,
+        averageLlmTokens: Math.round(Number(row.averageLlmTokens ?? 0)),
+        llmRequests: Number(row.llmRequests ?? 0),
+      };
+    } catch (err) {
+      // Safe during rollout before migration 0062 reaches a given environment.
+      this.logger.warn(`collectEmilyOutbound failed: ${(err as Error).message}`);
+      return {
+        calls: 0,
+        totalMinutes: 0,
+        measuredCostCalls: 0,
+        combinedCostCents: 0,
+        averageCostCents: 0,
+        averageLlmTokens: 0,
+        llmRequests: 0,
+      };
+    }
   }
 
   private async collectCalls(tenantId: string, from: Date, to: Date) {

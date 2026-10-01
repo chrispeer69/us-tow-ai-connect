@@ -44,7 +44,11 @@ import {
 } from '../flip-engine/outbound-source-policy';
 import { selectNearestShop, selectNearestShops } from '../flip-engine/nearest-shop.selector';
 import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
-import { RetellOutboundClient } from './retell-outbound.client';
+import {
+  RetellOutboundClient,
+  type RetellCallCost,
+  type RetellLlmTokenUsage,
+} from './retell-outbound.client';
 import {
   OUTBOUND_VOICE_PROVIDER,
 } from './outbound-voice-provider.factory';
@@ -625,6 +629,15 @@ export class OutboundVoiceService {
         transcript: snapshot.transcript ?? null,
         recordingUrl: snapshot.recording_url ?? null,
         analysisData: extractRetellAnalysis(snapshot.call_analysis),
+        tenantIdHint: readString(snapshot.metadata?.tenant_id),
+        outboundCallIdHint: readString(snapshot.metadata?.ustow_call_id),
+        agentId: snapshot.agent_id ?? null,
+        agentVersion: snapshot.agent_version != null ? String(snapshot.agent_version) : null,
+        callCost: snapshot.call_cost ?? null,
+        llmTokenUsage: snapshot.llm_token_usage ?? null,
+        providerStartedAtIso: snapshot.start_timestamp
+          ? new Date(snapshot.start_timestamp).toISOString()
+          : null,
         error: snapshot.disconnection_reason ?? null,
         timestampIso: snapshot.end_timestamp
           ? new Date(snapshot.end_timestamp).toISOString()
@@ -783,16 +796,45 @@ export class OutboundVoiceService {
       nearest_our_shop?: string | null;
       destination_type?: string | null;
     };
+    tenantIdHint?: string | null;
+    outboundCallIdHint?: string | null;
+    agentId?: string | null;
+    agentVersion?: string | null;
+    callCost?: RetellCallCost | null;
+    llmTokenUsage?: RetellLlmTokenUsage | null;
+    providerStartedAtIso?: string | null;
     outcome?: Record<string, unknown> | null;
     error?: string | null;
     timestampIso?: string | null;
   }): Promise<{ matched: boolean; previousStatus: string | null; newStatus: string | null }> {
     const lookupColumn = event.provider === 'retell' ? sql`retell_call_id` : sql`thinkrr_call_id`;
-    const rows = await this.db
+    let rows = await this.db
       .select()
       .from(outboundCalls)
       .where(sql`${lookupColumn} = ${event.callId}`)
       .limit(1);
+    // A retry reuses outbound_calls and replaces retell_call_id. Retell may
+    // deliver call_analyzed for the prior attempt afterward, so fall back to
+    // the signed metadata we placed on the call when it was created.
+    let matchedByMetadata = false;
+    if (
+      rows.length === 0 &&
+      event.provider === 'retell' &&
+      event.outboundCallIdHint &&
+      event.tenantIdHint
+    ) {
+      rows = await this.db
+        .select()
+        .from(outboundCalls)
+        .where(
+          and(
+            eq(outboundCalls.id, event.outboundCallIdHint),
+            eq(outboundCalls.tenantId, event.tenantIdHint),
+          ),
+        )
+        .limit(1);
+      matchedByMetadata = rows.length > 0;
+    }
     const existing = rows[0];
     if (!existing) {
       this.logger.warn(
@@ -804,6 +846,24 @@ export class OutboundVoiceService {
     const newStatus = mapProviderStatus(event.status);
     if (!newStatus) {
       return { matched: true, previousStatus: existing.status, newStatus: null };
+    }
+    if (event.provider === 'retell') {
+      await this.recordRetellUsage(existing, event, newStatus).catch((err) => {
+        // Usage telemetry must never interrupt a live workflow or retry path.
+        this.logger.warn(
+          `[outbound-voice] Retell usage persistence failed call=${existing.id}: ${(err as Error).message}`,
+        );
+      });
+    }
+    if (matchedByMetadata) {
+      // This is a delayed event for an older physical attempt. A newer retry
+      // may already be dialing on the same logical row, so store its usage but
+      // never let the stale event change the live retry's workflow state.
+      return {
+        matched: true,
+        previousStatus: existing.status,
+        newStatus: existing.status,
+      };
     }
     if (TERMINAL_STATUSES.has(existing.status) && existing.status === newStatus) {
       // Even if status hasn't changed (e.g. call_analyzed after call_ended),
@@ -932,6 +992,84 @@ export class OutboundVoiceService {
       }
     }
     return { matched: true, previousStatus: existing.status, newStatus };
+  }
+
+  private async recordRetellUsage(
+    call: OutboundCallRow,
+    event: {
+      callId: string;
+      durationSeconds?: number | null;
+      timestampIso?: string | null;
+      agentId?: string | null;
+      agentVersion?: string | null;
+      callCost?: RetellCallCost | null;
+      llmTokenUsage?: RetellLlmTokenUsage | null;
+      providerStartedAtIso?: string | null;
+    },
+    status: string,
+  ): Promise<void> {
+    const timestamp = event.timestampIso ? new Date(event.timestampIso) : null;
+    const terminal = TERMINAL_STATUSES.has(status);
+    const providerStartedAt = event.providerStartedAtIso
+      ? new Date(event.providerStartedAtIso)
+      : null;
+    const startedAt = providerStartedAt ?? (status === 'in_progress' ? (timestamp ?? new Date()) : null);
+    const endedAt = terminal ? (timestamp ?? new Date()) : null;
+    const costBreakdown = event.callCost ? JSON.stringify(event.callCost) : null;
+    const tokenValues = event.llmTokenUsage?.values
+      ? JSON.stringify(event.llmTokenUsage.values)
+      : null;
+
+    await this.db.execute(sql`
+      insert into retell_call_usage (
+        tenant_id,
+        outbound_call_id,
+        retell_call_id,
+        status,
+        agent_id,
+        agent_version,
+        duration_seconds,
+        combined_cost_cents,
+        cost_breakdown,
+        llm_average_tokens,
+        llm_request_count,
+        llm_token_values,
+        started_at,
+        ended_at,
+        created_at,
+        updated_at
+      ) values (
+        ${call.tenantId},
+        ${call.id},
+        ${event.callId},
+        ${status},
+        ${event.agentId ?? null},
+        ${event.agentVersion ?? null},
+        ${event.durationSeconds ?? null},
+        ${event.callCost?.combined_cost ?? null},
+        ${costBreakdown}::jsonb,
+        ${event.llmTokenUsage?.average ?? null},
+        ${event.llmTokenUsage?.num_requests ?? null},
+        ${tokenValues}::jsonb,
+        ${startedAt},
+        ${endedAt},
+        coalesce(${startedAt}, now()),
+        now()
+      )
+      on conflict (retell_call_id) do update set
+        status = excluded.status,
+        agent_id = coalesce(excluded.agent_id, retell_call_usage.agent_id),
+        agent_version = coalesce(excluded.agent_version, retell_call_usage.agent_version),
+        duration_seconds = coalesce(excluded.duration_seconds, retell_call_usage.duration_seconds),
+        combined_cost_cents = coalesce(excluded.combined_cost_cents, retell_call_usage.combined_cost_cents),
+        cost_breakdown = coalesce(excluded.cost_breakdown, retell_call_usage.cost_breakdown),
+        llm_average_tokens = coalesce(excluded.llm_average_tokens, retell_call_usage.llm_average_tokens),
+        llm_request_count = coalesce(excluded.llm_request_count, retell_call_usage.llm_request_count),
+        llm_token_values = coalesce(excluded.llm_token_values, retell_call_usage.llm_token_values),
+        started_at = coalesce(retell_call_usage.started_at, excluded.started_at),
+        ended_at = coalesce(excluded.ended_at, retell_call_usage.ended_at),
+        updated_at = now()
+    `);
   }
 
   // ---------- abandoned-pitch retry (Session 76) ----------
@@ -2424,6 +2562,10 @@ function normalizeOptionalPhone(value: string | null): string | null {
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   if (trimmed.startsWith('+')) return trimmed;
   return `+${digits}`;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function firstName(value: string): string {

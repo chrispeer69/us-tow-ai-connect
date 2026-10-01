@@ -1237,6 +1237,41 @@ export const outboundCalls = pgTable(
 export type OutboundCallRow = typeof outboundCalls.$inferSelect;
 export type OutboundCallInsert = typeof outboundCalls.$inferInsert;
 
+// One row per physical Retell call attempt. This is intentionally separate
+// from outbound_calls: retry logic reuses the logical outbound call row, while
+// Retell bills every dial attempt independently.
+export const retellCallUsage = pgTable(
+  'retell_call_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    outboundCallId: uuid('outbound_call_id')
+      .notNull()
+      .references(() => outboundCalls.id, { onDelete: 'cascade' }),
+    retellCallId: text('retell_call_id').notNull().unique(),
+    status: varchar('status', { length: 30 }),
+    agentId: text('agent_id'),
+    agentVersion: varchar('agent_version', { length: 80 }),
+    durationSeconds: integer('duration_seconds'),
+    combinedCostCents: numeric('combined_cost_cents', { precision: 14, scale: 4 }),
+    costBreakdown: jsonb('cost_breakdown'),
+    llmAverageTokens: numeric('llm_average_tokens', { precision: 14, scale: 2 }),
+    llmRequestCount: integer('llm_request_count'),
+    llmTokenValues: jsonb('llm_token_values'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantCreatedIdx: index('retell_call_usage_tenant_created_idx').on(t.tenantId, t.createdAt),
+    outboundCallIdx: index('retell_call_usage_outbound_call_idx').on(t.outboundCallId),
+  }),
+);
+export type RetellCallUsageRow = typeof retellCallUsage.$inferSelect;
+
 // ============ ALPHA SHOPS (Session 49b — partner shop registry) ============
 // Per-tenant list of partner repair / body shops the flip engine can
 // redirect calls to. Tenant-zero is seeded with all 9 Alpha Automotive

@@ -24,6 +24,7 @@ import {
   driverJobEvents,
   driverPings,
   outboundCalls,
+  retellCallUsage,
   smsMessages,
   unifiedJobs,
 } from '../../db/schema';
@@ -52,6 +53,14 @@ describe('DigestMetricsService.collect', () => {
     const byTable = new Map<unknown, ChainResult>();
     byTable.set(callInteractions, [{ count: 100, totalSec: 6000, phone: '+15551111' }]);
     byTable.set(outboundCalls, [{ count: 20, totalSec: 1200 }]);
+    byTable.set(retellCallUsage, [{
+      calls: 22,
+      totalSeconds: 1320,
+      measuredCostCalls: 20,
+      combinedCostCents: 460,
+      averageLlmTokens: 1850,
+      llmRequests: 80,
+    }]);
     // collectJobsCreated calls unifiedJobs FIRST (grouped by source), then
     // dispatchRequests. They share the per-collector flow so the from()
     // call sees them sequentially — we configure unified to return the
@@ -83,6 +92,15 @@ describe('DigestMetricsService.collect', () => {
     expect(m.callsHandled.totalMinutes).toBe(120); // (6000 + 1200) / 60
     expect(m.callsHandled.avgDurationSec).toBe(60);
     expect(m.callsHandled.byType).toEqual({ inbound: 100, outbound: 20 });
+    expect(m.emilyOutbound).toEqual({
+      calls: 22,
+      totalMinutes: 22,
+      measuredCostCalls: 20,
+      combinedCostCents: 460,
+      averageCostCents: 23,
+      averageLlmTokens: 1850,
+      llmRequests: 80,
+    });
 
     // Jobs roll-up (unified + dispatch_requests fallback)
     expect(m.jobsCreated.total).toBe(50); // 25 + 15 + 10
@@ -116,6 +134,7 @@ describe('DigestMetricsService.collect', () => {
     const byTable = new Map<unknown, ChainResult>();
     byTable.set(callInteractions, [{ count: 1, totalSec: 30, phone: '+1' }]);
     byTable.set(outboundCalls, [{ count: 0, totalSec: 0 }]);
+    byTable.set(retellCallUsage, []);
     byTable.set(unifiedJobs, [{ source: 'towbook', count: 5 }]);
     byTable.set(dispatchRequests, [{ count: 0 }]);
     byTable.set(dispatchDecisions, []);
@@ -141,6 +160,7 @@ describe('DigestMetricsService.collect', () => {
       avgDurationSec: 0,
       byType: { inbound: 0, outbound: 0 },
     });
+    expect(m.emilyOutbound.calls).toBe(0);
     expect(m.jobsCreated.total).toBe(0);
     expect(m.conversionRate).toBe(0);
     expect(m.driverActivity).toEqual({

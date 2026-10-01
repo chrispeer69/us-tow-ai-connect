@@ -6,6 +6,7 @@ import {
   callInteractions,
   interactionLogs,
   outboundCalls,
+  retellCallUsage,
   platformSettings,
   tenantBilling,
   tenantMembers,
@@ -25,6 +26,7 @@ export class SuperAdminService {
 
   async listTenants() {
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const todayStart = startOfUtcDay(new Date());
     const rows = await this.db
       .select({
         id: tenants.id,
@@ -59,6 +61,37 @@ export class SuperAdminService {
       .where(gte(outboundCalls.createdAt, cutoff24h))
       .groupBy(outboundCalls.tenantId);
 
+    const aiCallsToday = await this.db
+      .select({
+        tenantId: outboundCalls.tenantId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(outboundCalls)
+      .where(gte(outboundCalls.createdAt, todayStart))
+      .groupBy(outboundCalls.tenantId);
+
+    const emilyUsageToday = await this.db
+      .select({
+        tenantId: retellCallUsage.tenantId,
+        calls: sql<number>`count(distinct ${retellCallUsage.outboundCallId})::int`,
+        attempts: sql<number>`count(*)::int`,
+        seconds: sql<number>`coalesce(sum(${retellCallUsage.durationSeconds}), 0)::int`,
+        measuredCostCalls: sql<number>`count(${retellCallUsage.combinedCostCents})::int`,
+        costCents: sql<number>`coalesce(sum(${retellCallUsage.combinedCostCents}), 0)::double precision`,
+        averageLlmTokens: sql<number>`coalesce(
+          case
+            when sum(coalesce(${retellCallUsage.llmRequestCount}, 0)) > 0
+              then sum(coalesce(${retellCallUsage.llmAverageTokens}, 0)::numeric * ${retellCallUsage.llmRequestCount})
+                / sum(${retellCallUsage.llmRequestCount})
+            else avg(${retellCallUsage.llmAverageTokens})
+          end,
+          0
+        )::double precision`,
+      })
+      .from(retellCallUsage)
+      .where(gte(retellCallUsage.createdAt, todayStart))
+      .groupBy(retellCallUsage.tenantId);
+
     const aiCallsTotal = await this.db
       .select({
         tenantId: outboundCalls.tenantId,
@@ -82,31 +115,187 @@ export class SuperAdminService {
 
     const activeByT = new Map(activeJobCounts.map((r) => [r.tenantId, r.count]));
     const aiCallsLast24hByT = new Map(aiCallsLast24h.map((r) => [r.tenantId, r.count]));
+    const aiCallsTodayByT = new Map(aiCallsToday.map((r) => [r.tenantId, r.count]));
+    const emilyUsageTodayByT = new Map(emilyUsageToday.map((r) => [r.tenantId, r]));
     const aiCallsTotalByT = new Map(aiCallsTotal.map((r) => [r.tenantId, r.count]));
     const aiCallSecondsTotalByT = new Map(
       aiCallSecondsTotal.map((r) => [r.tenantId, r.seconds]),
     );
     const billingByT = new Map(planRows.map((r) => [r.tenantId, r]));
 
-    return rows.map((t) => ({
-      ...t,
-      activeJobs: activeByT.get(t.id) ?? 0,
-      callsLast24h: aiCallsLast24hByT.get(t.id) ?? 0,
-      callsTotal: aiCallsTotalByT.get(t.id) ?? 0,
-      callMinutesUsed: Math.round((aiCallSecondsTotalByT.get(t.id) ?? 0) / 60),
-      plan: billingByT.get(t.id)?.plan ?? 'FREE',
-      version: displayVersion(billingByT.get(t.id)?.plan),
-      billingStatus: billingByT.get(t.id)?.status ?? 'ACTIVE',
-      demoMode: readConfigBool(t.outboundVoiceConfig, 'demo_mode', false),
-      demoCallsEnabled: readConfigBool(t.outboundVoiceConfig, 'demo_calls_enabled', false),
-      testModeEnabled: readConfigBool(t.outboundVoiceConfig, 'test_mode_enabled', false),
-      testOverrideNumber: readConfigString(t.outboundVoiceConfig, 'test_override_number', null),
-      freeTrialCallMinutes: readConfigNumber(
-        t.outboundVoiceConfig,
-        'free_trial_call_minutes',
-        15,
-      ),
-    }));
+    return rows.map((t) => {
+      const emily = emilyUsageTodayByT.get(t.id);
+      return {
+        ...t,
+        activeJobs: activeByT.get(t.id) ?? 0,
+        callsLast24h: aiCallsLast24hByT.get(t.id) ?? 0,
+        callsToday: aiCallsTodayByT.get(t.id) ?? 0,
+        callsTotal: aiCallsTotalByT.get(t.id) ?? 0,
+        callMinutesUsed: Math.round((aiCallSecondsTotalByT.get(t.id) ?? 0) / 60),
+        emilyCallsToday: Number(emily?.calls ?? 0),
+        emilyAttemptsToday: Number(emily?.attempts ?? 0),
+        emilyRetriesToday: Math.max(
+          0,
+          Number(emily?.attempts ?? 0) - Number(emily?.calls ?? 0),
+        ),
+        emilyMinutesToday:
+          Math.round((Number(emily?.seconds ?? 0) / 60) * 10) / 10,
+        emilyAverageLlmTokensToday: Math.round(Number(emily?.averageLlmTokens ?? 0)),
+        emilyCostTodayCents:
+          Math.round(Number(emily?.costCents ?? 0) * 100) / 100,
+        emilyCostMeasuredAttemptsToday: Number(emily?.measuredCostCalls ?? 0),
+        plan: billingByT.get(t.id)?.plan ?? 'FREE',
+        version: displayVersion(billingByT.get(t.id)?.plan),
+        billingStatus: billingByT.get(t.id)?.status ?? 'ACTIVE',
+        demoMode: readConfigBool(t.outboundVoiceConfig, 'demo_mode', false),
+        demoCallsEnabled: readConfigBool(t.outboundVoiceConfig, 'demo_calls_enabled', false),
+        testModeEnabled: readConfigBool(t.outboundVoiceConfig, 'test_mode_enabled', false),
+        testOverrideNumber: readConfigString(t.outboundVoiceConfig, 'test_override_number', null),
+        freeTrialCallMinutes: readConfigNumber(
+          t.outboundVoiceConfig,
+          'free_trial_call_minutes',
+          15,
+        ),
+      };
+    });
+  }
+
+  async listRetellCallUsage(query: {
+    tenantId?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(query.offset) || 0, 0);
+    const tenantFilter = query.tenantId
+      ? eq(retellCallUsage.tenantId, query.tenantId)
+      : sql`true`;
+
+    const items = await this.db
+      .select({
+        id: retellCallUsage.outboundCallId,
+        tenantId: retellCallUsage.tenantId,
+        companyName: tenants.companyName,
+        outboundCallId: retellCallUsage.outboundCallId,
+        latestRetellCallId: sql<string>`(array_agg(${retellCallUsage.retellCallId} order by ${retellCallUsage.createdAt} desc))[1]`,
+        attemptCount: sql<number>`count(*)::int`,
+        retryCount: sql<number>`greatest(count(*) - 1, 0)::int`,
+        purpose: outboundCalls.purpose,
+        toName: outboundCalls.toName,
+        toPhone: outboundCalls.toPhone,
+        status: sql<string | null>`(array_agg(${retellCallUsage.status} order by ${retellCallUsage.createdAt} desc))[1]`,
+        agentId: sql<string | null>`(array_agg(${retellCallUsage.agentId} order by ${retellCallUsage.createdAt} desc))[1]`,
+        agentVersion: sql<string | null>`(array_agg(${retellCallUsage.agentVersion} order by ${retellCallUsage.createdAt} desc))[1]`,
+        durationSeconds: sql<number>`coalesce(sum(${retellCallUsage.durationSeconds}), 0)::int`,
+        measuredCostAttempts: sql<number>`count(${retellCallUsage.combinedCostCents})::int`,
+        combinedCostCents: sql<number>`coalesce(sum(${retellCallUsage.combinedCostCents}), 0)::double precision`,
+        llmAverageTokens: sql<number>`coalesce(
+          case
+            when sum(coalesce(${retellCallUsage.llmRequestCount}, 0)) > 0
+              then sum(coalesce(${retellCallUsage.llmAverageTokens}, 0)::numeric * ${retellCallUsage.llmRequestCount})
+                / sum(${retellCallUsage.llmRequestCount})
+            else avg(${retellCallUsage.llmAverageTokens})
+          end,
+          0
+        )::double precision`,
+        llmRequestCount: sql<number>`coalesce(sum(${retellCallUsage.llmRequestCount}), 0)::int`,
+        startedAt: sql<Date | null>`min(${retellCallUsage.startedAt})`,
+        endedAt: sql<Date | null>`max(${retellCallUsage.endedAt})`,
+        createdAt: sql<Date>`min(${retellCallUsage.createdAt})`,
+        lastAttemptAt: sql<Date>`max(${retellCallUsage.createdAt})`,
+      })
+      .from(retellCallUsage)
+      .innerJoin(outboundCalls, eq(outboundCalls.id, retellCallUsage.outboundCallId))
+      .innerJoin(tenants, eq(tenants.id, retellCallUsage.tenantId))
+      .where(tenantFilter)
+      .groupBy(
+        retellCallUsage.tenantId,
+        tenants.companyName,
+        retellCallUsage.outboundCallId,
+        outboundCalls.purpose,
+        outboundCalls.toName,
+        outboundCalls.toPhone,
+      )
+      .orderBy(desc(sql`max(${retellCallUsage.createdAt})`))
+      .limit(limit)
+      .offset(offset);
+
+    return { items, limit, offset };
+  }
+
+  async listRetellDailyUsage(query: { tenantId?: string; days?: number }) {
+    const days = Math.min(Math.max(Number(query.days) || 30, 2), 90);
+    const from = startOfUtcDay(new Date(Date.now() - (days - 1) * 86_400_000));
+    const tenantFilter = query.tenantId
+      ? eq(retellCallUsage.tenantId, query.tenantId)
+      : sql`true`;
+    const rows = await this.db
+      .select({
+        day: sql<string>`to_char(date_trunc('day', ${retellCallUsage.createdAt} at time zone 'UTC'), 'YYYY-MM-DD')`,
+        calls: sql<number>`count(distinct ${retellCallUsage.outboundCallId})::int`,
+        attempts: sql<number>`count(*)::int`,
+        retries: sql<number>`greatest(count(*) - count(distinct ${retellCallUsage.outboundCallId}), 0)::int`,
+        seconds: sql<number>`coalesce(sum(${retellCallUsage.durationSeconds}), 0)::int`,
+        measuredCostAttempts: sql<number>`count(${retellCallUsage.combinedCostCents})::int`,
+        costCents: sql<number>`coalesce(sum(${retellCallUsage.combinedCostCents}), 0)::double precision`,
+        averageLlmTokens: sql<number>`coalesce(
+          case
+            when sum(coalesce(${retellCallUsage.llmRequestCount}, 0)) > 0
+              then sum(coalesce(${retellCallUsage.llmAverageTokens}, 0)::numeric * ${retellCallUsage.llmRequestCount})
+                / sum(${retellCallUsage.llmRequestCount})
+            else avg(${retellCallUsage.llmAverageTokens})
+          end,
+          0
+        )::double precision`,
+        llmRequests: sql<number>`coalesce(sum(${retellCallUsage.llmRequestCount}), 0)::int`,
+      })
+      .from(retellCallUsage)
+      .where(and(tenantFilter, gte(retellCallUsage.createdAt, from)))
+      .groupBy(sql`date_trunc('day', ${retellCallUsage.createdAt} at time zone 'UTC')`)
+      .orderBy(desc(sql`date_trunc('day', ${retellCallUsage.createdAt} at time zone 'UTC')`));
+
+    const rowsByDay = new Map(rows.map((row) => [row.day, row]));
+    const today = startOfUtcDay(new Date());
+    const calendarDays = Array.from({ length: days }, (_, offset) => {
+      const date = new Date(today.getTime() - offset * 86_400_000);
+      const day = date.toISOString().slice(0, 10);
+      const row = rowsByDay.get(day);
+      return {
+        day,
+        calls: Number(row?.calls ?? 0),
+        attempts: Number(row?.attempts ?? 0),
+        retries: Number(row?.retries ?? 0),
+        seconds: Number(row?.seconds ?? 0),
+        measuredCostAttempts: Number(row?.measuredCostAttempts ?? 0),
+        costCents: Number(row?.costCents ?? 0),
+        averageLlmTokens: Number(row?.averageLlmTokens ?? 0),
+        llmRequests: Number(row?.llmRequests ?? 0),
+      };
+    });
+
+    return calendarDays.map((row, index) => {
+      const previous = calendarDays[index + 1];
+      const costCents = Number(row.costCents ?? 0);
+      const previousCostCents = Number(previous?.costCents ?? 0);
+      return {
+        day: row.day,
+        calls: row.calls,
+        attempts: row.attempts,
+        retries: row.retries,
+        minutes: Math.round((Number(row.seconds ?? 0) / 60) * 10) / 10,
+        measuredCostAttempts: row.measuredCostAttempts,
+        costCents: Math.round(costCents * 100) / 100,
+        averageLlmTokens: Math.round(Number(row.averageLlmTokens ?? 0)),
+        llmRequests: row.llmRequests,
+        costChangeCents:
+          previous == null ? null : Math.round((costCents - previousCostCents) * 100) / 100,
+        costChangePercent:
+          previousCostCents > 0
+            ? Math.round(((costCents - previousCostCents) / previousCostCents) * 1000) / 10
+            : null,
+        callChange: previous == null ? null : row.calls - previous.calls,
+      };
+    });
   }
 
   async getDemoCallSettings() {
@@ -577,4 +766,10 @@ function normalizeOptionalPhone(value: string | null): string | null {
   if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   if (trimmed.startsWith('+')) return trimmed;
   return `+${digits}`;
+}
+
+function startOfUtcDay(value: Date): Date {
+  const result = new Date(value);
+  result.setUTCHours(0, 0, 0, 0);
+  return result;
 }

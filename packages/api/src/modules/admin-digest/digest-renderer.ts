@@ -84,6 +84,17 @@ export function renderDigestHtml(ctx: RenderContext): string {
             </tr>
           </table>
 
+          <h2 style="margin:24px 0 12px;font-size:16px;font-weight:600;">Emily outbound voice usage</h2>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;">
+            <tr><td style="padding:6px 0;width:55%;color:#6b7280;">Physical Retell calls</td><td style="padding:6px 0;font-variant-numeric:tabular-nums;font-weight:600;">${metrics.emilyOutbound.calls.toLocaleString()}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Call minutes</td><td style="padding:6px 0;font-variant-numeric:tabular-nums;">${metrics.emilyOutbound.totalMinutes.toLocaleString()}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Average LLM tokens / request</td><td style="padding:6px 0;font-variant-numeric:tabular-nums;">${metrics.emilyOutbound.averageLlmTokens.toLocaleString()}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">LLM requests</td><td style="padding:6px 0;font-variant-numeric:tabular-nums;">${metrics.emilyOutbound.llmRequests.toLocaleString()}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Retell combined cost</td><td style="padding:6px 0;font-variant-numeric:tabular-nums;font-weight:600;">${formatUsdFromCents(metrics.emilyOutbound.combinedCostCents)}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280;">Average cost / measured call</td><td style="padding:6px 0;font-variant-numeric:tabular-nums;">${formatUsdFromCents(metrics.emilyOutbound.averageCostCents)}</td></tr>
+          </table>
+          <p style="margin:8px 0 0;font-size:12px;color:#9ca3af;">Retell cost data received for ${metrics.emilyOutbound.measuredCostCalls.toLocaleString()} of ${metrics.emilyOutbound.calls.toLocaleString()} calls in this window. Calls before usage tracking are not shown as zero-cost.</p>
+
           <h2 style="margin:24px 0 12px;font-size:16px;font-weight:600;">Jobs created</h2>
           <p style="margin:0 0 8px;font-size:14px;color:#6b7280;">Total: <strong style="color:#111827;">${metrics.jobsCreated.total.toLocaleString()}</strong> — completed: <strong style="color:#111827;">${metrics.jobsCompleted.toLocaleString()}</strong></p>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
@@ -154,6 +165,10 @@ function escapeAttr(s: string): string {
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function formatUsdFromCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function maskPhone(p: string): string {

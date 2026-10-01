@@ -22,6 +22,7 @@ import {
   dispatchRequests,
   driverJobEvents,
   driverPings,
+  retellCallUsage,
   smsMessages,
   unifiedJobs,
 } from '../../db/schema';
@@ -55,6 +56,14 @@ const SIMULATED_DAY = {
 function fakeDbFromDay() {
   const byTable = new Map<unknown, unknown[]>();
   byTable.set(callInteractions, [{ count: SIMULATED_DAY.calls.count, totalSec: SIMULATED_DAY.calls.totalSec }]);
+  byTable.set(retellCallUsage, [{
+    calls: 18,
+    totalSeconds: 1260,
+    measuredCostCalls: 18,
+    combinedCostCents: 522,
+    averageLlmTokens: 2400,
+    llmRequests: 72,
+  }]);
   byTable.set(unifiedJobs, SIMULATED_DAY.unifiedJobsBySource);
   byTable.set(dispatchRequests, [{ count: SIMULATED_DAY.legacyDispatchRequests.count }]);
   byTable.set(dispatchDecisions, SIMULATED_DAY.declines);
@@ -86,6 +95,8 @@ describe('digest end-to-end — simulated day of activity', () => {
     expect(m.callsHandled.count).toBe(84);
     expect(m.callsHandled.totalMinutes).toBe(90);
     expect(m.callsHandled.avgDurationSec).toBe(64);
+    expect(m.emilyOutbound.combinedCostCents).toBe(522);
+    expect(m.emilyOutbound.averageLlmTokens).toBe(2400);
 
     // 31 + 8 + 3 (legacy dispatch_requests folded as ai_dispatch) = 42
     expect(m.jobsCreated.total).toBe(42);
@@ -124,6 +135,8 @@ describe('digest end-to-end — simulated day of activity', () => {
     expect(html).toContain('aaa_salesforce');
     expect(html).toContain('No driver within range');
     expect(html).toContain('Roadside Towing');
+    expect(html).toContain('Emily outbound voice usage');
+    expect(html).toContain('$5.22');
   });
 });
 
