@@ -64,6 +64,36 @@ describe('GhlAccountSyncService', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('reports safe configuration status without exposing the token', () => {
+    const status = new GhlAccountSyncService().getStatus();
+
+    expect(status).toEqual({
+      enabled: true,
+      locationConfigured: true,
+      tokenConfigured: true,
+      locationId: 'test-location',
+      tag: 'ustow-ai-connect-registered',
+    });
+    expect(JSON.stringify(status)).not.toContain('test-token');
+  });
+
+  it('returns the GHL response error for a manual resync diagnostic', async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('token lacks contacts.write', { status: 401 })) as typeof fetch;
+
+    await expect(
+      new GhlAccountSyncService().syncAccountWithResult({
+        email: 'owner@example.com',
+        source: 'US Tow AI-Connect / Manual Resync',
+      }),
+    ).resolves.toEqual({
+      success: false,
+      skipped: false,
+      error: 'contact upsert returned 401: token lacks contacts.write',
+    });
+  });
+
   it('does not reject account creation when GHL is unavailable', async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error('network unavailable')) as typeof fetch;
 

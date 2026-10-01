@@ -13,6 +13,13 @@ export interface GhlAccountSyncInput {
   source: string;
 }
 
+export interface GhlAccountSyncResult {
+  success: boolean;
+  skipped: boolean;
+  contactId?: string;
+  error?: string;
+}
+
 function rawLocationId(value: string): string {
   return value.trim().replace(/^location:/i, '');
 }
@@ -30,6 +37,19 @@ export class GhlAccountSyncService {
     return process.env.GHL_ACCOUNT_SYNC_ENABLED === 'true';
   }
 
+  getStatus() {
+    const locationId = rawLocationId(process.env.GHL_ACCOUNT_SYNC_LOCATION_ID ?? '');
+    return {
+      enabled: this.isEnabled(),
+      locationConfigured: Boolean(locationId),
+      tokenConfigured: Boolean(
+        process.env.GHL_ACCOUNT_SYNC_PRIVATE_INTEGRATION_TOKEN?.trim(),
+      ),
+      locationId: locationId || null,
+      tag: clean(process.env.GHL_ACCOUNT_SYNC_TAG) ?? DEFAULT_TAG,
+    };
+  }
+
   /**
    * Best-effort CRM sync for a newly-created US Tow AI-Connect account.
    *
@@ -42,20 +62,36 @@ export class GhlAccountSyncService {
    * successfully-created application account.
    */
   async syncAccount(input: GhlAccountSyncInput): Promise<boolean> {
-    if (!this.isEnabled()) return false;
+    const result = await this.syncAccountWithResult(input);
+    return result.success;
+  }
+
+  /** Same sync operation with a safe diagnostic result for manual recovery. */
+  async syncAccountWithResult(input: GhlAccountSyncInput): Promise<GhlAccountSyncResult> {
+    if (!this.isEnabled()) {
+      return { success: false, skipped: true, error: 'GHL account sync is disabled' };
+    }
 
     const token = process.env.GHL_ACCOUNT_SYNC_PRIVATE_INTEGRATION_TOKEN?.trim();
     const locationId = rawLocationId(process.env.GHL_ACCOUNT_SYNC_LOCATION_ID ?? '');
     if (!token || !locationId) {
       this.logger.warn('GHL account sync enabled but GHL credentials/location are missing');
-      return false;
+      return {
+        success: false,
+        skipped: true,
+        error: 'GHL account sync credentials or location are missing',
+      };
     }
 
     const email = clean(input.email)?.toLowerCase();
     const phone = clean(input.phone);
     if (!email && !phone) {
       this.logger.warn('GHL account sync skipped because both email and phone are missing');
-      return false;
+      return {
+        success: false,
+        skipped: true,
+        error: 'Both email and phone are missing',
+      };
     }
 
     const firstName = clean(input.firstName);
@@ -106,11 +142,11 @@ export class GhlAccountSyncService {
       }
 
       this.logger.log(`Synced new US Tow AI-Connect account to GHL contact ${contactId}`);
-      return true;
+      return { success: true, skipped: false, contactId };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`GHL account sync failed without blocking account creation: ${message}`);
-      return false;
+      return { success: false, skipped: false, error: message };
     }
   }
 }
