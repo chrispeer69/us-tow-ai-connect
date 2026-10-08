@@ -13,6 +13,11 @@ import { join } from 'node:path';
 const prompt = readFileSync(join(__dirname, '../../../scripts/emily-outbound-prompt.txt'), 'utf8');
 
 describe('outbound Retell prompt — contract with the flip script', () => {
+  it('keeps the permanent wrapper compact and injects the call script once', () => {
+    expect(prompt.length).toBeLessThan(7_000);
+    expect(prompt.match(/\{\{script_body\}\}/g)).toHaveLength(1);
+  });
+
   it('never lists "going home" as a reason to skip an offer (Chris, 2026-09-16)', () => {
     expect(prompt).not.toMatch(/is going home, only needs fuel/);
     expect(prompt).toContain('GOING HOME IS NOT ON THIS LIST');
