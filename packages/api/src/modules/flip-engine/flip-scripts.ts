@@ -149,7 +149,15 @@ function conviniCloseFor(ctx: ScriptContext): string {
   );
 }
 
-export const SCRIPT_VERSION = '3.15';
+export const SCRIPT_VERSION = '3.16';
+// 3.16 (2026-10-08) — DROP THE EMAIL QUESTION (reverses 3.14). Chris: "remove
+//   the email request - not required to accomplish our goals - if it is eating
+//   into the prompt time - not worth the spend". The 10-07 review found it the
+//   single biggest time sink: on one eligible call spelling an email took about
+//   two minutes, drew two requests for a human, and the offer was never made.
+//   STEP 2c is gone from both arms; the name step now leads straight into the
+//   pickup. The customer_email extraction and AI-note EMAIL line stay in place
+//   and simply stay empty.
 // 3.15 (2026-09-16) — "GOING HOME" IS NOT A REASON TO SKIP THE OFFER. Chris,
 //   09-16, on four no-offer calls in an hour: "WHY is the AI dispatcher NOT
 //   MAKING OFFERS". Pamela C., overheating Explorer pouring coolant, said the
@@ -882,16 +890,6 @@ ${ask}
   );
 }
 
-/** 3.14 — STEP 2c. One question for the email, read back once, never pressed. */
-function confirmEmailBlock(vars: Record<string, string>): string {
-  return interpolate(
-    `[STEP 2c — EMAIL]
-AI: "And what's the best email for you? We'll send the job confirmation and receipt there."
-[AGENT: This is one of the few things you DO read back — say the address back once, slowly, so the spelling is checked ("Thanks — pat dot smith at gmail dot com, got it"), then move on. If they spell it, take the spelling. If they say they do not have one, do not use email, or would rather not give it, say "No problem" and move straight on — never press, never guess, never invent one, and never read an email off the ticket. Record the address exactly as the customer gave it.]`,
-    vars,
-  );
-}
-
 function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
     rep_name: ctx.repName,
@@ -1026,11 +1024,9 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
   // 3.13 — the name comes first on both arms: it is the one detail every
   // downstream system keys on, and the customer has just confirmed who they are.
   const nameStep = confirmNameBlock(ctx, vars);
-  // 3.14 — the email follows the name on both arms, for the same reason.
-  const emailStep = confirmEmailBlock(vars);
 
   if (isReframe(ctx)) {
-    const blocks = [nameStep, ``, emailStep, ``, interpolate(pickup, vars)];
+    const blocks = [nameStep, ``, interpolate(pickup, vars)];
     if (includeDestination) blocks.push(``, destinationBlock);
     blocks.push(``, interpolate(vehicle, vars), ``, interpolate(issue, vars), ``, intake);
     return blocks.join('\n');
@@ -1038,8 +1034,6 @@ AI: "I have the destination as {{destination}}. Is that still correct, and is it
 
   const blocks = [
     nameStep,
-    ``,
-    emailStep,
     ``,
     interpolate(pickup, vars),
     ``,

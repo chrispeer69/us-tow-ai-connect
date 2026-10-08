@@ -97,17 +97,15 @@ describe('3.13 — NAME line on the Towbook AI note', () => {
   });
 });
 
-describe('script 3.14 — ask for the email', () => {
-  it('asks for the email right after the name on both arms, before the pickup', () => {
+describe('script 3.16 — the email question is gone', () => {
+  it('goes from the name straight to the pickup on both arms, with no email ask', () => {
     for (const scriptVariant of ['control', 'reframe'] as const) {
       const body = renderCallBody('competitor_repair', { ...base, scriptVariant });
       const nameAt = body.indexOf('[STEP 2b — CONFIRM FULL NAME]');
-      const emailAt = body.indexOf('[STEP 2c — EMAIL]');
       const pickupAt = body.indexOf('[STEP 3 — CONFIRM PICKUP LOCATION]');
-      expect(emailAt, scriptVariant).toBeGreaterThan(nameAt);
-      expect(pickupAt, scriptVariant).toBeGreaterThan(emailAt);
-      expect(body).toContain("And what's the best email for you?");
-      expect(body).toContain('Record the address exactly as the customer gave it');
+      expect(pickupAt, scriptVariant).toBeGreaterThan(nameAt);
+      expect(body).not.toContain('STEP 2c');
+      expect(body).not.toContain("what's the best email");
     }
   });
 
