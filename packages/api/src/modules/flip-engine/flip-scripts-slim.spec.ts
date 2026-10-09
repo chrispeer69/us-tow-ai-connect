@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  AUTHORIZED_LINES,
   CONFIRM_LINES,
   REFRAME_OFFER_BRIDGE,
   activeScriptVersion,
@@ -228,6 +229,60 @@ describe('slim script_body — what does not apply is not shipped', () => {
   });
 });
 
+describe('F4/F5 — disclosures live in the script, only where they apply', () => {
+  const RIDE = `${AUTHORIZED_LINES.rideOffer} ${AUTHORIZED_LINES.ridePayment}`;
+  const hasOffer = (x: (typeof SCRIPT_SAMPLES)[number]) =>
+    x.scenario === 'competitor_repair'
+      ? scenarioAOffer(x.ctx).offersAllowed
+      : (x.scenario === 'unknown' || x.scenario === 'residence') && !!x.ctx.conditionalShop;
+
+  it('every call with an offer carries the ride offer and its payment disclosure, together', () => {
+    for (const x of SCRIPT_SAMPLES.filter(hasOffer)) {
+      const { slim, legacy } = render(x);
+      expect(slim, x.name).toContain(RIDE);
+      expect(slim, x.name).toContain(AUTHORIZED_LINES.rideKeeping);
+      if (x.scenario === 'competitor_repair') {
+        expect(legacy, x.name).toContain(AUTHORIZED_LINES.ridePayment);
+      }
+    }
+  });
+
+  it('calls without an offer carry no ride, rental or onward-tow promise', () => {
+    for (const x of SCRIPT_SAMPLES.filter((s) => !hasOffer(s))) {
+      const { slim } = render(x);
+      expect(slim, x.name).not.toContain('RoadsideMC');
+      expect(slim, x.name).not.toContain('rental cars');
+      expect(slim, x.name).not.toContain("You're not stuck there");
+    }
+  });
+
+  it('"not stuck there" names this call\'s real destination, and only when there is one', () => {
+    const x = SCRIPT_SAMPLES.find((s) => s.name === 'A control multi-shop mechanical')!;
+    expect(render(x).slim).toContain(
+      "You're not stuck there. If the repair isn't something you want to go ahead with, we'll tow it on to Firestone Complete Auto Care, 939 Linwood Ave, Columbus, OH at no cost to you.",
+    );
+    const missing = SCRIPT_SAMPLES.find((s) => s.name === 'A control missing destination')!;
+    expect(render(missing).slim).not.toContain("You're not stuck there");
+    expect(kb).not.toContain("You're not stuck there");
+  });
+
+  it('the rental answer keeps full coverage and appears only when the tenant mentions rentals', () => {
+    const x = SCRIPT_SAMPLES.find((s) => s.name === 'A control single-shop mechanical')!;
+    expect(render(x).slim).toContain(AUTHORIZED_LINES.rental);
+    expect(AUTHORIZED_LINES.rental).toContain("You'd need your driver's license and full coverage insurance.");
+    const off = renderSlimCallBody('competitor_repair', { ...x.ctx, rentalsAvailable: false });
+    expect(off).not.toContain('rental cars');
+    for (const c of SCRIPT_SAMPLES.filter((s) => s.scenario !== 'competitor_repair')) {
+      expect(render(c).slim, c.name).not.toContain('rental cars');
+    }
+  });
+
+  it('the knowledge pack no longer carries any disclosure', () => {
+    expect(kb).not.toContain('RoadsideMC member');
+    expect(kb).not.toContain('full coverage insurance');
+  });
+});
+
 describe('tenant custom rules are resolved, never dropped', () => {
   it('Roadside keeps only its INSURANCE RULE, verbatim', () => {
     const kept = uncoveredTenantRules(ROADSIDE_CUSTOM_RULES, 'Roadside Towing');
@@ -275,8 +330,14 @@ describe('tier 1 core prompt and tier 3 knowledge pack', () => {
     expect(core).toMatch(/`IF <situation> → "words"`/);
   });
 
+  it('F2 — injury or danger: 911, reassure, no offers, warm close; never just hang up', () => {
+    const rule17 = core.split('\n').find((l) => l.startsWith('17. '))!;
+    expect(rule17).toMatch(/Injured or in immediate danger: tell them to call 911, reassure them a driver is coming, skip all offers, warm close; never just hang up\./);
+    expect(rule17).not.toMatch(/in danger or asks you to stop/);
+  });
+
   it('every knowledge file is small and titled with what a customer says', () => {
-    expect(kbFiles.length).toBeGreaterThanOrEqual(14);
+    expect(kbFiles.length).toBeGreaterThanOrEqual(12);
     for (const f of kbFiles) {
       const t = readFileSync(join(RETELL, 'knowledge', f), 'utf8');
       expect(estimateTokens(t), f).toBeLessThanOrEqual(300);
@@ -284,15 +345,11 @@ describe('tier 1 core prompt and tier 3 knowledge pack', () => {
     }
   });
 
-  it('authorized answers moved to the knowledge pack word for word', () => {
+  it('non-disclosure authorized answers moved to the knowledge pack word for word', () => {
     for (const quote of [
-      "We have rental cars as well. We can bring one to the shop, or out to your home, and do the paperwork digitally — or run you over to our rental location on Westerville Road, whichever suits. You'd need your driver's license and full coverage insurance.",
-      "If you're a RoadsideMC member it's already included in your plan. If you're not, it goes on the repair invoice at the shop — our office will confirm that with you.",
-      "For a ride we'd need the car going to one of our shops — but our office can talk through the options with you.",
       "When the repair's done, you can request a tow home — either through your motor club again, or straight from the Roadside App I'm texting you.",
       "It's an all-in-one emergency services app. You get 24/7 roadside assistance, and from the app you can book towing, car rentals, auto repair and auto body repair.",
       "Our partner shops take most aftermarket repair policies. I can note down who you're insured with and have our office team check your coverage with them directly.",
-      "You're not stuck there. If the repair isn't something you want to go ahead with, we'll tow it on to",
     ]) {
       expect(kb, quote).toContain(quote);
       // and the legacy script still carries the same words

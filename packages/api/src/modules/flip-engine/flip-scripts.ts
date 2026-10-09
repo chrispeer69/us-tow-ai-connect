@@ -1245,6 +1245,19 @@ function globalRules(ctx: ScriptContext): string {
 // SCENARIO A — Competitor Auto Repair Shop (confirm + 3-tier flip + soft CONVINI)
 // ---------------------------------------------------------------------------
 
+/**
+ * Authorized answers and disclosures, word for word. Legacy carries them inside
+ * its AUTHORIZED ANSWERS notes; slim emits each as an IF line only on calls
+ * where it applies. One copy, so the two modes cannot drift.
+ */
+export const AUTHORIZED_LINES = {
+  notStuck: `You're not stuck there. If the repair isn't something you want to go ahead with, we'll tow it on to {{destination}} at no cost to you.`,
+  rideOffer: `We can usually sort a ride for you — the driver may be able to run you somewhere close by, or we can arrange a rideshare from the shop to wherever you need to be.`,
+  ridePayment: `If you're a RoadsideMC member it's already included in your plan. If you're not, it goes on the repair invoice at the shop — our office will confirm that with you.`,
+  rideKeeping: `For a ride we'd need the car going to one of our shops — but our office can talk through the options with you.`,
+  rental: `We have rental cars as well. We can bring one to the shop, or out to your home, and do the paperwork digitally — or run you over to our rental location on Westerville Road, whichever suits. You'd need your driver's license and full coverage insurance. The rental offers are all in the Roadside App I'm texting you.`,
+} as const;
+
 /** 3.0 reframe — announces the offer as a statement. Shared verbatim. */
 export const REFRAME_OFFER_BRIDGE = `AI: "Now I would like to mention a few great offers from our in-network partner shops."`;
 
@@ -1566,7 +1579,7 @@ function scenarioA(ctx: ScriptContext): string {
         `=== AUTHORIZED ANSWERS (use ONLY when the customer raises these; never volunteer them) ===`,
         // Roadside Towing absorbs the second tow. Any recovery from the vendor
         // afterwards is internal and must never reach the call.
-        `[AGENT: If the customer worries about being stuck at our shop, or asks what happens if the repair does not go ahead -> "You're not stuck there. If the repair isn't something you want to go ahead with, we'll tow it on to {{destination}} at no cost to you." Do not put a time or a day on that onward tow, and never discuss who pays us or why a repair was not approved.]`,
+        `[AGENT: If the customer worries about being stuck at our shop, or asks what happens if the repair does not go ahead -> "${AUTHORIZED_LINES.notStuck}" Do not put a time or a day on that onward tow, and never discuss who pays us or why a repair was not approved.]`,
         // Session 75 — the tow home. Chris, 2026-08-15.
         //
         // This is a real capability (16 trucks, round-trip work daily) and it is
@@ -1610,7 +1623,7 @@ function scenarioA(ctx: ScriptContext): string {
         // tow pricing and RoadsideMC memberships. So "how much?" — the first
         // thing anyone asks about a rental — has a real answer that is not a
         // number the agent could get wrong: it is in the app we just texted them.
-        `[AGENT: RENTAL CARS. If the customer asks about a rental, a loaner, or how they get around while the car is in the shop -> "We have rental cars as well. We can bring one to the shop, or out to your home, and do the paperwork digitally — or run you over to our rental location on Westerville Road, whichever suits. You'd need your driver's license and full coverage insurance. The rental offers are all in the Roadside App I'm texting you." State the full coverage requirement EVERY time you mention a rental — do not leave it to the handover. Do NOT quote a rate, do NOT say it is free or included, and do NOT promise a particular vehicle or that one is available today. If they ask the price, point them to the app.]`,
+        `[AGENT: RENTAL CARS. If the customer asks about a rental, a loaner, or how they get around while the car is in the shop -> "${AUTHORIZED_LINES.rental}" State the full coverage requirement EVERY time you mention a rental — do not leave it to the handover. Do NOT quote a rate, do NOT say it is free or included, and do NOT promise a particular vehicle or that one is available today. If they ask the price, point them to the app.]`,
         // The ride runs from OUR shops only. That single rule makes the whole
         // thing coherent: a RoadsideMC member has it included, a non-member has
         // it billed to the repair invoice — and a repair invoice only exists if
@@ -1622,8 +1635,8 @@ function scenarioA(ctx: ScriptContext): string {
         // objection a discount cannot touch. Framed as what they gain by coming
         // to us, never as something withheld for not.
         `[AGENT: GETTING HOME — NOW. The ride service runs from OUR partner shops ONLY. We do not run it from an out-of-network shop.]`,
-        `[AGENT: If the vehicle IS going to one of our shops — they accepted the offer, or were already headed there — and they ask how they get home, say they have no ride, or worry about being stranded -> "We can usually sort a ride for you — the driver may be able to run you somewhere close by, or we can arrange a rideshare from the shop to wherever you need to be." Then you MUST say how it is paid for, before they accept: "If you're a RoadsideMC member it's already included in your plan. If you're not, it goes on the repair invoice at the shop — our office will confirm that with you." Say "usually" and "arrange", never "we will". Do NOT promise the tow truck has room or that the driver will do it — that depends on the truck, the load and how many of you there are. Do NOT commit to a distance and do NOT quote an amount. NEVER let a customer accept a ride without hearing that it goes on the repair invoice if they are not a member.]`,
-        `[AGENT: If the customer is KEEPING their own destination and asks about a ride -> you may NOT offer one, and must not hint that we might. Say: "For a ride we'd need the car going to one of our shops — but our office can talk through the options with you." Do not argue and do not repeat the offer.]`,
+        `[AGENT: If the vehicle IS going to one of our shops — they accepted the offer, or were already headed there — and they ask how they get home, say they have no ride, or worry about being stranded -> "${AUTHORIZED_LINES.rideOffer}" Then you MUST say how it is paid for, before they accept: "${AUTHORIZED_LINES.ridePayment}" Say "usually" and "arrange", never "we will". Do NOT promise the tow truck has room or that the driver will do it — that depends on the truck, the load and how many of you there are. Do NOT commit to a distance and do NOT quote an amount. NEVER let a customer accept a ride without hearing that it goes on the repair invoice if they are not a member.]`,
+        `[AGENT: If the customer is KEEPING their own destination and asks about a ride -> you may NOT offer one, and must not hint that we might. Say: "${AUTHORIZED_LINES.rideKeeping}" Do not argue and do not repeat the offer.]`,
         `[AGENT: You MAY raise the ride as a reason to come to us when the customer declines on DISTANCE or inconvenience — "that shop is out of my way", "it's too far", "how would I even get home from there". Say it as something they gain: "One thing worth knowing — if it goes to {{nearest_shop}} we can sort you a ride home from there, which we can't do from {{destination}}." Never say it as a threat, never imply we are withholding anything, and drop it the moment they decline again.]`,
         `[AGENT: GETTING THE CAR HOME — LATER. If they ask how the car gets back to them after the repair, or say the shop is out of their way -> "When the repair's done, you can request a tow home — either through your motor club again, or straight from the Roadside App I'm texting you. The app also has one-off tows and membership options, and the pricing is all in there." Do NOT say or imply that tow is free, included, or covered. Do NOT quote a price for it. Do NOT state whether their motor club will cover a second tow — that is between them and their club. If they say their club will not cover it, note that plenty of people hold more than one membership and either another club or the app will do it.]`,
         `[AGENT: If the customer asks whether their insurance or warranty covers it -> "Our partner shops take most aftermarket repair policies. I can note down who you're insured with and have our office team check your coverage with them directly. The diagnostic itself is free either way, so you'd know what you're dealing with before spending anything." Take the provider NAME only — never ask for a policy number, member id, or date of birth. Do not say the office will call "right now" or give any timeframe, and never state that a specific policy is or is not covered.]`,

@@ -23,6 +23,7 @@
  */
 import {
   AAA_CLARIFY,
+  AUTHORIZED_LINES,
   BODY_OPEN_DOOR_LINE,
   CONFIRM_LINES,
   OUR_SHOP_CLARIFY,
@@ -359,7 +360,34 @@ function slimScenarioA(ctx: ScriptContext): string[] {
         say(interpolate(override(ctx, 'offer_2_reassurance') ?? o.defaultOffer2Reassurance, vars)),
       ];
 
-  return [...confirm, ...offer, ...followUp, ...closeSteps(ctx, true)];
+  return [...confirm, ...offer, ...followUp, ...ifAskedStep(ctx, { notStuck: true, rentals: ctx.rentalsAvailable }), ...closeSteps(ctx, true)];
+}
+
+/**
+ * Authorized answers that are DISCLOSURES (Chris, 2026-10-09: F4/F5). They stay
+ * in the script rather than the knowledge base, because a disclosure that
+ * depends on retrieval is a disclosure that can fail to happen. Emitted only on
+ * calls where the thing they disclose is actually on offer:
+ *   ride + payment   — any call carrying an offer (every offer offers the ride)
+ *   not stuck there  — scenario A with a real destination to tow on to
+ *   rental           — scenario A, and only if the tenant mentions rentals
+ */
+function ifAskedStep(ctx: ScriptContext, opts: { notStuck: boolean; rentals: boolean }): string[] {
+  return [
+    step('11 IF ASKED (never volunteer)'),
+    sayIf(
+      'the car is going to one of our shops and they ask how they get home or have no ride',
+      `"${AUTHORIZED_LINES.rideOffer} ${AUTHORIZED_LINES.ridePayment}"`,
+    ),
+    sayIf('they are keeping their own destination and ask about a ride', `"${AUTHORIZED_LINES.rideKeeping}"`),
+    ...(opts.notStuck && hasSeparateDestination(ctx)
+      ? [sayIf('they worry about being stuck at our shop or not going ahead with the repair', `"${AUTHORIZED_LINES.notStuck}"`)]
+      : []),
+    ...(opts.rentals
+      ? [sayIf('they ask about a rental, a loaner or getting around', `"${AUTHORIZED_LINES.rental}"`)]
+      : []),
+    note('Nobody takes a ride before hearing the RoadsideMC sentence. Never a time, rate or "free"; never who pays us.'),
+  ];
 }
 
 function slimScenarioB(ctx: ScriptContext): string[] {
@@ -385,6 +413,8 @@ function slimScenarioC(ctx: ScriptContext): string[] {
         note('No shop talk before they answer. Body shop, chosen dealer, unsure or no repair: no offer. One offer only; a no ends it.'),
         sayIf('it is going to a repair shop or garage that is not ours', `"${cond.repairShop}"`),
         sayIf('it is going home with a mechanical fault', `"${cond.home}"`),
+        // Both conditional offers promise a ride home, so its disclosure travels with them.
+        ...ifAskedStep(ctx, { notStuck: false, rentals: false }),
       ]
     : [step('8 NO OFFER'), note('No repair-shop offer on this call, not even for "next time".')];
   return [

@@ -44,10 +44,10 @@ Legacy sources: `globalRules()`, the scenario renderers in `flip-scripts.ts`, te
 | PREFERENCE | CORE 10, and SCRIPT [10 REASSURANCE]. Also KB objection-regular-shop |
 | EXCEPTION — INTERRUPTED OFFER | CORE 9. The reframe-only addendum is in the SCRIPT [8a ANNOUNCE] note. Also KB refusals-and-interruptions |
 | REFUSAL (offer-2 bucket) | SCRIPT [9] note ("Another no, 'I'm good' or silence is the second refusal") and CORE 8 |
-| AUTHORIZED ANSWERS | KB: rental-cars, getting-home-ride, getting-the-car-home, not-stuck-at-your-shop, app-questions, insurance-coverage-question |
-| RENTAL CARS | KB rental-cars (verbatim). CORE 15 is the guard |
-| GETTING HOME — NOW | KB getting-home-ride (verbatim, including the payment disclosure). CORE 15 is the guard. The distance version is the SCRIPT [8c] ride line |
-| KEEPING (their own destination) | KB getting-home-ride, second half, verbatim |
+| AUTHORIZED ANSWERS | Disclosures → SCRIPT [11 IF ASKED] (ride + payment, keeping, not stuck, rental), emitted only where they apply. The rest → KB getting-the-car-home, app-questions, insurance-coverage-question |
+| RENTAL CARS | SCRIPT [11 IF ASKED], verbatim (full coverage included). Scenario A offers only, and only when the tenant mentions rentals (F5) |
+| GETTING HOME — NOW | SCRIPT [11 IF ASKED]: ride offer + RoadsideMC/invoice disclosure in ONE quoted line, on every call carrying an offer (F5). The distance version is the SCRIPT [8c] ride line |
+| KEEPING (their own destination) | SCRIPT [11 IF ASKED], verbatim |
 | GETTING THE CAR HOME — LATER | KB getting-the-car-home, verbatim |
 | CONVINI SOFT CLOSE | SCRIPT [CLOSE]. The close is verbatim and picked by arm; the app rules are CORE 16 |
 | WARM CLOSE | SCRIPT [WARM CLOSE], verbatim. "Don't ask if the text came through" is CORE 16 |
@@ -87,7 +87,7 @@ Legacy sources: `globalRules()`, the scenario renderers in `flip-scripts.ts`, te
 | Only phone number is {{callback_number}}; never caller ID | CORE 19. The number itself is in the SCRIPT [1 OPENING] note |
 | App: "I'm texting you the link now", no permission, no link, no "did it arrive" | CORE 16 |
 | Never mention Google reviews, incentives or gift cards | CORE 16 |
-| Hostile, in danger, or asks to stop → end the call | CORE 17 |
+| Hostile, in danger, or asks to stop → end the call | CORE 17. Changed per F2: injured or in danger → 911 advice, reassure, no offers, warm close; never just hang up. Hostile or asks to stop → end |
 
 ## 3. Tenant `custom_agent_rules`
 
@@ -150,11 +150,11 @@ Lines are matched after normalizing whitespace, case, the leading "-" and the co
 | Offer 3 (removed in 3.4) | Not rendered by legacy either (kept in CODE only for override compatibility) |
 | No partner shop → nothing to offer | SCRIPT [8 NO OFFER] note (no shop). CORE 5 |
 | Collision or glass → no mechanical offer | SCRIPT [8 NO OFFER] note (collision). CORE 7 |
-| Authorized answer: "You're not stuck there…" | KB not-stuck-at-your-shop (see flag F4) |
+| Authorized answer: "You're not stuck there…" | SCRIPT [11 IF ASKED] with this call's real destination; omitted when there is no destination (F4) |
 | Authorized answer: what's in the app | KB app-questions, verbatim |
-| Authorized answer: rentals (full coverage every time) | KB rental-cars, verbatim |
-| Authorized answer: ride now (ours only; payment disclosure before accepting) | KB getting-home-ride, verbatim |
-| Authorized answer: keeping their destination → no ride | KB getting-home-ride, verbatim |
+| Authorized answer: rentals (full coverage every time) | SCRIPT [11 IF ASKED], verbatim (F5) |
+| Authorized answer: ride now (ours only; payment disclosure before accepting) | SCRIPT [11 IF ASKED] line + note (F5) |
+| Authorized answer: keeping their destination → no ride | SCRIPT [11 IF ASKED], verbatim |
 | Authorized answer: ride as a distance lever | SCRIPT [8c] `IF` ride line (verbatim, per call). KB objection-too-far for how to use it |
 | Authorized answer: car home later | KB getting-the-car-home, verbatim |
 | Authorized answer: insurance or warranty coverage | KB insurance-coverage-question, verbatim |
@@ -209,11 +209,12 @@ Lines are matched after normalizing whitespace, case, the leading "-" and the co
 | AUTOMATED ANSWERS: no offer to recording, switchboard or receptionist | CORE 20 |
 | ADDRESS COMPREHENSION (spoken numbers, I-95, exit or mile marker, cross streets, suffix) | KB address-handling |
 
-## 6. Flags: placed, but please review
+## 6. Flags — Chris's decisions (2026-10-09)
 
-- **F1 — menus.** The legacy script's STEP 1 says "do not work through the menu". The v61 prompt says press_digit to reach the motorist (at most 2). These already conflicted on live calls. Slim follows the v61 rule (CORE 20), which is the newer, narrower one.
-- **F2 — "in danger".** Legacy says end the call when the customer is in danger; v61 says acknowledge and reassure. CORE 17 keeps both exactly as before, so the contradiction survives. It needs Chris's call.
-- **F3 — the body-shop open-door line.** In legacy it is an unconditional `AI:` line placed after the decline instruction. Its code comment says it belongs on the decline path, so slim emits it as `IF they decline or stay put`. Confirm that is the intent.
-- **F4 — "You're not stuck there".** Legacy fills in `{{destination}}`. The KB is static, so it says "[their original destination]" and tells the agent to use the script's destination. The words are otherwise unchanged.
-- **F5 — KB-dependent compliance answers.** The ride payment disclosure and the rental full-coverage rule now reach the agent only when the KB retrieves them. CORE 15 is a guard (never free or included; use the KB wording), but retrieval should be tested on these two before go-live.
-- **F6 — slim needs the core prompt.** The slim body relies on CORE rules (the IF format, exit line, consent line, ETA line). `SCRIPT_MODE=slim` must ship together with a Retell agent version whose general prompt is `retell/core_prompt.md` and with the knowledge pack attached. On the v61 prompt alone, the slim body is unsafe.
+- **F1 — menus.** Follow v61: press_digit to reach the motorist, two digits at most (CORE 20).
+- **F2 — injured or in danger.** Do not end the call. Tell them to call 911, reassure them a driver is coming, skip all offers, warm close; never just hang up (CORE 17, KB safety-reassurance). This is a slim-only change; legacy is untouched.
+- **F3 — body-shop open-door line.** Decline-only, as built.
+- **F4 — "You're not stuck there".** Moved into the script with this call's real destination (SCRIPT [11 IF ASKED]). The KB file and its placeholder are removed.
+- **F5 — disclosures.** The ride offer + RoadsideMC/invoice disclosure, the keeping-your-own-destination answer, and the rental full-coverage answer live in the script, emitted in code only where they apply. Ride: every call carrying an offer, including scenario C's conditional offers, which promise a ride although legacy never disclosed its cost there. Rental: scenario A offers, and only when the tenant's `mention_rentals` is on (legacy showed it regardless of that setting). The KB files are removed.
+- **F6 — rollout.** A new agent version is fine. Test first, then flip SCRIPT_MODE=slim.
+- **Rule 1 vs rule 3.** Rule 1 now says "never read the `AI:` label aloud" instead of "never say AI", so "Are you a robot?" gets an honest answer under rule 3.
