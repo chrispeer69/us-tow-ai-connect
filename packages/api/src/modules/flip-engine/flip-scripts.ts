@@ -33,6 +33,8 @@
  * Format: `<major>.<minor>` — major for a structural change (a scenario's flow,
  * the offer ladder), minor for wording inside an existing structure.
  */
+import { SLIM_MAX_TOKENS, estimateTokens, renderSlimCallBody } from './flip-scripts-slim';
+
 export type ScriptVariant = 'control' | 'reframe';
 
 /**
@@ -56,7 +58,7 @@ export function pickScriptVariant(seed: string | null | undefined): ScriptVarian
   return hash % 2 === 0 ? 'control' : 'reframe';
 }
 
-function isReframe(ctx: ScriptContext): boolean {
+export function isReframe(ctx: ScriptContext): boolean {
   return ctx.scriptVariant === 'reframe';
 }
 
@@ -112,7 +114,7 @@ export const BODY_INFO_MARKERS: readonly string[] = [
  * opens the text. Renaming the destination is an operator decision, not a
  * script one.
  */
-function conviniCloseFor(ctx: ScriptContext): string {
+export function conviniCloseFor(ctx: ScriptContext): string {
   if (isReframe(ctx)) {
     // 3.1 — what the app actually is, per Chris 2026-08-15. It is an all-in-one
     // emergency services app, not a tow tracker: 24/7 roadside assistance, plus
@@ -150,6 +152,24 @@ function conviniCloseFor(ctx: ScriptContext): string {
 }
 
 export const SCRIPT_VERSION = '3.16';
+
+/**
+ * SCRIPT_MODE=slim|legacy (default legacy) — which script_body renderer runs.
+ * Read on every render, so flipping the variable and restarting is the whole
+ * rollback. Anything other than exactly "slim" is legacy.
+ */
+export type ScriptMode = 'slim' | 'legacy';
+export function scriptMode(): ScriptMode {
+  return (process.env.SCRIPT_MODE ?? '').trim().toLowerCase() === 'slim' ? 'slim' : 'legacy';
+}
+
+/**
+ * The version stamped on outbound_call_logs. Slim calls carry a "-slim"
+ * suffix so the two populations are never merged when win rates are compared.
+ */
+export function activeScriptVersion(): string {
+  return scriptMode() === 'slim' ? `${SCRIPT_VERSION}-slim` : SCRIPT_VERSION;
+}
 // 3.16 (2026-10-08) — DROP THE EMAIL QUESTION (reverses 3.14). Chris: "remove
 //   the email request - not required to accomplish our goals - if it is eating
 //   into the prompt time - not worth the spend". The 10-07 review found it the
@@ -739,7 +759,7 @@ export interface ScriptContext {
 // Small helpers
 // ---------------------------------------------------------------------------
 
-function interpolate(text: string, vars: Record<string, string>): string {
+export function interpolate(text: string, vars: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_m, name) => vars[name] ?? '');
 }
 
@@ -766,7 +786,7 @@ function normalizeLocationForCompare(value: string | null | undefined): string {
     .join('');
 }
 
-function hasSeparateDestination(ctx: ScriptContext): boolean {
+export function hasSeparateDestination(ctx: ScriptContext): boolean {
   const destination = ctx.destination.trim().toLowerCase();
   if (!destination || destination === 'your destination' || destination === 'your location') {
     return false;
@@ -776,7 +796,7 @@ function hasSeparateDestination(ctx: ScriptContext): boolean {
   return pickup.length === 0 || dropoff.length === 0 || pickup !== dropoff;
 }
 
-function destinationPlanSentence(ctx: ScriptContext): string {
+export function destinationPlanSentence(ctx: ScriptContext): string {
   // "Your driver is headed to {{destination}}" reads as the truck's next stop,
   // and seven sampled customers on 2026-08-12 heard it as the truck skipping
   // them. Naming both legs in one sentence removes the panic and the 30-90s of
@@ -798,7 +818,7 @@ function destinationPlanSentence(ctx: ScriptContext): string {
  * Under 0.5 mi the rounded number is meaningless, so no distance is claimed at
  * all. "just" is reserved for genuinely near.
  */
-function shopDistanceShort(miles: number | null | undefined): string {
+export function shopDistanceShort(miles: number | null | undefined): string {
   if (miles == null || !Number.isFinite(miles) || miles < 0.5) return '';
   const unit = miles === 1 ? 'mile' : 'miles';
   return miles <= 3
@@ -822,7 +842,7 @@ const COLLISION_SUBCATEGORIES = new Set([
 const GLASS_RE = /\b(glass|windshield|windscreen|window|rock chip)\b/i;
 
 /** True when the job is specifically glass rather than general body work. */
-function isGlassJob(ctx: ScriptContext): boolean {
+export function isGlassJob(ctx: ScriptContext): boolean {
   return GLASS_RE.test(`${ctx.issue ?? ''} ${ctx.issueSubcategory ?? ''}`);
 }
 
@@ -832,7 +852,7 @@ function isGlassJob(ctx: ScriptContext): boolean {
  * glass damage; all declined instantly and two had said "body shop" a turn
  * earlier. Checks the free-text issue too, since glass has no subcategory.
  */
-function isCollisionOrGlass(ctx: ScriptContext): boolean {
+export function isCollisionOrGlass(ctx: ScriptContext): boolean {
   if (ctx.issueSubcategory && COLLISION_SUBCATEGORIES.has(ctx.issueSubcategory)) {
     return true;
   }
@@ -846,7 +866,7 @@ function isCollisionOrGlass(ctx: ScriptContext): boolean {
  * and junk values in the name field; greeting someone as "39.9612" ends the
  * call before it starts.
  */
-function isUnusableName(name: string | null | undefined): boolean {
+export function isUnusableName(name: string | null | undefined): boolean {
   const n = (name ?? '').trim();
   if (n.length < 2) return true;
   if (/\d/.test(n) && /[.,-]/.test(n)) return true; // coordinate-ish
@@ -866,7 +886,7 @@ function isUnusableName(name: string | null | undefined): boolean {
  * one more word; null otherwise. "Pat" alone or a business name is not a full
  * name to read back.
  */
-function usableFullName(ctx: ScriptContext): string | null {
+export function usableFullName(ctx: ScriptContext): string | null {
   if (isUnusableName(ctx.customerFirstName)) return null;
   const full = (ctx.customerFullName ?? '').replace(/\s+/g, ' ').trim();
   const parts = full.split(' ').filter(Boolean);
@@ -876,21 +896,24 @@ function usableFullName(ctx: ScriptContext): string | null {
 }
 
 /** 3.13 — STEP 2b. Confirm a full name, complete a partial one, or ask for both. */
-function confirmNameBlock(ctx: ScriptContext, vars: Record<string, string>): string {
-  const ask = usableFullName(ctx)
+export function nameAskLine(ctx: ScriptContext): string {
+  return usableFullName(ctx)
     ? `AI: "And so the driver has the right name, I have you down as {{customer_full_name}} — is that right?"`
     : !isUnusableName(ctx.customerFirstName)
       ? `AI: "And can I get your last name, so the driver has it right?"`
       : `AI: "And can I get your first and last name for the driver?"`;
+}
+
+function confirmNameBlock(ctx: ScriptContext, vars: Record<string, string>): string {
   return interpolate(
     `[STEP 2b — CONFIRM FULL NAME]
-${ask}
+${nameAskLine(ctx)}
 [AGENT: We need a FIRST and a LAST name on every job. This is one of the few things you DO read back: if the customer gives or corrects a name, say it back once ("Thanks — Pat Smith, got it") so the spelling is checked, then move on. If they spell it, take the spelling. If they only give one name, ask once for the other. If they will not give a last name, say "No problem" and move on — never press, never guess, never invent one, and never read a name off the ticket that they did not confirm. Record the first and last name exactly as the customer gave them.]`,
     vars,
   );
 }
 
-function baseVars(ctx: ScriptContext): Record<string, string> {
+export function baseVars(ctx: ScriptContext): Record<string, string> {
   return {
     rep_name: ctx.repName,
     company_name: ctx.companyName,
@@ -929,7 +952,7 @@ function baseVars(ctx: ScriptContext): Record<string, string> {
 
 /** Opening + purpose, shared verbatim by all scenarios.
  *  "on behalf of {{motor_club}}" is dropped when no motor club is present. */
-function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
+export function openingLines(ctx: ScriptContext): { identify: string; purpose: string } {
   // Two calls on 2026-08-11 greeted the customer with an unusable name field —
   // a coordinate string in one case. Better to ask who we're speaking to than
   // to read junk at them.
@@ -941,6 +964,15 @@ function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string 
     : reframe
       ? `AI: "Hi, is that {{customer_first_name}}? This is {{rep_name}} from {{company_name}} — I'm an AI assistant, and I'm calling about your tow request."`
       : `AI: "Hi, this is {{rep_name}} calling from {{company_name}} about the tow request. I'm the AI assistant helping confirm the details. Am I speaking with {{customer_first_name}}?"`;
+  const purpose = reframe
+    ? `AI: "I'll confirm your tow details, and I can also save you some money at one of our partner repair shops. Let's get the details out of the way first."`
+    : `AI: "Thanks. I'll keep this quick and start with your pickup details."`;
+  return { identify, purpose };
+}
+
+function openingBlock(ctx: ScriptContext, vars: Record<string, string>): string {
+  const reframe = isReframe(ctx);
+  const { identify, purpose: purposeLine } = openingLines(ctx);
 
   const defaultOpening = `[STEP 1 — OPENING / IDENTIFICATION]
 [AGENT: The very next line is the first thing the customer hears, word for word, starting at the opening quotation mark. "AI:" is a label for you, the reader — never say the word "AI", never speak the label or the quotation marks, and never narrate that you are beginning, waiting, or about to speak. On 2026-08-26 through 2026-08-28 this happened on the opening line itself in multiple calls ('AI: "Hi, is that Derrick?', 'I need to wait for the person to answer before speaking. Let me begin with the opening line as scripted.') — it is the single most damaging place for this to happen, because it is the first thing anyone hears.]
@@ -949,10 +981,10 @@ ${identify}
 
   const defaultPurpose = reframe
     ? `[STEP 2 — PURPOSE OF CALL]
-AI: "I'll confirm your tow details, and I can also save you some money at one of our partner repair shops. Let's get the details out of the way first."
+${purposeLine}
 [AGENT: This sentence is the whole point of the reframe arm — it tells the customer up front that an offer is coming, so the offer later is a promise kept rather than a surprise. Say it in full. Do not ask whether now is a good time, and do not ask permission to make the offer later. Proceed directly into pickup confirmation unless the customer interrupts.]`
     : `[STEP 2 — PURPOSE OF CALL]
-AI: "Thanks. I'll keep this quick and start with your pickup details."
+${purposeLine}
 [AGENT: Do not ask whether now is a good time. Proceed directly into pickup confirmation unless the customer interrupts.]`;
 
   const opening = ctx.scriptBlocks?.opening ?? ctx.globalScriptBlocks?.opening ?? defaultOpening;
@@ -960,6 +992,20 @@ AI: "Thanks. I'll keep this quick and start with your pickup details."
 
   return [interpolate(opening, vars), ``, interpolate(purpose, vars)].join('\n');
 }
+
+/** Spoken lines of the confirm steps — shared verbatim by the legacy and slim renderers. */
+export const CONFIRM_LINES = {
+  pickup: `AI: "I have your pickup location as {{pickup_location}}. Is that correct?"`,
+  vehicle: `AI: "And I have a {{vehicle}}. Is that right?"`,
+  colorDrivetrain: `AI: "What color is it? And do you happen to know if it's front-wheel, rear-wheel or all-wheel drive?"`,
+  winchLocation: `AI: "For this winch-out, I have the service location as {{pickup_location}}. Is that correct?"`,
+  serviceLocation: `AI: "I do not have a separate tow destination listed, so I have this as service at {{pickup_location}}. Is that correct?"`,
+  deliveryDestination: `AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"`,
+  missingDestination: `AI: "I want to make sure I have the right drop-off for you — can you tell me the name or address of the shop this is going to?"`,
+  intakeAccess: `AI: "Couple of quick things so the driver arrives ready — where's the vehicle sitting and which way is it facing? And are all four tires up?"`,
+  intakeKeys: `AI: "And will you be there to meet the driver with the keys?"`,
+  winchPhotos: `AI: "For the winch-out, please have a few photos of the situation ready. When the driver calls, they may ask you to text those photos so they can see the depth of the problem before they arrive."`,
+} as const;
 
 /** Steps 3-6: confirm pickup, vehicle, issue, destination. Shared by A/B/C/D.
  *  `clarifyIssueLine` lets each scenario tailor the issue question. */
@@ -973,7 +1019,7 @@ function confirmBlock(
   const isWinchOut = ctx.issueSubcategory === 'winch_out';
   const separateDestination = hasSeparateDestination(ctx);
   const defaultPickup = `[STEP 3 — CONFIRM PICKUP LOCATION]
-AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
+${CONFIRM_LINES.pickup}
 [AGENT: If the customer corrects the location, acknowledge the correction warmly and confirm the corrected version back to them. This correction will be saved to the job notes.]`;
 
   // Color and drivetrain are asked OPEN, not confirmed. The motor club ticket
@@ -983,9 +1029,9 @@ AI: "I have your pickup location as {{pickup_location}}. Is that correct?"
   // Drivetrain earns its seconds: AWD put on dollies is damage, not an
   // inconvenience.
   const defaultVehicle = `[STEP 4 — CONFIRM VEHICLE DETAILS]
-AI: "And I have a {{vehicle}}. Is that right?"
+${CONFIRM_LINES.vehicle}
 [AGENT: If they correct the vehicle, acknowledge and confirm the corrected details.]
-AI: "What color is it? And do you happen to know if it's front-wheel, rear-wheel or all-wheel drive?"
+${CONFIRM_LINES.colorDrivetrain}
 [AGENT: Ask both openly — do NOT read the color or drivetrain off the ticket and ask them to confirm it, because the ticket is wrong about half the time and a confirm invites a reflexive yes. "I don't know" is a perfectly good answer on drivetrain: accept it, note it as unknown, and move on. Never guess.]`;
 
   const defaultIssue = `[STEP 5 — CLARIFY THE ISSUE]
@@ -994,14 +1040,14 @@ ${clarifyIssueLine}
 
   const defaultDestination = isWinchOut
     ? `[STEP 6 — CONFIRM WINCH-OUT SERVICE LOCATION]
-AI: "For this winch-out, I have the service location as {{pickup_location}}. Is that correct?"
+${CONFIRM_LINES.winchLocation}
 [AGENT: Do not ask for or assume a delivery destination on winch-out calls. If the customer volunteers that they also need the vehicle towed after recovery, then confirm that destination back to them.]`
     : !separateDestination
     ? `[STEP 6 — CONFIRM SERVICE LOCATION]
-AI: "I do not have a separate tow destination listed, so I have this as service at {{pickup_location}}. Is that correct?"
+${CONFIRM_LINES.serviceLocation}
 [AGENT: Do not ask for a delivery destination unless the customer says the vehicle also needs to be towed somewhere after the service.]`
     : `[STEP 6 — CONFIRM DELIVERY DESTINATION]
-AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
+${CONFIRM_LINES.deliveryDestination}
 [AGENT: Confirm the destination and capture what kind of place it is, for the notes only. This script has already decided from the actual issue whether a shop offer is appropriate — the customer's own word for the destination ("body shop" included) never changes that. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess or lock in a destination type and do NOT move to the close over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" One call closed over an unclear "Um," and logged the job as an unclassified destination that a dispatcher then had to call back to sort out.]`;
 
   const pickup = ctx.scriptBlocks?.confirm_pickup ?? ctx.globalScriptBlocks?.confirm_pickup ?? defaultPickup;
@@ -1083,10 +1129,10 @@ function dispatchIntakeBlock(): string {
     // The 08-17 transcripts show customers reliably answer a two-part question
     // of this shape ("Parking lot and nose out", "empty warehouse, nose out"),
     // so the merge costs no data and saves a turn.
-    `AI: "Couple of quick things so the driver arrives ready — where's the vehicle sitting and which way is it facing? And are all four tires up?"`,
+    CONFIRM_LINES.intakeAccess,
     `[AGENT: One turn, both halves. Capture it the way they say it — "on the curb in front of the house", "nose out", "tight turn to get in". Note anything that would stop a truck reaching it: a low garage, a narrow lane, a locked gate, a parking structure. If a tire is flat, capture WHICH one. If they say it will not roll, will not steer, or will not come out of park, capture that too — it matters as much as the tires. If they answer only one half, ask just for the missing half; do not re-ask the whole question.]`,
     ``,
-    `AI: "And will you be there to meet the driver with the keys?"`,
+    CONFIRM_LINES.intakeKeys,
     `[AGENT: GATE. If YES, note that they will be on scene with the keys and move on.]`,
     `[AGENT: If NO, or if they say they will leave the keys somewhere — capture exactly what they said, for example "keys left in my mailbox". Then do NOT improvise what happens next. Do not promise we will tow without them, do not describe a release form, a signature, a waiver or photographs, and do not quote any policy. Say: "Thanks — I'll note that, and our office will call you to confirm the details before the driver heads over." Then continue. Committing us to a tow we cannot legally make, or turning one away that we could have done, are both worse than a callback.]`,
   ].join('\n');
@@ -1097,22 +1143,28 @@ function issueGuidanceBlock(ctx: ScriptContext): string {
   return [
     `[STEP 6B — WINCH-OUT PHOTO GUIDANCE]`,
     `[AGENT: A winch-out usually means the vehicle is stuck and needs to be pulled back onto solid ground, such as after sliding off the road, getting stuck in mud, snow, ice, rocks, or a ditch. Do not treat this as a normal repair-shop tow unless the customer says they also need a tow afterward.]`,
-    `AI: "For the winch-out, please have a few photos of the situation ready. When the driver calls, they may ask you to text those photos so they can see the depth of the problem before they arrive."`,
+    CONFIRM_LINES.winchPhotos,
   ].join('\n');
 }
+
+export const WARM_CLOSE_LINES = {
+  anythingElse: `AI: "Anything else before you go?"`,
+  reframeBye: `AI: "Bye for now."`,
+  controlBye: `AI: "Drive safe."`,
+} as const;
 
 /** Warm close, shared by all scenarios. */
 function warmCloseBlock(ctx: ScriptContext, vars: Record<string, string>): string {
   const defaultClose = isReframe(ctx)
     ? `=== WARM CLOSE (all scenarios) ===
 [AGENT: Do not ask whether the app text came through.]
-AI: "Anything else before you go?"
-AI: "Bye for now."
+${WARM_CLOSE_LINES.anythingElse}
+${WARM_CLOSE_LINES.reframeBye}
 [AGENT: End the call.]`
     : `=== WARM CLOSE (all scenarios) ===
 [AGENT: Do not ask whether the app text came through.]
-AI: "Anything else before you go?"
-AI: "Drive safe."
+${WARM_CLOSE_LINES.anythingElse}
+${WARM_CLOSE_LINES.controlBye}
 [AGENT: End the call.]`;
 
   const close = ctx.scriptBlocks?.warm_close ?? ctx.globalScriptBlocks?.warm_close ?? defaultClose;
@@ -1193,7 +1245,14 @@ function globalRules(ctx: ScriptContext): string {
 // SCENARIO A — Competitor Auto Repair Shop (confirm + 3-tier flip + soft CONVINI)
 // ---------------------------------------------------------------------------
 
-function scenarioA(ctx: ScriptContext): string {
+/** 3.0 reframe — announces the offer as a statement. Shared verbatim. */
+export const REFRAME_OFFER_BRIDGE = `AI: "Now I would like to mention a few great offers from our in-network partner shops."`;
+
+/**
+ * Scenario A's per-call offer: every spoken offer line, its terms and its
+ * eligibility, decided here once and shared by the legacy and slim renderers.
+ */
+export function scenarioAOffer(ctx: ScriptContext) {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened? For example, is the engine light on, is it overheating, or did it just not start?"`;
   const vars = baseVars(ctx);
   const distanceShort = shopDistanceShort(ctx.nearestShopDistanceMiles);
@@ -1204,10 +1263,10 @@ function scenarioA(ctx: ScriptContext): string {
   // where the car was going. Ask for it outright instead of bluffing.
   const destinationIntent = hasSeparateDestination(ctx)
     ? `[STEP 6 — CONFIRM INTENDED DESTINATION WITHOUT LOCKING IT]
-AI: "I have the destination as {{destination}}. Is that still correct, and is it a repair shop, body shop, your home, or somewhere else?"
+${CONFIRM_LINES.deliveryDestination}
 [AGENT: Capture whether the destination is a repair shop, body shop, home, dealership, or something else — for the notes only. Do NOT use the customer's own word for it to decide whether to make the offer below: this script has ALREADY decided that from the actual issue before the call started. Customers call any place that works on cars a "body shop", including a mechanic for a no-start, overheating, flat tire, or key fob job — that word alone is not collision damage. If PHASE 2 below contains an offer, make it, regardless of what the customer just called the destination. If the answer is unclear or trails off ("um", a pause, a non-committal sound) — do NOT guess the destination type and do NOT move on over it. Ask once more: "Sorry, I want to get this right — is that a repair shop, a body shop, your home, or somewhere else?" Only skip the offer if PHASE 2 itself contains no offer, or if the customer gives a hard decline such as "do not switch me", "no offers", or "just send the tow" — then say "Understood. I'll keep your original destination and focus on getting the driver routed." and continue to the CONVINI close.]`
     : `[STEP 6 — DESTINATION IS MISSING: ASK, DO NOT GUESS]
-AI: "I want to make sure I have the right drop-off for you — can you tell me the name or address of the shop this is going to?"
+${CONFIRM_LINES.missingDestination}
 [AGENT: You do NOT have a destination on file for this job. Never state or imply one, never say a placeholder, and never improvise a vague phrase like "the shop you mentioned". Capture what the customer says and use it for the rest of the call. If they cannot give one, say you'll have dispatch confirm the drop-off and continue.]`;
 
   // Front-loaded: four customers cut the previous pitch off mid-sentence, so the
@@ -1380,6 +1439,19 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
         : a.name,
     )
     .join('; ');
+  return {
+    clarify, vars, destinationIntent, shopAddressPhrase, hasChoice, isTireJob,
+    defaultOffer1, defaultOffer2, defaultOffer2Reassurance, defaultOffer3, consentGate, defaultConvini,
+    offersAllowed, alternates, alternateList,
+  };
+}
+
+function scenarioA(ctx: ScriptContext): string {
+  const {
+    clarify, vars, destinationIntent, hasChoice, isTireJob, defaultOffer1, defaultOffer2,
+    defaultOffer2Reassurance, consentGate, defaultConvini, offersAllowed, alternates, alternateList,
+  } = scenarioAOffer(ctx);
+
   // {{nearest_shop}} IS the closest partner we have to their pickup, so never
   // promise something nearer. What we can do is name the rest of the network —
   // a customer rejecting a shop on "distance" often means direction, not miles
@@ -1394,7 +1466,7 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
   const offerBridge = isReframe(ctx)
     ? [
         ``,
-        `AI: "Now I would like to mention a few great offers from our in-network partner shops."`,
+        REFRAME_OFFER_BRIDGE,
         `[AGENT: This is a statement. Do NOT turn it into a question, do not ask whether they would like to hear the offers, and do not wait for permission — go straight into the offer below.]`,
       ]
     : [];
@@ -1616,9 +1688,9 @@ AI: "I want to make sure I have the right drop-off for you — can you tell me t
 // SCENARIO B — Auto Body / Collision (confirm + soft mention, NO flip + medium CONVINI)
 // ---------------------------------------------------------------------------
 
-function scenarioB(ctx: ScriptContext): string {
+/** Scenario B's spoken lines, decided per call. Shared by the legacy and slim renderers. */
+export function scenarioBLines(ctx: ScriptContext): { clarify: string; statement: string } {
   const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
-  const vars = baseVars(ctx);
   const bodyShops = [ctx.bodyShop1, ctx.bodyShop2].filter(Boolean);
   const shopList = bodyShops.length ? `, like ${bodyShops.join(' and ')}` : '';
 
@@ -1716,7 +1788,15 @@ function scenarioB(ctx: ScriptContext): string {
     // Option 4 — storage / undecided. No shop has been chosen, so there is
     // nothing to displace and availability is the whole message.
     : `AI: "${damageOpener} ${closingLine}. While things get sorted — we own our own body shops${shopList}, and we're not DRP, so if you end up needing somewhere to put it or someone to look at it, we're here. I'm texting you the info."`;
+  return { clarify, statement: bodyShopMention };
+}
 
+/** Scenario B — said when a body customer declines or stays put. */
+export const BODY_OPEN_DOOR_LINE = `AI: "No problem at all. And if anything changes — today or next week — give us a call. We own body shops here in town and we'd be glad to help."`;
+
+function scenarioB(ctx: ScriptContext): string {
+  const vars = baseVars(ctx);
+  const { clarify, statement: bodyShopMention } = scenarioBLines(ctx);
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
     `=== CONVINI SOFT CLOSE ===`,
@@ -1774,7 +1854,7 @@ function scenarioB(ctx: ScriptContext): string {
     // it ("I'll have your driver come to you at X first..."), and saying the
     // whole plan twice inside thirty seconds is how a warm close starts
     // sounding automated.
-    `AI: "No problem at all. And if anything changes — today or next week — give us a call. We own body shops here in town and we'd be glad to help."`,
+    BODY_OPEN_DOOR_LINE,
     ``,
     ...conviniBlock,
     ``,
@@ -1786,7 +1866,8 @@ function scenarioB(ctx: ScriptContext): string {
 // SCENARIO C — Residential / Unknown (confirm + HARD CONVINI sell)
 // ---------------------------------------------------------------------------
 
-function scenarioC(ctx: ScriptContext): string {
+/** Scenario C's issue question, decided per call. Shared by the legacy and slim renderers. */
+export function scenarioCClarify(ctx: ScriptContext): string {
   const sub = (ctx.issueSubcategory ?? '').toLowerCase();
   const isWinchOut = sub === 'winch_out';
   const isFlat =
@@ -1798,7 +1879,27 @@ function scenarioC(ctx: ScriptContext): string {
     : isFlat
     ? `AI: "I see you have a flat tire. Which tire is it — front left, front right, rear left, or rear right? And do you have a spare?"`
     : `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what's going on so we send the right help?"`;
-  
+  return clarify;
+}
+
+/**
+ * Scenario C's conditional offer — the exact words for a confirmed repair shop
+ * and for a car going home with a fault. Null when no conditional shop is set.
+ */
+export function scenarioCConditionalOffer(ctx: ScriptContext): { shop: string; repairShop: string; home: string } | null {
+  const conditional = ctx.conditionalShop?.trim() ? ctx.conditionalShop.trim() : null;
+  if (!conditional) return null;
+  const conditionalDistance = shopDistanceShort(ctx.conditionalShopDistanceMiles);
+  return {
+    shop: conditional,
+    repairShop: `Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic — a visual inspection of up to an hour — plus up to 10 percent off parts and labor. And if you need a ride home from there, we can sort that too. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?`,
+    home: `Before I confirm the drop-off — since it needs looking at anyway, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic plus up to 10 percent off parts and labor, and sort you a ride home from there. Would you like the driver to take it there instead of home?`,
+  };
+}
+
+function scenarioC(ctx: ScriptContext): string {
+  const clarify = scenarioCClarify(ctx);
+
   const vars = baseVars(ctx);
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = ctx.pitchConvini ? [
@@ -1815,19 +1916,19 @@ function scenarioC(ctx: ScriptContext): string {
   // This exists because the gate ran before the call and the answer arrives
   // during it. The script already asks whether the destination is a repair shop;
   // until now a customer who said yes met an agent with nothing to offer.
-  const conditional = ctx.conditionalShop?.trim() ? ctx.conditionalShop.trim() : null;
-  const conditionalDistance = shopDistanceShort(ctx.conditionalShopDistanceMiles);
+  const conditionalOffer = scenarioCConditionalOffer(ctx);
+  const conditional = conditionalOffer?.shop ?? null;
   const conditionalBlock = conditional
     ? [
         `[AGENT: THE DESTINATION ON FILE IS UNCONFIRMED, so there is no offer yet. Ask the destination question as written and LISTEN. Do not mention any shop, discount or diagnostic before the customer has answered it.]`,
-        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "Before I confirm the drop-off — just so you know, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic — a visual inspection of up to an hour — plus up to 10 percent off parts and labor. And if you need a ride home from there, we can sort that too. I'd handle the drop-off with the driver if you choose that option. Would you like me to switch the drop-off to ${conditional}?"]`,
+        `[AGENT: ONLY IF the customer confirms the vehicle is going to a repair shop or garage that is not one of ours -> you may then make this offer, once: "${conditionalOffer!.repairShop}"]`,
         // Session 75 audit — this path offers a real destination change and had
         // no consent gate. Every other offer has one, for the reason recorded on
         // 2026-08-11: a win was logged from a reply given amid unrelated, partly
         // unintelligible speech. A conditional offer is no less binding than a
         // scripted one.
         `[AGENT: Before you treat any reply to that offer as a YES, you must have an unambiguous one. If the answer is unclear, partial, or arrives amid other speech, ask: "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Only log a destination change on an explicit yes.]`,
-        `[AGENT: If they say it is going HOME or to a residence and the vehicle has a mechanical problem — it will not start, overheats, a warning light, a noise, a leak, a flat — make the same offer, worded for it: "Before I confirm the drop-off — since it needs looking at anyway, ${conditional} is a certified shop${conditionalDistance ? `, ${conditionalDistance}` : ``}, and I could get you a free VIP visual mechanical diagnostic plus up to 10 percent off parts and labor, and sort you a ride home from there. Would you like the driver to take it there instead of home?" A car going home with a fault has no shop yet; that is the best moment to offer, not a reason to skip. The same consent rule applies.]`,
+        `[AGENT: If they say it is going HOME or to a residence and the vehicle has a mechanical problem — it will not start, overheats, a warning light, a noise, a leak, a flat — make the same offer, worded for it: "${conditionalOffer!.home}" A car going home with a fault has no shop yet; that is the best moment to offer, not a reason to skip. The same consent rule applies.]`,
         `[AGENT: If they say a body shop, a dealership they chose, or they are unsure, or the job needs no repair at all (fuel, jump, lockout, a tire changed at the roadside) — there is NO offer on this call. Do not mention ${conditional} at all. Go to the CONVINI close.]`,
         `[AGENT: Take a YES only if it is unambiguous. If the answer is unclear or arrives amid other speech, ask "Just so I have it clearly — is that a yes to sending the driver to ${conditional} instead?" Never infer a destination change.]`,
         `[AGENT: If they decline, accept it and move to the CONVINI close. Do not make a second or third offer on this call.]`,
@@ -1865,8 +1966,12 @@ function scenarioC(ctx: ScriptContext): string {
 // SCENARIO D — Already One of Our Shops (VIP confirm + CONVINI)
 // ---------------------------------------------------------------------------
 
+export const OUR_SHOP_CLARIFY = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
+export const OUR_SHOP_WELCOME = `AI: "Great news — your vehicle is coming to our shop at {{destination}}. When you arrive, let the front desk know you're a tow customer and they'll take priority care of you. You'll have a written estimate within one hour."`;
+export const AAA_CLARIFY = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
+
 function scenarioD(ctx: ScriptContext): string {
-  const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more so our team is ready when you arrive?"`;
+  const clarify = OUR_SHOP_CLARIFY;
   const vars = baseVars(ctx);
   const defaultConvini = conviniCloseFor(ctx);
   const conviniBlock = [
@@ -1887,7 +1992,7 @@ function scenarioD(ctx: ScriptContext): string {
     issueGuidanceBlock(ctx),
     ``,
     `=== PHASE 2: VIP WELCOME ===`,
-    `AI: "Great news — your vehicle is coming to our shop at {{destination}}. When you arrive, let the front desk know you're a tow customer and they'll take priority care of you. You'll have a written estimate within one hour."`,
+    OUR_SHOP_WELCOME,
     ``,
     ...conviniBlock,
     ``,
@@ -1900,7 +2005,7 @@ function scenarioD(ctx: ScriptContext): string {
 // ---------------------------------------------------------------------------
 
 function scenarioAaaBranded(ctx: ScriptContext): string {
-  const clarify = `AI: "I see the issue is listed as {{issue}}. Can you tell me a little more about what happened?"`;
+  const clarify = AAA_CLARIFY;
   const vars = baseVars(ctx);
   const defaultConvini = conviniCloseFor(ctx);
 
@@ -1942,6 +2047,16 @@ const SCENARIO_RENDERERS: Record<ScenarioKey, (ctx: ScriptContext) => string> = 
  * the `body` dynamic variable; the agent prompt stays generic.
  */
 export function renderCallBody(scenario: ScenarioKey, ctx: ScriptContext): string {
+  if (scriptMode() === 'slim') {
+    const slim = renderSlimCallBody(scenario, ctx);
+    // Over the ceiling the slim body has lost its point; ship the proven one.
+    if (estimateTokens(slim) <= SLIM_MAX_TOKENS) return slim;
+  }
+  return renderLegacyCallBody(scenario, ctx);
+}
+
+/** The pre-2026-10-09 renderer, unchanged. SCRIPT_MODE=legacy (the default). */
+export function renderLegacyCallBody(scenario: ScenarioKey, ctx: ScriptContext): string {
   const vars = baseVars(ctx);
   const renderer = SCENARIO_RENDERERS[scenario] ?? scenarioC;
 
@@ -1972,7 +2087,7 @@ export function renderCallBody(scenario: ScenarioKey, ctx: ScriptContext): strin
  * `[AGENT: …]` and `[STEP …]` are deliberate — the Retell prompt teaches the
  * agent to treat them as instructions and never read them aloud — so they stay.
  */
-function stripTemplateArtifacts(text: string): string {
+export function stripTemplateArtifacts(text: string): string {
   return text
     // Unresolved {{tokens}} — a variable we never supplied a value for.
     .replace(/\{\{[^}]*\}\}/g, '')
