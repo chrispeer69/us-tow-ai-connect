@@ -1204,6 +1204,23 @@ export class OutboundVoiceService {
   }
 
   /**
+   * 2026-10-10 — the log row this exact call produced, via
+   * outbound_call_logs.outbound_call_id (set at enqueue since migration 0063).
+   * Phone + recency picks the wrong row whenever one number has two recent
+   * calls (a repeat customer, a club rep on several jobs); this does not.
+   */
+  private async linkedCallLog(
+    call: { id: string; tenantId: string },
+  ): Promise<typeof outboundCallLogs.$inferSelect | undefined> {
+    const rows = await this.db
+      .select()
+      .from(outboundCallLogs)
+      .where(and(eq(outboundCallLogs.tenantId, call.tenantId), eq(outboundCallLogs.outboundCallId, call.id)))
+      .limit(1);
+    return rows[0];
+  }
+
+  /**
    * The flip log row for a call. Matched on tenant + phone + recency because
    * outbound_call_logs carries no foreign key to outbound_calls — the same join
    * syncFlipActivityFromAnalysis uses, extracted so both agree on which row
@@ -1213,6 +1230,8 @@ export class OutboundVoiceService {
     call: OutboundCallRow,
     withinHours?: number,
   ): Promise<typeof outboundCallLogs.$inferSelect | undefined> {
+    const linked = await this.linkedCallLog(call);
+    if (linked) return linked;
     const filters: SQL[] = [
       eq(outboundCallLogs.tenantId, call.tenantId),
       eq(outboundCallLogs.customerPhone, call.toPhone),
@@ -1420,18 +1439,22 @@ export class OutboundVoiceService {
     // of the same shape will always drift again.
     analysis: Partial<RetellAnalysisFields>,
   ): Promise<void> {
-    const rows = await this.db
-      .select()
-      .from(outboundCallLogs)
-      .where(
-        and(
-          eq(outboundCallLogs.tenantId, call.tenantId),
-          eq(outboundCallLogs.customerPhone, call.toPhone),
-        ),
-      )
-      .orderBy(desc(outboundCallLogs.callTime))
-      .limit(1);
-    const log = rows[0];
+    // The linked row first; phone + recency only for rows from before 0063.
+    const log =
+      (await this.linkedCallLog(call)) ??
+      (
+        await this.db
+          .select()
+          .from(outboundCallLogs)
+          .where(
+            and(
+              eq(outboundCallLogs.tenantId, call.tenantId),
+              eq(outboundCallLogs.customerPhone, call.toPhone),
+            ),
+          )
+          .orderBy(desc(outboundCallLogs.callTime))
+          .limit(1)
+      )[0];
     if (!log) return;
 
     const offer1 = normalizeOutcomeValue(analysis.offer_1_result);

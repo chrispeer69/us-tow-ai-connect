@@ -165,6 +165,7 @@ describe('per-arm daily report', () => {
     disconnectionReason: 'agent_hangup',
     transcript: 'Agent: hello',
     costCents: 30,
+    costExFeesCents: 30,
     billedSeconds: 120,
     llmAvgTokens: 3000,
     latencyP50Ms: 900,
@@ -198,6 +199,20 @@ describe('per-arm daily report', () => {
   it('totals feed the rollback check', () => {
     const tot = totalsFor(rows, 'slim_gemini');
     expect(tot).toMatchObject({ connected: 4, eligibleConnected: 4, accepted: 1 });
+    expect(tot.costDollars / tot.billedMinutes).toBeCloseTo(0.15, 5);
+  });
+
+  it('rollback cost excludes the per-call Branded Call fee and voicemails', () => {
+    // A 3-minute call: $0.45 per-minute cost + $0.10 Branded Call fee. A 15s
+    // voicemail: $0.11, almost all of it per-call fees.
+    const calls = [
+      row({ durationSeconds: 180, billedSeconds: 180, costCents: 55, costExFeesCents: 45 }),
+      row({ durationSeconds: 15, billedSeconds: 15, costCents: 11, costExFeesCents: 1, offer1Result: 'NOT_ATTEMPTED' }),
+    ];
+    const all = summarizeAb(calls)[0];
+    expect(all.avg_cost_per_min).toBeGreaterThan(0.2); // all-in, inflated by fees + voicemail
+    expect(all.cost_per_min_connected_ex_fees).toBeCloseTo(0.15, 5);
+    const tot = totalsFor(calls, 'slim_gemini');
     expect(tot.costDollars / tot.billedMinutes).toBeCloseTo(0.15, 5);
   });
 

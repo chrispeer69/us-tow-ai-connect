@@ -129,6 +129,10 @@ export function agentStatedEta(transcript: string | null | undefined): boolean {
 // Auto-rollback rule
 // ---------------------------------------------------------------------------
 
+/**
+ * Rollback totals. costDollars / billedMinutes are CONNECTED calls only and
+ * exclude per-call fees (PER_CALL_FEE_PRODUCTS) — see costExFees below.
+ */
 export interface ArmTotals {
   connected: number;
   eligibleConnected: number;
@@ -136,6 +140,15 @@ export interface ArmTotals {
   costDollars: number;
   billedMinutes: number;
 }
+
+/**
+ * Retell products billed per CALL, not per minute, identical on both arms.
+ * Branded Call ($0.10 every dial on 740-880-7758, seen 2026-10-10) would push
+ * any arm with many voicemails over $0.20/min on its own — a fee the model
+ * choice cannot change. The rollback judges the per-minute cost the A/B is
+ * actually testing; the report still shows the all-in figure beside it.
+ */
+export const PER_CALL_FEE_PRODUCTS = ['branded_outbound_call'] as const;
 
 export const ROLLBACK_MIN_CONNECTED = 50;
 /**
@@ -188,6 +201,8 @@ export interface AbCallRow {
   disconnectionReason: string | null;
   transcript: string | null;
   costCents: number | null;
+  /** costCents minus PER_CALL_FEE_PRODUCTS. */
+  costExFeesCents: number | null;
   billedSeconds: number | null;
   llmAvgTokens: number | null;
   latencyP50Ms: number | null;
@@ -208,6 +223,8 @@ export interface AbDayRow {
   hangup_before_offer: number;
   eta_violations: number;
   avg_cost_per_min: number | null;
+  /** Connected calls only, excluding per-call fees — the rollback's cost measure. */
+  cost_per_min_connected_ex_fees: number | null;
   avg_llm_tokens: number | null;
   latency_p50_ms: number | null;
   latency_p95_ms: number | null;
@@ -233,6 +250,7 @@ function median(xs: number[]): number | null {
  *   hangup before offer  connected eligible, no offer, customer hung up
  *   ETA violation        an agent turn states or confirms an arrival time
  *   $/min                Retell combined cost ÷ billed minutes, all attempts
+ *   $/min ex fees        connected calls only, minus per-call fees (Branded Call) — rollback measure
  *   latency              median of each call's e2e p50 / p95
  */
 export function summarizeAb(rows: AbCallRow[]): AbDayRow[] {
@@ -252,6 +270,9 @@ export function summarizeAb(rows: AbCallRow[]): AbDayRow[] {
     const cents = costed.reduce((a, r) => a + Number(r.costCents), 0);
     const secs = costed.reduce((a, r) => a + Number(r.billedSeconds), 0);
     const tokens = rs.map((r) => r.llmAvgTokens).filter((x): x is number => x != null);
+    const exFees = connected.filter((r) => r.costExFeesCents != null && (r.billedSeconds ?? 0) > 0);
+    const exCents = exFees.reduce((a, r) => a + Number(r.costExFeesCents), 0);
+    const exSecs = exFees.reduce((a, r) => a + Number(r.billedSeconds), 0);
     out.push({
       day,
       arm,
@@ -268,6 +289,7 @@ export function summarizeAb(rows: AbCallRow[]): AbDayRow[] {
       ).length,
       eta_violations: connected.filter((r) => agentStatedEta(r.transcript)).length,
       avg_cost_per_min: secs > 0 ? cents / 100 / (secs / 60) : null,
+      cost_per_min_connected_ex_fees: exSecs > 0 ? exCents / 100 / (exSecs / 60) : null,
       avg_llm_tokens: tokens.length ? Math.round(tokens.reduce((a, b) => a + b, 0) / tokens.length) : null,
       latency_p50_ms: median(rs.map((r) => r.latencyP50Ms).filter((x): x is number => x != null)),
       latency_p95_ms: median(rs.map((r) => r.latencyP95Ms).filter((x): x is number => x != null)),
@@ -281,12 +303,12 @@ export function totalsFor(rows: AbCallRow[], arm: AbArm): ArmTotals {
   const rs = rows.filter((r) => r.arm === arm);
   const connected = rs.filter((r) => (r.durationSeconds ?? 0) > CONNECTED_MIN_SECONDS);
   const elig = connected.filter((r) => r.flipEligible);
-  const costed = rs.filter((r) => r.costCents != null && (r.billedSeconds ?? 0) > 0);
+  const costed = connected.filter((r) => r.costExFeesCents != null && (r.billedSeconds ?? 0) > 0);
   return {
     connected: connected.length,
     eligibleConnected: elig.length,
     accepted: elig.filter((r) => (r.flipOutcome ?? '').toUpperCase() === 'ACCEPTED').length,
-    costDollars: costed.reduce((a, r) => a + Number(r.costCents), 0) / 100,
+    costDollars: costed.reduce((a, r) => a + Number(r.costExFeesCents), 0) / 100,
     billedMinutes: costed.reduce((a, r) => a + Number(r.billedSeconds), 0) / 60,
   };
 }
@@ -294,7 +316,7 @@ export function totalsFor(rows: AbCallRow[], arm: AbArm): ArmTotals {
 export const AB_CSV_COLUMNS: (keyof AbDayRow)[] = [
   'day', 'arm', 'calls', 'connected', 'eligible_connected', 'offer_made', 'offer_made_rate',
   'offer_accepted', 'offer_accepted_rate', 'hard_refusals', 'hangup_before_offer', 'eta_violations',
-  'avg_cost_per_min', 'avg_llm_tokens', 'latency_p50_ms', 'latency_p95_ms',
+  'avg_cost_per_min', 'cost_per_min_connected_ex_fees', 'avg_llm_tokens', 'latency_p50_ms', 'latency_p95_ms',
 ];
 
 export function abCsv(rows: AbDayRow[]): string {

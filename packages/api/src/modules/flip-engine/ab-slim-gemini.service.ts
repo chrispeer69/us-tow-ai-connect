@@ -6,6 +6,7 @@ import { platformSettings } from '../../db/schema';
 import { SendGridEmailService } from '../admin-digest/sendgrid-email.service';
 import {
   AB_SETTINGS_KEY,
+  PER_CALL_FEE_PRODUCTS,
   abPctFromEnv,
   effectiveAbPct,
   pickAbArm,
@@ -17,6 +18,8 @@ import {
   type AbDayRow,
   type ArmTotals,
 } from './ab-slim-gemini';
+
+const PER_CALL_FEE_SQL = PER_CALL_FEE_PRODUCTS.map((p) => `'${p.replace(/'/g, "''")}'`).join(',');
 
 export interface AbState {
   rolled_back?: boolean;
@@ -75,6 +78,7 @@ export class AbSlimGeminiService {
         oc.error as disconnection_reason,
         l.transcript,
         u.cost_cents,
+        u.cost_ex_fees_cents,
         u.billed_seconds,
         u.llm_avg_tokens,
         u.latency_p50_ms,
@@ -84,6 +88,13 @@ export class AbSlimGeminiService {
       left join lateral (
         select
           sum(r.combined_cost_cents)::float as cost_cents,
+          sum(
+            r.combined_cost_cents - coalesce((
+              select sum((pc->>'cost')::numeric)
+              from jsonb_array_elements(coalesce(r.cost_breakdown->'product_costs', '[]'::jsonb)) pc
+              where pc->>'product' = any(${sql.raw(`array[${PER_CALL_FEE_SQL}]`)})
+            ), 0)
+          )::float as cost_ex_fees_cents,
           sum(r.duration_seconds)::float as billed_seconds,
           avg(r.llm_average_tokens)::float as llm_avg_tokens,
           max(r.latency_p50_ms) as latency_p50_ms,
@@ -105,6 +116,7 @@ export class AbSlimGeminiService {
       disconnectionReason: (r.disconnection_reason as string) ?? null,
       transcript: (r.transcript as string) ?? null,
       costCents: num(r.cost_cents),
+      costExFeesCents: num(r.cost_ex_fees_cents),
       billedSeconds: num(r.billed_seconds),
       llmAvgTokens: num(r.llm_avg_tokens),
       latencyP50Ms: num(r.latency_p50_ms),
