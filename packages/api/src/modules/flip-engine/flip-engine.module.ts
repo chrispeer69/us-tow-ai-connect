@@ -13,6 +13,9 @@ import { CommandCenterModule } from '../command-center/command-center.module';
 import { SuperAdminAuthGuard } from '../super-admin/super-admin-auth.guard';
 import { AdaptersModule } from '../adapters/adapters.module';
 import { AiNotesWriterService } from './ai-notes-writer.service';
+import { AbSlimGeminiService } from './ab-slim-gemini.service';
+import { AbSlimGeminiController } from './ab-slim-gemini.controller';
+import { AdminDigestModule } from '../admin-digest/admin-digest.module';
 
 /**
  * Session 49b — Flip Engine data layer.
@@ -34,8 +37,10 @@ import { AiNotesWriterService } from './ai-notes-writer.service';
     // AI Notes write-back needs the dispatch adapters to reach the customer's
     // own job records.
     AdaptersModule,
+    // SendGridEmailService, for the A/B auto-rollback alert.
+    AdminDigestModule,
   ],
-  controllers: [FlipEngineController, FlipActivityController],
+  controllers: [FlipEngineController, FlipActivityController, AbSlimGeminiController],
   providers: [
     FlipEngineService,
     DestinationClassifierService,
@@ -43,6 +48,7 @@ import { AiNotesWriterService } from './ai-notes-writer.service';
     FlipOrchestratorService,
     FlipNotifierService,
     AiNotesWriterService,
+    AbSlimGeminiService,
     SuperAdminAuthGuard,
   ],
   exports: [
@@ -52,6 +58,7 @@ import { AiNotesWriterService } from './ai-notes-writer.service';
     FlipOrchestratorService,
     FlipNotifierService,
     AiNotesWriterService,
+    AbSlimGeminiService,
   ],
 })
 export class FlipEngineModule {}

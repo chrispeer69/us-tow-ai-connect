@@ -322,7 +322,162 @@ export default function RoadsideBoard() {
             onToggle={() => void toggleCall(c)}
           />
         ))}
+
+        <AbPanel />
       </div>
+    </div>
+  );
+}
+
+/** One row of GET /v1/admin/flip-engine/ab-slim-gemini — see ab-slim-gemini.ts. */
+interface AbDayRow {
+  day: string;
+  arm: 'slim_gemini' | 'legacy';
+  calls: number;
+  connected: number;
+  eligible_connected: number;
+  offer_made: number;
+  offer_made_rate: number | null;
+  offer_accepted: number;
+  offer_accepted_rate: number | null;
+  hard_refusals: number;
+  hangup_before_offer: number;
+  eta_violations: number;
+  avg_cost_per_min: number | null;
+  avg_llm_tokens: number | null;
+  latency_p50_ms: number | null;
+  latency_p95_ms: number | null;
+}
+interface AbTotals {
+  connected: number;
+  eligibleConnected: number;
+  accepted: number;
+  costDollars: number;
+  billedMinutes: number;
+}
+interface AbReport {
+  rows: AbDayRow[];
+  totals: { slim_gemini: AbTotals; legacy: AbTotals };
+  state: { env_pct: number; effective_pct: number; rolled_back?: boolean; reason?: string; rolled_back_at?: string };
+  days: number;
+  csv: string;
+}
+
+/**
+ * Outbound A/B, slim + Gemini vs legacy (2026-10-10). Collapsed by default and
+ * fetched only when opened — it is a review table, not a live board.
+ */
+function AbPanel() {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<AbReport | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setErr(null);
+      setData(await api<AbReport>('/v1/admin/flip-engine/ab-slim-gemini?days=30'));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }, []);
+
+  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+  const money = (v: number | null) => (v == null ? '—' : `$${v.toFixed(3)}`);
+  const perMin = (t: AbTotals) => (t.billedMinutes > 0 ? t.costDollars / t.billedMinutes : null);
+  const acc = (t: AbTotals) => (t.eligibleConnected > 0 ? t.accepted / t.eligibleConnected : null);
+  const label = (a: string) => (a === 'slim_gemini' ? 'slim+Gemini' : 'legacy');
+
+  const downloadCsv = () => {
+    if (!data) return;
+    const url = URL.createObjectURL(new Blob([data.csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `emily-ab-slim-gemini-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="mb-6 mt-8">
+      <button
+        onClick={() => {
+          setOpen((o) => !o);
+          if (!data) void load();
+        }}
+        className="flex w-full items-center justify-between text-xs font-bold uppercase tracking-wider text-violet-400"
+      >
+        <span>Outbound A/B — slim + Gemini vs legacy</span>
+        <span>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs text-slate-300">
+          {err && <div className="mb-2 text-rose-300">{err}</div>}
+          {!data && !err && <div className="text-slate-500">Loading…</div>}
+          {data && (
+            <>
+              <div className="mb-2">
+                Share to slim+Gemini: <b className="text-white">{data.state.effective_pct}%</b>
+                {data.state.env_pct !== data.state.effective_pct && <> (env {data.state.env_pct}%)</>}
+                {data.state.rolled_back && (
+                  <div className="mt-1 rounded border border-rose-700 bg-rose-950 p-2 text-rose-100">
+                    Auto-rolled back {data.state.rolled_back_at?.slice(0, 16).replace('T', ' ')}: {data.state.reason}
+                  </div>
+                )}
+              </div>
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                {(['slim_gemini', 'legacy'] as const).map((a) => (
+                  <div key={a} className="rounded border border-slate-700 p-2">
+                    <div className="font-bold text-white">{label(a)}</div>
+                    <div>{data.totals[a].connected} connected</div>
+                    <div>accepted {pct(acc(data.totals[a]))} ({data.totals[a].accepted}/{data.totals[a].eligibleConnected})</div>
+                    <div>{money(perMin(data.totals[a]))}/min</div>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full whitespace-nowrap text-left">
+                  <thead className="text-slate-500">
+                    <tr>
+                      {['Day', 'Arm', 'Conn', 'Offer', 'Won', 'Refused', 'Hung up', 'ETA', '$/min', 'Tokens', 'p50/p95 ms'].map((h) => (
+                        <th key={h} className="pr-3 font-normal">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.rows.map((r) => (
+                      <tr key={r.day + r.arm} className="border-t border-slate-800">
+                        <td className="pr-3">{r.day.slice(5)}</td>
+                        <td className="pr-3">{label(r.arm)}</td>
+                        <td className="pr-3">{r.connected}</td>
+                        <td className="pr-3">{pct(r.offer_made_rate)}</td>
+                        <td className="pr-3">{pct(r.offer_accepted_rate)}</td>
+                        <td className="pr-3">{r.hard_refusals}</td>
+                        <td className="pr-3">{r.hangup_before_offer}</td>
+                        <td className={`pr-3 ${r.eta_violations ? 'text-rose-400' : ''}`}>{r.eta_violations}</td>
+                        <td className="pr-3">{money(r.avg_cost_per_min)}</td>
+                        <td className="pr-3">{r.avg_llm_tokens ?? '—'}</td>
+                        <td className="pr-3">{r.latency_p50_ms ?? '—'}/{r.latency_p95_ms ?? '—'}</td>
+                      </tr>
+                    ))}
+                    {data.rows.length === 0 && (
+                      <tr>
+                        <td colSpan={11} className="py-2 text-slate-500">No A/B calls yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex gap-4">
+                <button onClick={downloadCsv} className="text-sky-400 underline">Download CSV</button>
+                <button onClick={() => void load()} className="text-slate-400 underline">refresh</button>
+              </div>
+              <div className="mt-2 text-slate-500">
+                Connected = over 30s. Offer and Won are per connected flip-eligible call. Last {data.days} days.
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

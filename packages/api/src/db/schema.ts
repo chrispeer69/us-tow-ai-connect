@@ -363,6 +363,10 @@ export const outboundCallLogs = pgTable('outbound_call_logs', {
   // time so a win can be tied to the exact script text that produced it.
   // Without these three, no experiment can be measured.
   scriptVersion: varchar('script_version', { length: 40 }),
+  // 0063 — outbound A/B arm ('slim_gemini' | 'legacy'; null = before the A/B)
+  // and the logical outbound call this log row produced.
+  abArm: varchar('ab_arm', { length: 20 }),
+  outboundCallId: uuid('outbound_call_id'),
   scenario: varchar('scenario', { length: 40 }),
   scriptVariant: varchar('script_variant', { length: 24 }).default('control'),
   // Session 77 — the dispatch intake answers (migration 0045).
@@ -1260,6 +1264,9 @@ export const retellCallUsage = pgTable(
     llmAverageTokens: numeric('llm_average_tokens', { precision: 14, scale: 2 }),
     llmRequestCount: integer('llm_request_count'),
     llmTokenValues: jsonb('llm_token_values'),
+    // 0063 — Retell call.latency.e2e, for the slim/Gemini A/B.
+    latencyP50Ms: integer('latency_p50_ms'),
+    latencyP95Ms: integer('latency_p95_ms'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
