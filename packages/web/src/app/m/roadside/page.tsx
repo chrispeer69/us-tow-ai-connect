@@ -344,6 +344,7 @@ interface AbDayRow {
   hangup_before_offer: number;
   eta_violations: number;
   avg_cost_per_min: number | null;
+  cost_per_min_connected_ex_fees: number | null;
   avg_llm_tokens: number | null;
   latency_p50_ms: number | null;
   latency_p95_ms: number | null;
@@ -430,7 +431,7 @@ function AbPanel() {
                     <div className="font-bold text-white">{label(a)}</div>
                     <div>{data.totals[a].connected} connected</div>
                     <div>accepted {pct(acc(data.totals[a]))} ({data.totals[a].accepted}/{data.totals[a].eligibleConnected})</div>
-                    <div>{money(perMin(data.totals[a]))}/min</div>
+                    <div>{money(perMin(data.totals[a]))}/min <span className="text-slate-500">(connected, excl. call fee)</span></div>
                   </div>
                 ))}
               </div>
@@ -438,7 +439,7 @@ function AbPanel() {
                 <table className="w-full whitespace-nowrap text-left">
                   <thead className="text-slate-500">
                     <tr>
-                      {['Day', 'Arm', 'Conn', 'Offer', 'Won', 'Refused', 'Hung up', 'ETA', '$/min', 'Tokens', 'p50/p95 ms'].map((h) => (
+                      {['Day', 'Arm', 'Conn', 'Offer', 'Won', 'Refused', 'Hung up', 'ETA', '$/min all-in', '$/min ex fee', 'Tokens', 'p50/p95 ms'].map((h) => (
                         <th key={h} className="pr-3 font-normal">{h}</th>
                       ))}
                     </tr>
@@ -455,13 +456,14 @@ function AbPanel() {
                         <td className="pr-3">{r.hangup_before_offer}</td>
                         <td className={`pr-3 ${r.eta_violations ? 'text-rose-400' : ''}`}>{r.eta_violations}</td>
                         <td className="pr-3">{money(r.avg_cost_per_min)}</td>
+                        <td className="pr-3">{money(r.cost_per_min_connected_ex_fees)}</td>
                         <td className="pr-3">{r.avg_llm_tokens ?? '—'}</td>
                         <td className="pr-3">{r.latency_p50_ms ?? '—'}/{r.latency_p95_ms ?? '—'}</td>
                       </tr>
                     ))}
                     {data.rows.length === 0 && (
                       <tr>
-                        <td colSpan={11} className="py-2 text-slate-500">No A/B calls yet.</td>
+                        <td colSpan={12} className="py-2 text-slate-500">No A/B calls yet.</td>
                       </tr>
                     )}
                   </tbody>
@@ -472,7 +474,7 @@ function AbPanel() {
                 <button onClick={() => void load()} className="text-slate-400 underline">refresh</button>
               </div>
               <div className="mt-2 text-slate-500">
-                Connected = over 30s. Offer and Won are per connected flip-eligible call. Last {data.days} days.
+                Connected = over 30s. Offer and Won are per connected flip-eligible call. "Ex fee" leaves out the $0.10 Branded Call charge every dial pays; the rollback uses it. Last {data.days} days.
               </div>
             </>
           )}
