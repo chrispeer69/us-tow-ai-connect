@@ -95,8 +95,12 @@ export class GhlRoadsideBridgeService {
     const driverName = assignedDriver?.name?.trim() || payloadDriverName;
     const contactName = testMode ? 'Roadside Bridge Test' : job.callerName;
     const name = splitName(contactName);
+    const jobFieldKey = process.env.GHL_TOWBOOK_JOB_FIELD_KEY?.trim();
+    if (!jobFieldKey || !job.sourceJobId?.trim() || job.sourceJobId === '0') {
+      throw new Error('GHL towing sync requires a configured job field and a valid source job ID');
+    }
     const customFields: [string | undefined, string | undefined][] = [
-      [process.env.GHL_TOWBOOK_JOB_FIELD_KEY, job.sourceJobId],
+      [jobFieldKey, job.sourceJobId],
       [process.env.GHL_TOWBOOK_SOURCE_FIELD_KEY, job.source],
       [process.env.GHL_TOWBOOK_DRIVER_FIELD_KEY, driverName],
     ];
@@ -118,7 +122,6 @@ export class GhlRoadsideBridgeService {
         phone: outboundPhone,
         locationId: this.locationId,
         source: `US Tow AI Connect / ${sourceLabel(job.source)}`,
-        customFields: populatedFields.map(([key, fieldValue]) => ({ key, fieldValue })),
       }),
     });
     if (!response.ok) throw new Error(`GHL contact upsert failed: ${response.status}`);
@@ -169,11 +172,16 @@ export class GhlRoadsideBridgeService {
       if (!updateResponse.ok) {
         throw new Error(`GHL review link update failed: ${updateResponse.status} ${updateBody.slice(0, 300)}`);
       }
+      populatedFields.push([reviewFieldKey, reviewUrl]);
       this.logger.log(
         `GHL review link update accepted for ${sourceLabel(job.source)} job ${job.sourceJobId} ` +
         `(field ${reviewFieldKey}, contact ${contactId})`,
       );
     }
+
+    // A successful contact upsert does not prove custom fields were saved.
+    // Resolve IDs and read back the values before any lifecycle tag can fire.
+    await this.saveAndVerifyTowFields(contactId, populatedFields);
 
     const tag = stage === 'completed' ? COMPLETED_TAG : stage === 'in_tow' ? IN_TOW_TAG : CONTACT_TAG;
     const tags = testMode ? [tag, TEST_MODE_TAG] : [tag];
@@ -219,6 +227,31 @@ export class GhlRoadsideBridgeService {
     this.logger.log(
       `Roadside ${stage} sent to GHL for ${sourceLabel(job.source)} job ${job.sourceJobId}`,
     );
+  }
+
+  private async saveAndVerifyTowFields(contactId: string, fields: [string, string][]): Promise<void> {
+    const headers = { Authorization: `Bearer ${this.token}`, Version: 'v3', 'Content-Type': 'application/json' };
+    const lookup = await fetch(`https://services.leadconnectorhq.com/locations/${this.locationId}/customFields?model=contact`, { headers });
+    if (!lookup.ok) throw new Error(`GHL towing fields lookup failed: ${lookup.status}`);
+    const catalog = await lookup.json() as { customFields?: Array<{ id?: string; fieldKey?: string }> };
+    const customFields = fields.map(([rawKey, fieldValue]) => {
+      const key = rawKey.trim();
+      const field = catalog.customFields?.find((item) => item.fieldKey === key);
+      if (!field?.id) throw new Error(`GHL towing custom field not found: ${key}`);
+      return { id: field.id, key, fieldValue };
+    });
+    const url = `https://services.leadconnectorhq.com/contacts/${contactId}`;
+    const update = await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ customFields }) });
+    if (!update.ok) throw new Error(`GHL towing fields update failed: ${update.status}`);
+    const readback = await fetch(url, { headers });
+    if (!readback.ok) throw new Error(`GHL towing fields verification failed: ${readback.status}`);
+    const saved = await readback.json() as { contact?: { customFields?: Array<{ id: string; value?: unknown }> } };
+    for (const expected of customFields) {
+      const actual = saved.contact?.customFields?.find((item) => item.id === expected.id);
+      if (String(actual?.value ?? '') !== expected.fieldValue) {
+        throw new Error(`GHL towing field verification mismatch: ${expected.key}; lifecycle tags withheld`);
+      }
+    }
   }
 
   /**
