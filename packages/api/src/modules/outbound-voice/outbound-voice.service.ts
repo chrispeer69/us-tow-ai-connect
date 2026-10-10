@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { DB_CLIENT, type DbClient } from '../../db/db.module';
 import { resolveRetellTenantConfig } from '../../common/utils/retell-tenant-config';
+import { abAgentFromEnv } from '../flip-engine/ab-slim-gemini';
 import {
   alphaShops,
   outboundCallLogs,
@@ -47,6 +48,7 @@ import { ThinkrrOutboundClient } from './thinkrr-outbound.client';
 import {
   RetellOutboundClient,
   type RetellCallCost,
+  type RetellLatencyE2e,
   type RetellLlmTokenUsage,
 } from './retell-outbound.client';
 import {
@@ -445,6 +447,19 @@ export class OutboundVoiceService {
       return updated[0];
     }
 
+    // 2026-10-10 slim/Gemini A/B: the arm was fixed when the script was
+    // rendered (a slim body needs the slim agent's core prompt). The arm stays
+    // with the call through retries, even after a rollback — rollback stops
+    // NEW assignments. Unconfigured agent at dial time: warn and fall back so
+    // the customer is still called.
+    const abArm = (call.scriptVariables as Record<string, unknown> | null)?.abArm;
+    const abAgent = abArm === 'slim_gemini' && retell ? abAgentFromEnv() : null;
+    if (abArm === 'slim_gemini' && retell && !abAgent) {
+      this.logger.warn(
+        `[outbound-voice] call ${call.id} is on the slim_gemini arm but AB_SLIM_GEMINI_AGENT_ID is unset — placing on the tenant agent`,
+      );
+    }
+
     const result = await this.provider.placeCall({
       toPhone: call.toPhone,
       toName: call.toName,
@@ -453,8 +468,8 @@ export class OutboundVoiceService {
       scriptVariables: rendered.resolvedVariables,
       callId: call.id,
       tenantId: call.tenantId,
-      agentId,
-      agentVersion: retell?.agentVersion ?? undefined,
+      agentId: abAgent?.agentId ?? agentId,
+      agentVersion: abAgent ? (abAgent.agentVersion ?? undefined) : (retell?.agentVersion ?? undefined),
       fromNumber: retell?.fromNumber ?? undefined,
       callbackUrl,
       testModeEnabled: tenantTestModeEnabled,
@@ -635,6 +650,7 @@ export class OutboundVoiceService {
         agentVersion: snapshot.agent_version != null ? String(snapshot.agent_version) : null,
         callCost: snapshot.call_cost ?? null,
         llmTokenUsage: snapshot.llm_token_usage ?? null,
+        latencyE2e: snapshot.latency?.e2e ?? null,
         providerStartedAtIso: snapshot.start_timestamp
           ? new Date(snapshot.start_timestamp).toISOString()
           : null,
@@ -802,6 +818,7 @@ export class OutboundVoiceService {
     agentVersion?: string | null;
     callCost?: RetellCallCost | null;
     llmTokenUsage?: RetellLlmTokenUsage | null;
+    latencyE2e?: RetellLatencyE2e | null;
     providerStartedAtIso?: string | null;
     outcome?: Record<string, unknown> | null;
     error?: string | null;
@@ -1004,6 +1021,7 @@ export class OutboundVoiceService {
       agentVersion?: string | null;
       callCost?: RetellCallCost | null;
       llmTokenUsage?: RetellLlmTokenUsage | null;
+      latencyE2e?: RetellLatencyE2e | null;
       providerStartedAtIso?: string | null;
     },
     status: string,
@@ -1034,6 +1052,8 @@ export class OutboundVoiceService {
         llm_average_tokens,
         llm_request_count,
         llm_token_values,
+        latency_p50_ms,
+        latency_p95_ms,
         started_at,
         ended_at,
         created_at,
@@ -1051,6 +1071,8 @@ export class OutboundVoiceService {
         ${event.llmTokenUsage?.average ?? null},
         ${event.llmTokenUsage?.num_requests ?? null},
         ${tokenValues}::jsonb,
+        ${event.latencyE2e?.p50 != null ? Math.round(event.latencyE2e.p50) : null},
+        ${event.latencyE2e?.p95 != null ? Math.round(event.latencyE2e.p95) : null},
         ${startedAt},
         ${endedAt},
         coalesce(${startedAt}, now()),
@@ -1066,6 +1088,8 @@ export class OutboundVoiceService {
         llm_average_tokens = coalesce(excluded.llm_average_tokens, retell_call_usage.llm_average_tokens),
         llm_request_count = coalesce(excluded.llm_request_count, retell_call_usage.llm_request_count),
         llm_token_values = coalesce(excluded.llm_token_values, retell_call_usage.llm_token_values),
+        latency_p50_ms = coalesce(excluded.latency_p50_ms, retell_call_usage.latency_p50_ms),
+        latency_p95_ms = coalesce(excluded.latency_p95_ms, retell_call_usage.latency_p95_ms),
         started_at = coalesce(retell_call_usage.started_at, excluded.started_at),
         ended_at = coalesce(excluded.ended_at, retell_call_usage.ended_at),
         updated_at = now()

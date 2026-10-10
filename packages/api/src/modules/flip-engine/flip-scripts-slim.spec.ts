@@ -21,7 +21,8 @@ import { SLIM_MAX_TOKENS, estimateTokens, renderSlimCallBody, uncoveredTenantRul
 import { GLOBAL_DEFAULT_RULES, ROADSIDE_CUSTOM_RULES, SCRIPT_SAMPLES, baseContext } from './script-samples';
 
 const RETELL = join(__dirname, '../../../../../retell');
-const core = readFileSync(join(RETELL, 'core_prompt.md'), 'utf8');
+// Line endings normalized: a Windows checkout (core.autocrlf) adds a byte per line.
+const core = readFileSync(join(RETELL, 'core_prompt.md'), 'utf8').replace(/\r\n/g, '\n');
 const kbFiles = readdirSync(join(RETELL, 'knowledge')).filter((f) => f.endsWith('.md'));
 const kb = kbFiles.map((f) => readFileSync(join(RETELL, 'knowledge', f), 'utf8')).join('\n');
 

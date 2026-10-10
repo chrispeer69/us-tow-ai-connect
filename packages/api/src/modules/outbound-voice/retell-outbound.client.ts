@@ -48,6 +48,7 @@ export interface RetellCallSnapshot {
   metadata?: Record<string, unknown>;
   call_cost?: RetellCallCost;
   llm_token_usage?: RetellLlmTokenUsage;
+  latency?: { e2e?: RetellLatencyE2e };
 }
 
 export interface RetellCallCost {
@@ -60,6 +61,12 @@ export interface RetellCallCost {
   total_duration_seconds?: number;
   total_duration_unit_price?: number;
   combined_cost?: number;
+}
+
+/** Retell call.latency — only the end-to-end percentiles are used (ms). */
+export interface RetellLatencyE2e {
+  p50?: number;
+  p95?: number;
 }
 
 export interface RetellLlmTokenUsage {

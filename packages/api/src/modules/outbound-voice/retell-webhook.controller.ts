@@ -132,6 +132,7 @@ export class RetellWebhookController {
       agentVersion: body.call.agent_version != null ? String(body.call.agent_version) : null,
       callCost: body.call.call_cost ?? null,
       llmTokenUsage: body.call.llm_token_usage ?? null,
+      latencyE2e: body.call.latency?.e2e ?? null,
       providerStartedAtIso: body.call.start_timestamp
         ? new Date(body.call.start_timestamp).toISOString()
         : null,
@@ -196,6 +197,7 @@ interface RetellWebhookBody {
       average?: number;
       num_requests?: number;
     };
+    latency?: { e2e?: { p50?: number; p95?: number } };
   };
 }
 

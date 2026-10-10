@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { haversineMiles, selectNearestShops, shopAtLocation } from './nearest-shop.selector';
 import { Cron } from '@nestjs/schedule';
 import { eq, and, gte } from 'drizzle-orm';
@@ -16,6 +16,8 @@ import {
   type ClassifyDestinationResult,
 } from './destination-classifier.service';
 import { FlipEngineService } from './flip-engine.service';
+import { AbSlimGeminiService } from './ab-slim-gemini.service';
+import { abPctFromEnv, renderForArm, type AbArm } from './ab-slim-gemini';
 import { ALWAYS_NO_FLIP_CATEGORIES, decideFlip, type FlipDecision } from './flip-decision.engine';
 import { isTowCompany, looksLikeSharedBusinessPhone, type TowCompanyEntry } from './tow-company.matcher';
 import { isDealerDestination } from './dealer-destination';
@@ -28,6 +30,7 @@ import {
   scenarioForDestinationTag,
   activeScriptVersion,
   pickScriptVariant,
+  type ScenarioKey,
   type ScriptContext,
   type ScriptVariant,
 } from './flip-scripts';
@@ -234,7 +237,37 @@ export class FlipOrchestratorService {
     private readonly issueClassifier: IssueClassifierService,
     private readonly voice: OutboundVoiceService,
     private readonly geocoder: GeocoderService,
+    @Optional() private readonly ab?: AbSlimGeminiService,
   ) {}
+
+  /**
+   * 2026-10-10 — the slim/Gemini A/B. Off (AB_SLIM_GEMINI_PCT unset or 0):
+   * exactly the previous behaviour, renderCallBody and no arm stamped. On:
+   * the job gets an arm from its id, the body is rendered for that arm, and
+   * the arm + its script version are returned for the log row and the queue.
+   */
+  private async renderWithAb(
+    seed: string | null | undefined,
+    scenario: ScenarioKey,
+    ctx: ScriptContext,
+  ): Promise<{ body: string; abArm: AbArm | null; scriptVersion: string }> {
+    if (!this.ab || abPctFromEnv() <= 0) {
+      return { body: renderCallBody(scenario, ctx), abArm: null, scriptVersion: activeScriptVersion() };
+    }
+    const arm = await this.ab.assignArm(seed);
+    const r = renderForArm(arm, scenario, ctx);
+    return { body: r.body, abArm: r.arm, scriptVersion: r.scriptVersion };
+  }
+
+  /** Link a call log to the queued call it produced. Best-effort. */
+  private async linkLogToCall(logId: string, outboundCallId: string | null | undefined): Promise<void> {
+    if (!outboundCallId) return;
+    await this.db
+      .update(outboundCallLogs)
+      .set({ outboundCallId })
+      .where(eq(outboundCallLogs.id, logId))
+      .catch((err) => this.logger.warn(`[flip-orchestrator] log link failed log=${logId}: ${(err as Error).message}`));
+  }
 
   @Cron('0 */1 * * * *') // every 60s
   async tickCron(): Promise<void> {
@@ -557,7 +590,12 @@ export class FlipOrchestratorService {
       scriptBlocks: (cfg.script_blocks as Record<string, string>) || undefined,
       globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
     };
-    const fullBody = renderCallBody(actualScenario, ctx);
+    const rendered = await this.renderWithAb(
+      job.relatedJobId ?? job.jobId ?? job.customerPhone,
+      actualScenario,
+      ctx,
+    );
+    const fullBody = rendered.body;
 
     // 6. Persist log row before enqueue (so we have the trail even if
     //    the orchestrator crashes mid-call).
@@ -577,7 +615,8 @@ export class FlipOrchestratorService {
         nearestOurShop: nearestShopName,
         noFlipReason: flipEligible ? null : (decision.flipEligible ? 'flip_suppressed_no_nearby_shop_within_max_distance' : decision.reasonCode),
         // Attribution: which script text actually produced this call.
-        scriptVersion: activeScriptVersion(),
+        scriptVersion: rendered.scriptVersion,
+        abArm: rendered.abArm,
         scenario: actualScenario,
         scriptVariant,
       })
@@ -588,16 +627,17 @@ export class FlipOrchestratorService {
     //    `{{body}}` straight through.
     const maxRetries = Number(cfg.max_call_retries ?? globalCfg.max_call_retries ?? 0);
     try {
-      await this.voice.enqueueCall({
+      const queued = await this.voice.enqueueCall({
         tenantId,
         purpose: 'custom',
         toPhone: job.customerPhone,
         toName: job.customerName,
         scriptTemplate: 'custom',
-        scriptVariables: { body: fullBody },
+        scriptVariables: { body: fullBody, ...(rendered.abArm ? { abArm: rendered.abArm } : {}) },
         relatedJobId: job.relatedJobId ?? null,
         maxAttempts: maxRetries + 1,
       });
+      await this.linkLogToCall(logRow.id, queued?.id);
       return true;
     } catch (err) {
       this.logger.warn(
@@ -1231,7 +1271,8 @@ export class FlipOrchestratorService {
         globalScriptBlocks: (globalCfg.script_blocks as Record<string, string>) || undefined,
       };
 
-      const fullBody = renderCallBody(actualScenario, ctx);
+      const rendered = await this.renderWithAb(job.id ?? job.callerPhone, actualScenario, ctx);
+      const fullBody = rendered.body;
 
       // Persist log row to Activity tab
       const [logRow] = await this.db
@@ -1250,22 +1291,28 @@ export class FlipOrchestratorService {
           nearestOurShop: nearestShopName,
           noFlipReason: flipEligible ? null : (decision.flipEligible ? 'flip_suppressed_no_nearby_shop_within_max_distance' : decision.reasonCode),
           // Attribution: which script text actually produced this call.
-          scriptVersion: activeScriptVersion(),
+          scriptVersion: rendered.scriptVersion,
+          abArm: rendered.abArm,
           scenario: actualScenario,
           scriptVariant: jobScriptVariant,
         })
         .returning({ id: outboundCallLogs.id });
 
       try {
-        await this.voice.enqueueCall({
+        const queued = await this.voice.enqueueCall({
           tenantId,
           purpose: 'custom',
           toPhone: job.callerPhone,
           toName: job.callerName ?? '',
           scriptTemplate: 'custom',
-          scriptVariables: { body: fullBody, automaticSourceDispatch: automatic },
+          scriptVariables: {
+            body: fullBody,
+            automaticSourceDispatch: automatic,
+            ...(rendered.abArm ? { abArm: rendered.abArm } : {}),
+          },
           relatedJobId: job.id,
         });
+        await this.linkLogToCall(logRow.id, queued?.id);
       } catch (err) {
         this.logger.warn(
           `[flip-orchestrator] enqueue failed for newly created job ${job.id}: ${(err as Error).message}`,
