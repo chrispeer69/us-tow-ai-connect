@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Manrope, Work_Sans } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import "./globals.css";
 
 const inter = Inter({
@@ -106,6 +107,7 @@ export default function RootLayout({
           Skip to main content
         </a>
         <AuthProvider>{children}</AuthProvider>
+        <GoogleAnalytics />
       </body>
     </html>
   );
