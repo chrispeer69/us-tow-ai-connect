@@ -26,7 +26,7 @@ import {
 import {
   renderCallBody,
   scenarioForDestinationTag,
-  SCRIPT_VERSION,
+  activeScriptVersion,
   pickScriptVariant,
   type ScriptContext,
   type ScriptVariant,
@@ -412,7 +412,7 @@ export class FlipOrchestratorService {
         flipEligible: false,
         noFlipReason: `no_call_tow_company_${towCheck.rule}`.slice(0, 120),
         flipOutcome: 'NOT_ATTEMPTED',
-        scriptVersion: SCRIPT_VERSION,
+        scriptVersion: activeScriptVersion(),
       });
       return false;
     }
@@ -577,7 +577,7 @@ export class FlipOrchestratorService {
         nearestOurShop: nearestShopName,
         noFlipReason: flipEligible ? null : (decision.flipEligible ? 'flip_suppressed_no_nearby_shop_within_max_distance' : decision.reasonCode),
         // Attribution: which script text actually produced this call.
-        scriptVersion: SCRIPT_VERSION,
+        scriptVersion: activeScriptVersion(),
         scenario: actualScenario,
         scriptVariant,
       })
@@ -1122,7 +1122,7 @@ export class FlipOrchestratorService {
             flipEligible: false,
             noFlipReason: skip.reason.slice(0, 120),
             flipOutcome: 'NOT_ATTEMPTED',
-            scriptVersion: SCRIPT_VERSION,
+            scriptVersion: activeScriptVersion(),
           });
           return;
         }
@@ -1250,7 +1250,7 @@ export class FlipOrchestratorService {
           nearestOurShop: nearestShopName,
           noFlipReason: flipEligible ? null : (decision.flipEligible ? 'flip_suppressed_no_nearby_shop_within_max_distance' : decision.reasonCode),
           // Attribution: which script text actually produced this call.
-          scriptVersion: SCRIPT_VERSION,
+          scriptVersion: activeScriptVersion(),
           scenario: actualScenario,
           scriptVariant: jobScriptVariant,
         })
