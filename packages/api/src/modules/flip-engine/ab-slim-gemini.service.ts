@@ -18,7 +18,7 @@ import {
   type ArmTotals,
 } from './ab-slim-gemini';
 
-interface AbState {
+export interface AbState {
   rolled_back?: boolean;
   rolled_back_at?: string;
   reason?: string;
