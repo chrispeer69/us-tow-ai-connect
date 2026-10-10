@@ -32,9 +32,9 @@ Arm assignment uses a salted FNV-1a hash of the job id. It is deterministic, so 
 
 ## Auto-rollback
 
-A cron job runs every 30 minutes while `AB_SLIM_GEMINI_PCT` > 0. Once the slim arm has 50 connected calls (since the A/B started, 90-day window), it rolls back if either:
-- slim $/min (Retell combined cost ÷ billed minutes) is above **$0.20**, or
-- the slim offer-accepted rate is below **70% of legacy's** (accepted ÷ connected flip-eligible).
+A cron job runs every 30 minutes while `AB_SLIM_GEMINI_PCT` > 0 (90-day window). It rolls back if either:
+- slim $/min (Retell combined cost ÷ billed minutes) is above **$0.20**, checked from 50 connected slim calls, or
+- the slim offer-accepted rate is below **70% of legacy's** (accepted ÷ connected flip-eligible), checked from 150 connected slim calls (at ~2–3% wins, 50 calls is about one win per arm).
 
 A rollback writes `platform_settings['ab_slim_gemini'] = { rolled_back: true, reason, … }`, which forces the effective share to 0 with no redeploy. It emails `AB_ALERT_EMAILS` once.
 

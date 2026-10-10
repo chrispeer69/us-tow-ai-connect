@@ -138,14 +138,21 @@ export interface ArmTotals {
 }
 
 export const ROLLBACK_MIN_CONNECTED = 50;
+/**
+ * The win-rate test waits longer than the cost test. At ~2–3% wins per
+ * eligible call, 50 connected calls (~35 eligible) is about one win per arm —
+ * the 70% comparison would trip on luck. 150 connected gives it a few wins to
+ * compare. Cost is stable per call, so it is checked from 50.
+ */
+export const ROLLBACK_MIN_CONNECTED_FOR_ACCEPT = 150;
 export const ROLLBACK_MAX_DOLLARS_PER_MIN = 0.2;
 export const ROLLBACK_MIN_ACCEPT_RATIO = 0.7;
 
 /**
- * Chris, 2026-10-10: after 50 connected slim calls, roll back if the slim arm
- * costs more than $0.20/min, or its offer-accepted rate is below 70% of
- * legacy's. Rates are per connected flip-eligible call. With no legacy wins to
- * compare against, the acceptance test cannot fail.
+ * Chris, 2026-10-10: roll back if the slim arm costs more than $0.20/min
+ * (checked from 50 connected slim calls), or its offer-accepted rate is below
+ * 70% of legacy's (checked from 150). Rates are per connected flip-eligible
+ * call. With no legacy wins to compare against, the acceptance test cannot fail.
  */
 export function shouldRollback(slim: ArmTotals, legacy: ArmTotals): { rollback: boolean; reason: string | null } {
   if (slim.connected < ROLLBACK_MIN_CONNECTED) return { rollback: false, reason: null };
@@ -155,7 +162,7 @@ export function shouldRollback(slim: ArmTotals, legacy: ArmTotals): { rollback: 
   }
   const rate = (t: ArmTotals) => (t.eligibleConnected > 0 ? t.accepted / t.eligibleConnected : 0);
   const legacyRate = rate(legacy);
-  if (legacyRate > 0 && rate(slim) < ROLLBACK_MIN_ACCEPT_RATIO * legacyRate) {
+  if (slim.connected >= ROLLBACK_MIN_CONNECTED_FOR_ACCEPT && legacyRate > 0 && rate(slim) < ROLLBACK_MIN_ACCEPT_RATIO * legacyRate) {
     return {
       rollback: true,
       reason:

@@ -140,9 +140,13 @@ describe('auto-rollback rule', () => {
     expect(v.reason).toMatch(/\$0\.210\/min/);
   });
 
-  it('fires when slim acceptance is under 70% of legacy, not at or above it', () => {
-    expect(shouldRollback(t({ accepted: 1, eligibleConnected: 40 }), t({ accepted: 4, eligibleConnected: 40 })).rollback).toBe(true);
-    expect(shouldRollback(t({ accepted: 3, eligibleConnected: 40 }), t({ accepted: 4, eligibleConnected: 40 })).rollback).toBe(false);
+  it('fires when slim acceptance is under 70% of legacy, not at or above it (from 150 connected)', () => {
+    expect(shouldRollback(t({ connected: 150, accepted: 1, eligibleConnected: 40 }), t({ accepted: 4, eligibleConnected: 40 })).rollback).toBe(true);
+    expect(shouldRollback(t({ connected: 150, accepted: 3, eligibleConnected: 40 }), t({ accepted: 4, eligibleConnected: 40 })).rollback).toBe(false);
+  });
+
+  it('does not judge acceptance before 150 connected slim calls — too few wins to compare', () => {
+    expect(shouldRollback(t({ connected: 149, accepted: 0, eligibleConnected: 40 }), t({ accepted: 4, eligibleConnected: 40 })).rollback).toBe(false);
   });
 
   it('cannot fail acceptance when legacy has no wins to compare against', () => {
