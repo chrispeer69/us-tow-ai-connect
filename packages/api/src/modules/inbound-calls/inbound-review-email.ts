@@ -31,7 +31,7 @@ export function renderInboundReviewEmailSubject(input: InboundReviewEmailInput):
 export function renderInboundReviewEmailText(input: InboundReviewEmailInput): string {
   const { metrics: m, analysis, reviewDate } = input;
   const lines: string[] = [];
-  lines.push(`Emily INBOUND (844-701-1345) — ${reviewDate}`);
+  lines.push(`Emily INBOUND (740-880-7758) — ${reviewDate}`);
   lines.push('');
   if (m.calls === 0) {
     lines.push('No inbound calls in the last 24 hours.');
@@ -75,9 +75,9 @@ export function renderInboundReviewEmailHtml(input: InboundReviewEmailInput): st
 
   if (m.calls === 0) {
     return wrap(`
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7a8694;">Emily INBOUND · 844-701-1345 · ${esc(reviewDate)}</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7a8694;">Emily INBOUND · 740-880-7758 · ${esc(reviewDate)}</div>
   <h2 style="margin:8px 0 6px;font-size:20px;">No inbound calls in the last 24 hours</h2>
-  <p style="margin:0;font-size:14px;color:#4a5664;">Nothing to review. If that is unexpected, check that 844-701-1345 is still bound to the inbound agent in Retell.</p>`);
+  <p style="margin:0;font-size:14px;color:#4a5664;">Nothing to review. If that is unexpected, check that 740-880-7758 is still bound to the inbound agent in Retell.</p>`);
   }
 
   const stat = (k: string, v: string | number) =>
@@ -139,7 +139,7 @@ export function renderInboundReviewEmailHtml(input: InboundReviewEmailInput): st
   const foot = `<p style="margin-top:20px;font-size:12px;color:#7a8694;">Agent version(s): ${esc(input.agentVersions.join(', ') || 'unknown')}. Recording links are Retell's and may expire. Sent automatically at 6 AM ET.</p>`;
 
   return wrap(`
-  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7a8694;">Emily INBOUND · 844-701-1345 · ${esc(reviewDate)}</div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7a8694;">Emily INBOUND · 740-880-7758 · ${esc(reviewDate)}</div>
   <h2 style="margin:8px 0 0;font-size:20px;">Inbound line, daily review</h2>
   ${stats}${body}${callTable}${foot}`);
 }

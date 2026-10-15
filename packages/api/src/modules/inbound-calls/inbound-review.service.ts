@@ -19,7 +19,7 @@ import {
 } from './inbound-review-email';
 
 const RETELL_API = 'https://api.retellai.com';
-/** Emily INBOUND | Roadside Towing callbacks — answers +1 844-701-1345. */
+/** Emily INBOUND | Roadside Towing callbacks — answers +1 740-880-7758. */
 const INBOUND_AGENT_ID = process.env.RETELL_INBOUND_AGENT_ID?.trim() || 'agent_d070aed59fd269162e2268a386';
 const ROADSIDE_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const MAX_TRANSCRIPTS = 40;
