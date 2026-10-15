@@ -1,0 +1,5 @@
+# per-run state and transcripts (contain real job data)
+*_agents.json
+*_results_*.json
+outbound_scripts.json
+testcopy.json
