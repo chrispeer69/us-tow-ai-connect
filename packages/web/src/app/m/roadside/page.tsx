@@ -604,9 +604,11 @@ function MessageCard({
   busy: boolean;
 }) {
   const urgent = m.urgency === 'urgent';
+  // Flashes until handled — Chris, 10-16: "red alert flash ... until it is answered".
+  const alert = urgent && !m.handledAt;
   return (
     <div
-      className="mb-2 rounded-lg p-3"
+      className={`mb-2 rounded-lg p-3${alert ? ' animate-red-alert' : ''}`}
       style={{
         background: urgent ? '#450a0a' : '#0c1e2e',
         border: `2px solid ${urgent ? '#f87171' : '#38bdf8'}`,
