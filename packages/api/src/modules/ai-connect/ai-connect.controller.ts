@@ -28,6 +28,7 @@ import {
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AiConnectService } from './ai-connect.service';
+import { motorClubCallerFields } from './motor-club-callers';
 
 /**
  * What Emily may put on the dispatch board. Only the callback number and the
@@ -154,15 +155,19 @@ export class AiConnectController {
     // 2026-09-10 — three keys, not one: our job number, the motor-club PO,
     // or the phone; caller ID as the last resort. Same route and tool name
     // so a call already in progress on the old tool config keeps working.
+    const callerId = retellInboundCallerId(raw);
     const result = await this.service.lookupJob(req.tenantId, {
       phone: args?.phone ?? '',
       jobNumber: args?.job_number ?? '',
       poNumber: args?.po_number ?? '',
-      fallbackPhone: retellInboundCallerId(raw),
+      fallbackPhone: callerId,
       callId: retellCallId(raw),
     });
+    // 2026-10-16 — a club call centre's caller ID never matches a job, so
+    // the not_found branch is where this matters most.
+    const club = motorClubCallerFields(callerId);
     if (!result.found) {
-      return { status: 'not_found', message: result.message };
+      return { status: 'not_found', message: result.message, ...club };
     }
     // 2026-09-11 — job_state tells Emily whether this is a live tow or one
     // that already finished (see AiConnectService.findRecentlyClosedJob).
@@ -180,6 +185,7 @@ export class AiConnectController {
       repeat_call: result.repeatCall === true,
       status_changed_since_their_last_call: result.statusChanged === true,
       prior_calls_about_this_job: result.priorCalls ?? 0,
+      ...club,
     };
   }
 

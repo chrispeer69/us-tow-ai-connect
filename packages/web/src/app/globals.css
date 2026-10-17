@@ -210,3 +210,15 @@ a:hover {
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* 2026-10-16 — Chris: urgent dispatch messages "red alert flash" on the board
+   until somebody marks them done. A hard on/off blink, not a soft pulse, so it
+   catches the eye from across the office. */
+@keyframes red-alert {
+  0%, 49% { background-color: #7f1d1d; border-color: #fecaca; box-shadow: 0 0 18px #ef4444; }
+  50%, 100% { background-color: #450a0a; border-color: #f87171; box-shadow: none; }
+}
+
+.animate-red-alert {
+  animation: red-alert 1s step-end infinite;
+}
