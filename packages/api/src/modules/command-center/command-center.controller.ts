@@ -261,6 +261,11 @@ export class CommandCenterController {
     });
   }
 
+  @Get('roadside-board-context')
+  roadsideBoardContext(@Req() req: AdminRequest) {
+    return this.service.roadsideBoardContext(req.tenantId);
+  }
+
   @Get('inbound-calls/:id')
   getInboundCall(@Req() req: AdminRequest, @Param('id') id: string) {
     return this.service.getInboundCall(req.tenantId, id);

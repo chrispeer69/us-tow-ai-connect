@@ -14,6 +14,7 @@ import {
   dispatchMessages,
   etaCheckCalls,
   inboundCallLogs,
+  tenants,
   unifiedJobs,
   type DriverRow,
   type OutboundCallRow,
@@ -818,40 +819,68 @@ export class CommandCenterService {
    * stranded caller under six billing questions is worse than no board.
    */
   async listDispatchMessages(tenantId: string, opts: { includeHandled?: boolean } = {}) {
+    // Every open message, however old — an unanswered message never ages off
+    // the board. Handled ones only for the last week when asked for, as history.
     const rows = await this.db
       .select()
       .from(dispatchMessages)
       .where(
         opts.includeHandled
-          ? eq(dispatchMessages.tenantId, tenantId)
+          ? and(
+              eq(dispatchMessages.tenantId, tenantId),
+              or(
+                isNull(dispatchMessages.handledAt),
+                sql`${dispatchMessages.handledAt} > now() - interval '7 days'`,
+              ),
+            )
           : and(eq(dispatchMessages.tenantId, tenantId), isNull(dispatchMessages.handledAt)),
       )
-      .orderBy(desc(dispatchMessages.urgency), desc(dispatchMessages.createdAt))
-      .limit(100);
+      // 'urgent' sorts after 'normal' alphabetically, so spell the order out.
+      .orderBy(
+        sql`case when ${dispatchMessages.urgency} = 'urgent' then 0 else 1 end`,
+        desc(dispatchMessages.createdAt),
+      )
+      .limit(500);
 
-    return Promise.all(
-      rows.map(async (r) => {
-        const jobRef = await this.jobRefFromPhone(tenantId, r.callerPhone);
-        return {
-          id: r.id,
-          callerName: r.callerName,
-          callerPhone: r.callerPhone,
-          jobNumber: r.jobNumber,
-          topic: r.topic,
-          urgency: r.urgency,
-          message: r.message,
-          callbackRequested: r.callbackRequested,
-          callbackWindow: r.callbackWindow,
-          takenAt: r.createdAt,
-          handledAt: r.handledAt,
-          // Job-board reference only — never authoritative over what Emily
-          // actually took down. Populated when the caller's number matches an
-          // active Towbook/AAA job at read time.
-          jobCustomerName: jobRef?.customerName ?? null,
-          jobVehicle: jobRef?.vehicle ?? null,
-        };
-      }),
-    );
+    const jobs = await this.loadJobIndex(tenantId);
+    return rows.map((r) => {
+      const jobRef = jobs.lookup(r.callerPhone);
+      return {
+        id: r.id,
+        providerCallId: r.providerCallId,
+        callerName: r.callerName,
+        callerPhone: r.callerPhone,
+        jobNumber: r.jobNumber,
+        topic: r.topic,
+        urgency: r.urgency,
+        message: r.message,
+        callbackRequested: r.callbackRequested,
+        callbackWindow: r.callbackWindow,
+        takenAt: r.createdAt,
+        handledAt: r.handledAt,
+        // Job-board reference only — never authoritative over what Emily
+        // actually took down. Populated when the caller's number matches an
+        // active Towbook/AAA job at read time.
+        jobCustomerName: jobRef?.customerName ?? null,
+        jobVehicle: jobRef?.vehicle ?? null,
+        job: jobRef,
+      };
+    });
+  }
+
+  /**
+   * Which company this login is reading. Every inbound call and message is
+   * written under ROADSIDE_TENANT_ID; a login on any other tenant gets an
+   * empty board that looks exactly like a quiet day, so the page says so.
+   */
+  async roadsideBoardContext(tenantId: string) {
+    const [t] = await this.db
+      .select({ companyName: tenants.companyName })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const roadsideTenantId = process.env.ROADSIDE_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    return { tenantId, companyName: t?.companyName ?? null, isRoadside: tenantId === roadsideTenantId };
   }
 
   async handleDispatchMessage(tenantId: string, id: string, handledBy: string | null) {
@@ -897,21 +926,52 @@ export class CommandCenterService {
         disconnectionReason: inboundCallLogs.disconnectionReason,
         recordingUrl: inboundCallLogs.recordingUrl,
         summary: inboundCallLogs.summary,
+        analysis: inboundCallLogs.analysis,
         ustdJobNumber: inboundCallLogs.ustdJobNumber,
         startedAt: inboundCallLogs.startedAt,
+        endedAt: inboundCallLogs.endedAt,
         createdAt: inboundCallLogs.createdAt,
       })
       .from(inboundCallLogs)
       .where(and(...conditions))
       .orderBy(desc(inboundCallLogs.createdAt))
-      .limit(Math.min(opts.limit ?? 100, 200));
+      .limit(Math.min(opts.limit ?? 200, 500));
 
-    return Promise.all(
-      rows.map(async (r) => {
-        const jobRef = r.fromNumber ? await this.jobRefFromPhone(tenantId, r.fromNumber) : null;
-        return { ...r, jobCustomerName: jobRef?.customerName ?? null, jobVehicle: jobRef?.vehicle ?? null };
-      }),
-    );
+    // The message Emily took on each call, if she took one, so an urgent
+    // message turns its call red too instead of living only in the list above.
+    const callIds = rows.map((r) => r.providerCallId);
+    const msgRows = callIds.length
+      ? await this.db
+          .select({
+            id: dispatchMessages.id,
+            providerCallId: dispatchMessages.providerCallId,
+            urgency: dispatchMessages.urgency,
+            topic: dispatchMessages.topic,
+            handledAt: dispatchMessages.handledAt,
+          })
+          .from(dispatchMessages)
+          .where(and(eq(dispatchMessages.tenantId, tenantId), inArray(dispatchMessages.providerCallId, callIds)))
+      : [];
+    const msgByCall = new Map(msgRows.map((m) => [m.providerCallId, m]));
+
+    const jobs = await this.loadJobIndex(tenantId);
+    const now = Date.now();
+    return rows.map(({ analysis, ...r }) => {
+      const jobRef = jobs.lookup(r.fromNumber);
+      const started = (r.startedAt ?? r.createdAt).getTime();
+      return {
+        ...r,
+        // A call_started row with nothing after it is a call in progress. Capped
+        // at 20 minutes (Emily's limit is 10) so a lost call_ended webhook does
+        // not leave a row saying "live" forever.
+        live: !r.endedAt && r.durationSeconds == null && now - started < 20 * 60_000,
+        caller: callerDetails(analysis),
+        message: msgByCall.get(r.providerCallId) ?? null,
+        jobCustomerName: jobRef?.customerName ?? null,
+        jobVehicle: jobRef?.vehicle ?? null,
+        job: jobRef,
+      };
+    });
   }
 
   async getInboundCall(tenantId: string, id: string) {
@@ -934,21 +994,24 @@ export class CommandCenterService {
    * pushes for calls that were never an ETA check.
    *
    * `vehicle` already comes back as one combined "2018 Chevy Trax" string
-   * from the adapter — there is no separate year/make/model to join. Motor
-   * club name is not available here: the Towbook scraper does not currently
-   * capture an account/PO column at all (see towbook.adapter.ts), so there is
-   * nothing to look up yet.
+   * from the adapter — there is no separate year/make/model to join.
+   * `callNumber` is the Towbook call # and `poNumber` the motor-club PO, both
+   * captured since 2026-09-10; '' when the board does not show one.
+   *
+   * Loaded once per request and matched in memory — reading and parsing the
+   * cache once per row made a 200-call list 400 Redis reads.
    */
-  private async jobRefFromPhone(
-    tenantId: string,
-    phoneRaw: string | null,
-  ): Promise<Pick<ActiveJob, 'customerName' | 'vehicle'> | null> {
-    if (!phoneRaw) return null;
-    const digits = phoneRaw.replace(/\D/g, '');
-    if (!digits) return null;
-    const phoneLast10 = digits.length > 10 ? digits.slice(-10) : digits;
+  private async loadJobIndex(tenantId: string): Promise<{ lookup: (phone: string | null) => JobRef | null }> {
+    const index = new Map<string, JobRef>();
+    const last10 = (p: string) => {
+      const d = p.replace(/\D/g, '');
+      return d.length > 10 ? d.slice(-10) : d;
+    };
 
-    for (const key of [`jobs:towbook:${tenantId}`, `jobs:aaa_portal:${tenantId}`]) {
+    // Towbook second so it wins a phone that is on both boards — it is the
+    // system of record and the one carrying the call #.
+    for (const source of ['aaa_portal', 'towbook'] as const) {
+      const key = `jobs:${source}:${tenantId}`;
       let raw: string | null = null;
       try {
         raw = await this.redis.get(key);
@@ -963,14 +1026,72 @@ export class CommandCenterService {
       } catch {
         continue;
       }
-      const hit = jobs.find((j) => {
-        const d = j.customerPhone.replace(/\D/g, '');
-        return (d.length > 10 ? d.slice(-10) : d) === phoneLast10;
-      });
-      if (hit) return { customerName: hit.customerName, vehicle: hit.vehicle };
+      for (const j of jobs) {
+        const k = last10(j.customerPhone ?? '');
+        if (!k) continue;
+        index.set(k, {
+          source,
+          customerName: j.customerName || null,
+          vehicle: j.vehicle || null,
+          callNumber: j.callNumber || null,
+          poNumber: j.poNumber || null,
+          pickup: j.pickup || null,
+          destination: j.destination || null,
+          status: j.status || null,
+          driverName: j.driverName || null,
+        });
+      }
     }
-    return null;
+
+    return {
+      lookup: (phone) => {
+        if (!phone) return null;
+        const k = last10(phone);
+        return k ? index.get(k) ?? null : null;
+      },
+    };
   }
+}
+
+/** A live Towbook/AAA job matched on the caller's number. Reference only. */
+export interface JobRef {
+  source: 'towbook' | 'aaa_portal';
+  customerName: string | null;
+  vehicle: string | null;
+  /** Towbook call # — what the office searches Towbook by. */
+  callNumber: string | null;
+  poNumber: string | null;
+  pickup: string | null;
+  destination: string | null;
+  status: string | null;
+  driverName: string | null;
+}
+
+/**
+ * Who the caller said they were, from Retell's post-call analysis. The
+ * caller_* fields only exist once the inbound agent's analysis config asks for
+ * them; until then this is mostly empty and the board says "not captured".
+ */
+function callerDetails(analysis: unknown) {
+  const custom = ((analysis as { custom_analysis_data?: Record<string, unknown> } | null)
+    ?.custom_analysis_data ?? {}) as Record<string, unknown>;
+  const str = (k: string) => {
+    const v = custom[k];
+    if (v == null) return null;
+    const s = String(v).trim();
+    return s && s.toLowerCase() !== 'n/a' && s.toLowerCase() !== 'none' ? s : null;
+  };
+  return {
+    callerType: str('caller_type'),
+    fullName: str('caller_full_name') ?? str('contact_name'),
+    company: str('caller_company') ?? str('company_name_heard'),
+    callbackNumber: str('callback_number'),
+    email: str('caller_email'),
+    purpose: str('call_purpose'),
+    vehicleLocation: str('vehicle_location'),
+    transferred: custom.transferred === true || str('transferred') === 'true',
+    transferReason: str('transfer_reason'),
+  };
 }
 
 function summarizeCall(call: OutboundCallRow | null): CommandCenterCallSummary | null {

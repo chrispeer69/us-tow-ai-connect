@@ -118,14 +118,30 @@ export class InboundCallController {
     const call = body.call;
     if (!call?.call_id) return { ok: true, ignored: 'no call_id' };
 
-    // Only terminal events carry a transcript worth storing, and call_started
-    // would otherwise write a row we immediately have to update.
-    if (body.event === 'call_started') return { ok: true, ignored: 'call_started' };
-
     const tenantId = process.env.ROADSIDE_TENANT_ID;
     if (!tenantId) {
       this.logger.error('ROADSIDE_TENANT_ID is not set — inbound call not recorded');
       return { ok: true, ignored: 'no tenant configured' };
+    }
+
+    // call_started writes a stub so /m/roadside shows the call while it is
+    // still ringing, not ten minutes later. DO NOTHING on conflict: if a
+    // terminal event somehow landed first, the stub must not overwrite it, and
+    // the terminal upsert below fills the stub in.
+    if (body.event === 'call_started') {
+      await this.db
+        .insert(inboundCallLogs)
+        .values({
+          tenantId,
+          providerCallId: call.call_id,
+          agentId: call.agent_id ?? null,
+          agentVersion: call.agent_version != null ? String(call.agent_version) : null,
+          fromNumber: call.from_number ?? null,
+          toNumber: call.to_number ?? null,
+          startedAt: call.start_timestamp ? new Date(call.start_timestamp) : new Date(),
+        })
+        .onConflictDoNothing({ target: inboundCallLogs.providerCallId });
+      return { ok: true, stub: true };
     }
 
     const analysis = call.call_analysis?.custom_analysis_data;
